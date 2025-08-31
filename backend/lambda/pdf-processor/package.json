@@ -1,0 +1,10 @@
+{
+  "name": "pdf-processor-lambda",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-data-automation-runtime": "^3.693.0",
+    "@aws-sdk/client-s3": "^3.693.0",
+    "@aws-sdk/client-sts": "^3.693.0"
+  }
+}
