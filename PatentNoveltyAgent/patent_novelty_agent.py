@@ -132,7 +132,7 @@ def analyze_invention_disclosure(bda_data: Optional[Dict[str, Any]] = None) -> D
 @tool
 def extract_patent_keywords(document_text: str, invention_title: str = "") -> Dict[str, Any]:
     """
-    Extract relevant keywords for patent search from invention text.
+    Extract relevant keywords for patent search from invention text using AI analysis.
     
     Use this tool to generate patent search keywords from invention disclosure content.
     This helps identify relevant prior art and assess novelty.
@@ -145,62 +145,90 @@ def extract_patent_keywords(document_text: str, invention_title: str = "") -> Di
         Dictionary containing extracted keywords and search strategies
     """
     try:
-        # Simple keyword extraction (enhanced approach)
-        text_lower = document_text.lower()
+        # Create a temporary model instance for keyword extraction
+        temp_model = BedrockModel(boto_client_config=BEDROCK_CONFIG)
         
-        # Technical terms commonly found in patents
-        technical_indicators = [
-            'method', 'system', 'device', 'apparatus', 'composition',
-            'algorithm', 'process', 'technique', 'mechanism', 'structure',
-            'medical', 'stent', 'deployment', 'spiral', 'threaded'
-        ]
+        # Use AI to intelligently extract keywords
+        prompt = f"""
+        Analyze this invention disclosure and extract patent search keywords:
+
+        Title: {invention_title}
+        Content: {document_text[:3000]}...
+
+        Extract:
+        1. Core technical terms (5-8 most important)
+        2. Novel concepts unique to this invention (3-5 terms)
+        3. Functional keywords (what the invention does)
+        4. Structural keywords (how it's built/designed)
+        5. Application domain keywords
+        6. Key phrase combinations for patent searches
+
+        Return as JSON:
+        {{
+            "core_technical_terms": ["term1", "term2"],
+            "novel_concepts": ["concept1", "concept2"],
+            "functional_keywords": ["function1", "function2"],
+            "structural_keywords": ["structure1", "structure2"],
+            "domain_keywords": ["domain1", "domain2"],
+            "search_phrases": ["phrase1", "phrase2"],
+            "broad_search_terms": ["broad1", "broad2"],
+            "specific_search_terms": ["specific1", "specific2"]
+        }}
+        """
         
-        # Extract potential keywords
-        keywords = []
-        if invention_title:
-            title_words = [word.strip('.,!?()[]{}') for word in invention_title.split() if len(word) > 3]
-            keywords.extend(title_words)
+        # Get AI-powered keyword extraction
+        response = temp_model.invoke(prompt)
         
-        # Find technical terms in text
-        found_technical = [term for term in technical_indicators if term in text_lower]
-        keywords.extend(found_technical)
+        # Parse the JSON response
+        import json
+        try:
+            keywords_data = json.loads(response.strip())
+        except:
+            # Fallback if JSON parsing fails
+            keywords_data = {
+                "core_technical_terms": [],
+                "novel_concepts": [],
+                "functional_keywords": [],
+                "structural_keywords": [],
+                "domain_keywords": [],
+                "search_phrases": [],
+                "broad_search_terms": [],
+                "specific_search_terms": []
+            }
         
-        # Extract key phrases (simple approach)
-        key_phrases = []
-        if 'medical device' in text_lower:
-            key_phrases.append('medical device')
-        if 'stent' in text_lower and 'deployment' in text_lower:
-            key_phrases.append('stent deployment')
-        if 'spiral' in text_lower or 'threaded' in text_lower:
-            key_phrases.append('spiral mechanism')
-            
-        # Basic keyword combinations
-        keyword_combinations = []
-        if len(keywords) >= 2:
-            for i in range(min(len(keywords)-1, 5)):
-                keyword_combinations.append(f"{keywords[i]} {keywords[i+1]}")
+        # Combine all keywords
+        all_keywords = (
+            keywords_data.get("core_technical_terms", []) +
+            keywords_data.get("novel_concepts", []) +
+            keywords_data.get("functional_keywords", []) +
+            keywords_data.get("structural_keywords", []) +
+            keywords_data.get("domain_keywords", [])
+        )
         
         result = {
-            "primary_keywords": list(set(keywords[:10])),  # Top 10 unique keywords
-            "key_phrases": key_phrases,
-            "keyword_combinations": keyword_combinations[:5],  # Top 5 combinations
-            "technical_terms": found_technical,
+            "primary_keywords": list(set(all_keywords)),
+            "core_technical_terms": keywords_data.get("core_technical_terms", []),
+            "novel_concepts": keywords_data.get("novel_concepts", []),
+            "functional_keywords": keywords_data.get("functional_keywords", []),
+            "structural_keywords": keywords_data.get("structural_keywords", []),
+            "domain_keywords": keywords_data.get("domain_keywords", []),
+            "search_phrases": keywords_data.get("search_phrases", []),
             "search_strategy": {
-                "broad_search": list(set(keywords[:5])),
-                "specific_search": key_phrases + keyword_combinations[:3]
+                "broad_search": keywords_data.get("broad_search_terms", []),
+                "specific_search": keywords_data.get("specific_search_terms", [])
             }
         }
         
         return {
             "success": True,
             "keywords": result,
-            "message": f"Successfully extracted {len(result['primary_keywords'])} keywords and {len(result['key_phrases'])} key phrases"
+            "message": f"AI extracted {len(result['primary_keywords'])} keywords across multiple categories"
         }
     except Exception as e:
         return {
             "success": False,
             "error": str(e),
-            "message": "Failed to extract keywords"
+            "message": "Failed to extract keywords using AI analysis"
         }
 
 @tool

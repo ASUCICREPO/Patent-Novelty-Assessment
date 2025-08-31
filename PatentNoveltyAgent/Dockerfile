@@ -1,5 +1,5 @@
-# Explicitly force ARM64 platform
-FROM --platform=linux/arm64 public.ecr.aws/docker/library/python:3.12-slim
+# Use ARM64 base image without platform flag to avoid multi-arch manifest
+FROM public.ecr.aws/docker/library/python:3.12-slim
 WORKDIR /app
 
 COPY requirements.txt requirements.txt
