@@ -24,7 +24,4 @@ EXPOSE 8000
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
-# Force rebuild trigger
-RUN echo "ARM64 build $(date)" > /tmp/build_info
-
 CMD ["opentelemetry-instrument", "python", "patent_novelty_agent.py"]
