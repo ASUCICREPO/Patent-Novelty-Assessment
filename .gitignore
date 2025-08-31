@@ -52,3 +52,6 @@ backend/lambda/*/node_modules/
 # Test files
 coverage/
 .nyc_output/
+# Compiled TypeScript files
+backend/infrastructure/*.js
+backend/infrastructure/*.d.ts
