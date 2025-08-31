@@ -2,7 +2,6 @@
 """
 Patent Novelty Assessment Agent using Strands SDK.
 Analyzes invention disclosure documents and extracts keywords for patent searches.
-Version: ARM64 compatible - Build 3 - Cache Bust
 """
 
 import json
