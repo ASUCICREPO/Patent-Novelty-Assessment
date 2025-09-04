@@ -1,7 +1,7 @@
 #!/bin/bash
 # Force ARM64 Docker build for Bedrock Agent Core compatibility
 
-cd PatentNoveltyAgent
+cd backend/PatentNoveltyAgent
 
 # Build ARM64 image using buildx
 docker buildx build --platform linux/arm64 --load -t patent-agent-arm64 .

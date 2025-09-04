@@ -6,9 +6,22 @@ yarn-error.log*
 
 # CDK
 cdk.out/
+
+# Compiled TypeScript files
+dist/
 *.d.ts
 *.js
 *.js.map
+backend/infrastructure/*.js
+backend/infrastructure/*.d.ts
+backend/lambda/*/index.js
+backend/lambda/*/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # AWS
 .aws-sam/
@@ -39,19 +52,11 @@ temp/
 *.tmp
 
 # Build outputs
-dist/
 build/
 
 # BDA project files
 backend/scripts/bda-project-arn.txt
 
-# Lambda compiled files
-backend/lambda/*/index.js
-backend/lambda/*/node_modules/
-
 # Test files
 coverage/
 .nyc_output/
-# Compiled TypeScript files
-backend/infrastructure/*.js
-backend/infrastructure/*.d.ts

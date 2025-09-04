@@ -24,4 +24,4 @@ EXPOSE 8000
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
-CMD ["opentelemetry-instrument", "python", "patent_novelty_agent.py"]
+CMD ["opentelemetry-instrument", "python", "keyword_generator.py"]

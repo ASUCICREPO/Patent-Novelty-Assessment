@@ -12,9 +12,9 @@ npm install
 echo "Building TypeScript..."
 npm run build
 
-# Step 3: Deploy agent stack
-echo "Deploying agent stack..."
-npm run deploy-agent
+# Step 3: Deploy both stacks
+echo "Deploying all stacks..."
+npm run deploy
 
 echo "Deployment completed!"
 echo ""
