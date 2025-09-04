@@ -14,6 +14,13 @@ export class PatentNoveltyStack extends cdk.Stack {
 
     const accountId = this.account;
     const region = this.region;
+    
+    // Architecture detection like the working project
+    const hostArchitecture = os.arch(); 
+    console.log(`Host architecture: ${hostArchitecture}`);
+    
+    const lambdaArchitecture = hostArchitecture === 'arm64' ? lambda.Architecture.ARM_64 : lambda.Architecture.X86_64;
+    console.log(`Lambda architecture: ${lambdaArchitecture}`);
 
     // S3 Bucket for PDF processing
     const processingBucket = new s3.Bucket(this, 'PdfProcessingBucket', {
@@ -60,6 +67,12 @@ export class PatentNoveltyStack extends cdk.Stack {
       },
     });
 
+    // Get BDA Project ARN from context (passed by deployment script)
+    const bdaProjectArn = this.node.tryGetContext('bdaProjectArn');
+    if (!bdaProjectArn) {
+      throw new Error('BDA Project ARN must be provided via context. Run deployment script instead of direct CDK deploy.');
+    }
+
     // Lambda function for PDF processing
     const pdfProcessorFunction = new lambda.Function(this, 'PdfProcessorFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -70,21 +83,51 @@ export class PatentNoveltyStack extends cdk.Stack {
       memorySize: 512,
       environment: {
         BUCKET_NAME: processingBucket.bucketName,
-        BDA_PROJECT_ARN: '', // Will be set after BDA project creation
+        BDA_PROJECT_ARN: bdaProjectArn,
       },
     });
 
-    // S3 event notification to trigger Lambda
+    // Lambda function for triggering agent when BDA completes
+    const agentTriggerFunction = new lambda.Function(this, 'AgentTriggerFunction', {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'agent_trigger.lambda_handler',
+      code: lambda.Code.fromAsset('backend/lambda'),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      environment: {
+        // NOTE: This ARN must be updated after manually creating Agent Core Runtime in AWS Console
+        // Format: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID
+        AGENT_RUNTIME_ARN: 'arn:aws:bedrock-agentcore:us-west-2:216989103356:runtime/PatentNovelty-dTEUy8Ar35',
+      },
+    });
+
+    // Grant agent trigger function permissions to invoke Agent Core
+    agentTriggerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+      resources: ['*'], // Will be restricted to specific agent ARN later
+    }));
+
+    // S3 event notification to trigger Lambda for PDF processing
     processingBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
       new s3n.LambdaDestination(pdfProcessorFunction),
       { prefix: 'uploads/', suffix: '.pdf' }
     );
 
-    // Build Docker image for Patent Agent
+    // S3 event notification to trigger agent when BDA completes
+    processingBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(agentTriggerFunction),
+      { prefix: 'temp/docParser/', suffix: 'result.json' }
+    );
+
+    // Build Docker image for Patent Agent with dynamic platform selection
     const patentAgentImage = new ecrAssets.DockerImageAsset(this, 'PatentNoveltyAgentImage', {
       directory: path.join(__dirname, '..', 'PatentNoveltyAgent'),
-      platform: ecrAssets.Platform.LINUX_ARM64,
+      platform: lambdaArchitecture === lambda.Architecture.ARM_64 
+        ? ecrAssets.Platform.LINUX_ARM64 
+        : ecrAssets.Platform.LINUX_AMD64,
     });
 
     // Create IAM role for the agent
@@ -146,6 +189,11 @@ export class PatentNoveltyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PatentAgentRoleArn', {
       value: patentAgentRole.roleArn,
       description: 'IAM Role ARN for Patent Novelty Agent',
+    });
+
+    new cdk.CfnOutput(this, 'AgentTriggerFunctionName', {
+      value: agentTriggerFunction.functionName,
+      description: 'Lambda function that triggers agent when BDA completes',
     });
   }
 }
