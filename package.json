@@ -8,7 +8,6 @@
     "watch": "tsc -w",
     "cdk": "cdk",
     "deploy": "cdk deploy",
-    "deploy-agent": "cdk deploy --app 'npx ts-node backend/infrastructure/agent-app.ts'",
     "destroy": "cdk destroy"
   },
   "devDependencies": {
