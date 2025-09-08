@@ -45,7 +45,7 @@ def read_bda_results(file_path: str) -> str:
 
 # Create the keyword generator agent
 keyword_generator = Agent(
-    model=BedrockModel(),
+    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
     tools=[read_bda_results],
     system_prompt="""You are a Patent Keyword Generator Agent specialized in analyzing invention disclosure documents.
 
@@ -109,19 +109,25 @@ async def handle_agent_request(payload):
     
     # Add BDA file path to prompt if provided
     if bda_file_path:
-        prompt += f"\n\nPlease analyze the BDA results from: {bda_file_path}"
+        prompt += f"\n\nFirst, use the read_bda_results tool to read the document content from: {bda_file_path}"
     
     try:
-        # Stream the response
+        # Collect the complete response from streaming events
+        full_response = ""
         async for event in keyword_generator.stream_async(prompt):
             if "data" in event:
-                yield {"response": event["data"]}
-            elif "current_tool_use" in event:
-                tool_info = event["current_tool_use"]
-                if "name" in tool_info:
-                    yield {"tool_name": tool_info["name"]}
+                full_response += event["data"]
+            elif "current_tool_use" in event and event["current_tool_use"].get("name"):
+                yield {"tool_name": event["current_tool_use"]["name"]}
             elif "error" in event:
                 yield {"error": event["error"]}
+                return
+        
+        # Yield the complete response once streaming is done
+        if full_response.strip():
+            yield {"response": full_response}
+        else:
+            yield {"error": "No response generated from agent"}
                 
     except Exception as e:
         yield {"error": f"Error processing request: {str(e)}"}
