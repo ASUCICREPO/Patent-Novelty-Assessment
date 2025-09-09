@@ -3,6 +3,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
 import * as os from 'os';
 import * as path from 'path';
@@ -30,6 +31,15 @@ export class PatentNoveltyStack extends cdk.Stack {
       versioned: false,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+    });
+
+    // DynamoDB table for storing patent keywords
+    const keywordsTable = new dynamodb.Table(this, 'PatentKeywordsTable', {
+      tableName: `patent-keywords-${accountId}`,
+      partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
     // Lambda execution role with BDA permissions
@@ -75,9 +85,9 @@ export class PatentNoveltyStack extends cdk.Stack {
 
     // Lambda function for PDF processing
     const pdfProcessorFunction = new lambda.Function(this, 'PdfProcessorFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset('backend/lambda/pdf-processor'),
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'pdf_processor.lambda_handler',
+      code: lambda.Code.fromAsset('backend/lambda'),
       role: lambdaRole,
       timeout: cdk.Duration.minutes(15),
       memorySize: 512,
@@ -165,6 +175,17 @@ export class PatentNoveltyStack extends cdk.Stack {
               ],
               resources: ['*'],
             }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'dynamodb:PutItem',
+                'dynamodb:GetItem',
+                'dynamodb:UpdateItem',
+                'dynamodb:Query',
+                'dynamodb:Scan',
+              ],
+              resources: [keywordsTable.tableArn],
+            }),
           ],
         }),
       },
@@ -194,6 +215,11 @@ export class PatentNoveltyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AgentTriggerFunctionName', {
       value: agentTriggerFunction.functionName,
       description: 'Lambda function that triggers agent when BDA completes',
+    });
+
+    new cdk.CfnOutput(this, 'KeywordsTableName', {
+      value: keywordsTable.tableName,
+      description: 'DynamoDB table for storing patent keywords',
     });
   }
 }
