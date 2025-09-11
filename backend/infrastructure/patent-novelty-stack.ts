@@ -42,6 +42,15 @@ export class PatentNoveltyStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
+    // DynamoDB table for storing USPTO patent search results
+    const patentResultsTable = new dynamodb.Table(this, 'PatentResultsTable', {
+      tableName: `patent-search-results-${accountId}`,
+      partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'patent_number', type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
     // Lambda execution role with BDA permissions
     const lambdaRole = new iam.Role(this, 'PdfProcessorLambdaRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -184,7 +193,7 @@ export class PatentNoveltyStack extends cdk.Stack {
                 'dynamodb:Query',
                 'dynamodb:Scan',
               ],
-              resources: [keywordsTable.tableArn],
+              resources: [keywordsTable.tableArn, patentResultsTable.tableArn],
             }),
           ],
         }),
@@ -220,6 +229,17 @@ export class PatentNoveltyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'KeywordsTableName', {
       value: keywordsTable.tableName,
       description: 'DynamoDB table for storing patent keywords',
+    });
+
+    new cdk.CfnOutput(this, 'PatentResultsTableName', {
+      value: patentResultsTable.tableName,
+      description: 'DynamoDB table for storing USPTO patent search results',
+    });
+
+    // Instructions for Agent Runtime Environment Variables
+    new cdk.CfnOutput(this, 'AgentRuntimeEnvironmentVariables', {
+      value: 'Set these environment variables in Agent Core console: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL, GATEWAY_URL',
+      description: 'Required environment variables for Agent Runtime Gateway configuration',
     });
   }
 }

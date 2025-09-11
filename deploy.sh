@@ -55,12 +55,6 @@ echo "Created BDA Project ARN: $BDA_PROJECT_ARN"
 echo "Installing dependencies..."
 npm install
 
-# Build Lambda function
-echo "Building Lambda function..."
-cd backend/lambda/pdf-processor
-npm install
-cd ../../..
-
 # Deploy CDK stack
 echo "Deploying CDK stack..."
 npx cdk deploy --require-approval never --context bdaProjectArn="$BDA_PROJECT_ARN"
