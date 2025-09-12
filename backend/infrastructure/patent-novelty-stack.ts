@@ -149,6 +149,14 @@ export class PatentNoveltyStack extends cdk.Stack {
         : ecrAssets.Platform.LINUX_AMD64,
     });
 
+    // Build Docker image for Patent Orchestrator (NEW - Single runtime for all agents)
+    const patentOrchestratorImage = new ecrAssets.DockerImageAsset(this, 'PatentNoveltyOrchestratorImage', {
+      directory: path.join(__dirname, '..', 'PatentNoveltyOrchestrator'),
+      platform: lambdaArchitecture === lambda.Architecture.ARM_64 
+        ? ecrAssets.Platform.LINUX_ARM64 
+        : ecrAssets.Platform.LINUX_AMD64,
+    });
+
     // Create IAM role for the agent
     const patentAgentRole = new iam.Role(this, 'PatentNoveltyAgentRole', {
       assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com'),
@@ -213,12 +221,17 @@ export class PatentNoveltyStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'PatentAgentDockerImageURI', {
       value: patentAgentImage.imageUri,
-      description: 'Docker Image URI for Patent Novelty Agent',
+      description: 'Docker Image URI for Patent Novelty Agent (Individual - Fallback)',
+    });
+
+    new cdk.CfnOutput(this, 'PatentOrchestratorDockerImageURI', {
+      value: patentOrchestratorImage.imageUri,
+      description: 'Docker Image URI for Patent Novelty Orchestrator (Recommended)',
     });
 
     new cdk.CfnOutput(this, 'PatentAgentRoleArn', {
       value: patentAgentRole.roleArn,
-      description: 'IAM Role ARN for Patent Novelty Agent',
+      description: 'IAM Role ARN for Patent Novelty Agents (Both Individual and Orchestrator)',
     });
 
     new cdk.CfnOutput(this, 'AgentTriggerFunctionName', {

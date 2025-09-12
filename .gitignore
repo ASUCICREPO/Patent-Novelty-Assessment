@@ -35,6 +35,7 @@ samconfig.toml
 # IDE
 .vscode/
 .idea/
+.kiro/
 *.swp
 *.swo
 
