@@ -23,12 +23,19 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 KEYWORDS_TABLE = os.getenv('KEYWORDS_TABLE_NAME')
 RESULTS_TABLE = os.getenv('RESULTS_TABLE_NAME')
+ARTICLES_TABLE = os.getenv('ARTICLES_TABLE_NAME')
 
 # Gateway Configuration for USPTO Search
 CLIENT_ID = os.environ.get('GATEWAY_CLIENT_ID')
 CLIENT_SECRET = os.environ.get('GATEWAY_CLIENT_SECRET')
 TOKEN_URL = os.environ.get('GATEWAY_TOKEN_URL')
 GATEWAY_URL = os.environ.get('GATEWAY_URL')
+
+# Gateway Configuration for Crossref Search
+CROSSREF_CLIENT_ID = os.environ.get('CROSSREF_CLIENT_ID')
+CROSSREF_CLIENT_SECRET = os.environ.get('CROSSREF_CLIENT_SECRET')
+CROSSREF_TOKEN_URL = os.environ.get('CROSSREF_TOKEN_URL')
+CROSSREF_GATEWAY_URL = os.environ.get('CROSSREF_GATEWAY_URL')
 
 # Validate Gateway environment variables
 missing_vars = []
@@ -42,7 +49,21 @@ if not GATEWAY_URL:
     missing_vars.append('GATEWAY_URL')
 
 if missing_vars:
-    print(f"WARNING: Missing environment variables: {', '.join(missing_vars)}. USPTO search will fail.")
+    print(f"WARNING: Missing USPTO environment variables: {', '.join(missing_vars)}. USPTO search will fail.")
+
+# Validate Crossref Gateway environment variables
+crossref_missing_vars = []
+if not CROSSREF_CLIENT_ID:
+    crossref_missing_vars.append('CROSSREF_CLIENT_ID')
+if not CROSSREF_CLIENT_SECRET:
+    crossref_missing_vars.append('CROSSREF_CLIENT_SECRET')
+if not CROSSREF_TOKEN_URL:
+    crossref_missing_vars.append('CROSSREF_TOKEN_URL')
+if not CROSSREF_GATEWAY_URL:
+    crossref_missing_vars.append('CROSSREF_GATEWAY_URL')
+
+if crossref_missing_vars:
+    print(f"WARNING: Missing Crossref environment variables: {', '.join(crossref_missing_vars)}. Crossref search will fail.")
 
 # =============================================================================
 # KEYWORD GENERATOR TOOLS
@@ -131,13 +152,13 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
 # =============================================================================
 
 def fetch_access_token():
-    """Get OAuth access token for Gateway."""
+    """Get OAuth access token for USPTO Gateway."""
     try:
         if not all([CLIENT_ID, CLIENT_SECRET, TOKEN_URL]):
             raise Exception("Missing required environment variables: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL")
             
-        print(f"Fetching token from: {TOKEN_URL}")
-        print(f"Client ID: {CLIENT_ID}")
+        print(f"Fetching USPTO token from: {TOKEN_URL}")
+        print(f"USPTO Client ID: {CLIENT_ID}")
         
         response = requests.post(
             TOKEN_URL,
@@ -146,21 +167,58 @@ def fetch_access_token():
             timeout=30
         )
         
-        print(f"Token response status: {response.status_code}")
+        print(f"USPTO token response status: {response.status_code}")
         
         if response.status_code != 200:
-            raise Exception(f"Token request failed: {response.status_code} - {response.text}")
+            raise Exception(f"USPTO token request failed: {response.status_code} - {response.text}")
         
         token_data = response.json()
         access_token = token_data.get('access_token')
         
         if not access_token:
-            raise Exception(f"No access token in response: {token_data}")
+            raise Exception(f"No access token in USPTO response: {token_data}")
         
         return access_token
         
     except Exception as e:
-        print(f"Error fetching access token: {e}")
+        print(f"Error fetching USPTO access token: {e}")
+        raise
+
+def fetch_crossref_access_token():
+    """Get OAuth access token for Crossref Gateway using your exact method."""
+    try:
+        if not all([CROSSREF_CLIENT_ID, CROSSREF_CLIENT_SECRET, CROSSREF_TOKEN_URL]):
+            raise Exception("Missing required environment variables: CROSSREF_CLIENT_ID, CROSSREF_CLIENT_SECRET, CROSSREF_TOKEN_URL")
+            
+        print(f"Fetching Crossref token from: {CROSSREF_TOKEN_URL}")
+        print(f"Crossref Client ID: {CROSSREF_CLIENT_ID}")
+        
+        # Use your exact method from the invocation code
+        response = requests.post(
+            CROSSREF_TOKEN_URL,
+            data="grant_type=client_credentials&client_id={client_id}&client_secret={client_secret}".format(
+                client_id=CROSSREF_CLIENT_ID, 
+                client_secret=CROSSREF_CLIENT_SECRET
+            ),
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            timeout=30
+        )
+        
+        print(f"Crossref token response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            raise Exception(f"Crossref token request failed: {response.status_code} - {response.text}")
+        
+        token_data = response.json()
+        access_token = token_data.get('access_token')
+        
+        if not access_token:
+            raise Exception(f"No access token in Crossref response: {token_data}")
+        
+        return access_token
+        
+    except Exception as e:
+        print(f"Error fetching Crossref access token: {e}")
         raise
 
 def create_streamable_http_transport(mcp_url: str, access_token: str):
@@ -373,6 +431,237 @@ def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: s
         return f"Error storing patent {patent_number}: {str(e)}"
 
 # =============================================================================
+# SCHOLARLY ARTICLE SEARCH TOOLS
+# =============================================================================
+
+def run_crossref_search(search_query: str, limit: int = 25):
+    """Run Crossref search using your exact invocation method."""
+    try:
+        access_token = fetch_crossref_access_token()
+        mcp_client = MCPClient(lambda: create_streamable_http_transport(CROSSREF_GATEWAY_URL, access_token))
+        
+        with mcp_client:
+            tools = get_full_tools_list(mcp_client)
+            print(f"Found the following Crossref tools: {[tool.tool_name for tool in tools]}")
+            
+            # Find the Crossref-specific tool (following your pattern)
+            if tools:
+                # Look for the Crossref search tool specifically
+                crossref_tool = None
+                for tool in tools:
+                    if 'crossref' in tool.tool_name.lower() or 'searchScholarlyWorks' in tool.tool_name:
+                        crossref_tool = tool
+                        break
+                
+                # Use Crossref tool if found, otherwise use first tool
+                tool_name = crossref_tool.tool_name if crossref_tool else tools[0].tool_name
+                print(f"Using Crossref tool: {tool_name}")
+                
+                # Call tool with arguments matching your OpenAPI spec
+                result = mcp_client.call_tool_sync(
+                    name=tool_name,
+                    arguments={
+                        "query": search_query,
+                        "rows": limit,
+                        "mailto": "narutouzumakihokage786@gmail.com"
+                    },
+                    tool_use_id=f"crossref-search-{hash(search_query)}"
+                )
+                return result
+            else:
+                print("No Crossref tools available")
+                return None
+                
+    except Exception as e:
+        print(f"Error in Crossref search: {e}")
+        return None
+
+@tool
+def search_crossref_articles(search_query: str, limit: int = 25) -> List[Dict[str, Any]]:
+    """Search scholarly articles via Crossref Gateway using your exact invocation method."""
+    try:
+        if not CROSSREF_GATEWAY_URL:
+            print("❌ CROSSREF_GATEWAY_URL not configured")
+            return []
+        
+        print(f"🔍 Searching Crossref for: {search_query}")
+        
+        # Use your exact invocation pattern
+        result = run_crossref_search(search_query, limit)
+        
+        print(f"Crossref tool call result type: {type(result)}")
+        
+        if result and isinstance(result, dict) and 'content' in result:
+            content = result['content']
+            if isinstance(content, list) and len(content) > 0:
+                text_content = content[0].get('text', '') if isinstance(content[0], dict) else str(content[0])
+                print(f"Crossref content preview: {text_content[:200]}...")
+                
+                try:
+                    data = json.loads(text_content)
+                    articles = data.get("message", {}).get("items", [])
+                    
+                    if articles:
+                        print(f"✅ Found {len(articles)} scholarly articles!")
+                        
+                        # Process articles to extract relevant information
+                        processed_articles = []
+                        for article in articles:
+                            # Extract key information from Crossref response
+                            processed_article = {
+                                'DOI': article.get('DOI', 'unknown'),
+                                'title': article.get('title', ['Unknown Title'])[0] if article.get('title') else 'Unknown Title',
+                                'authors': extract_authors(article.get('author', [])),
+                                'journal': article.get('container-title', ['Unknown Journal'])[0] if article.get('container-title') else 'Unknown Journal',
+                                'published_date': extract_published_date(article.get('published')),
+                                'abstract': article.get('abstract', ''),
+                                'publisher': article.get('publisher', ''),
+                                'url': article.get('URL', ''),
+                                'citation_count': article.get('is-referenced-by-count', 0),
+                                'type': article.get('type', 'journal-article'),
+                                'subject': article.get('subject', []),
+                                'search_query_used': search_query,
+                                'relevance_score': 0.8,  # Default relevance score
+                                'matching_keywords': search_query
+                            }
+                            processed_articles.append(processed_article)
+                        
+                        return processed_articles
+                    else:
+                        print(f"⚠️ No articles found in Crossref response")
+                        return []
+                        
+                except json.JSONDecodeError as je:
+                    print(f"JSON decode error in Crossref response: {je}")
+                    return []
+            else:
+                print(f"No content in Crossref result: {result}")
+                return []
+                
+    except Exception as e:
+        print(f"Error searching Crossref: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def extract_authors(authors_list: List[Dict]) -> str:
+    """Extract author names from Crossref author list."""
+    try:
+        author_names = []
+        for author in authors_list[:5]:  # Limit to first 5 authors
+            given = author.get('given', '')
+            family = author.get('family', '')
+            if family:
+                if given:
+                    author_names.append(f"{family}, {given}")
+                else:
+                    author_names.append(family)
+        
+        if len(authors_list) > 5:
+            author_names.append("et al.")
+        
+        return '; '.join(author_names) if author_names else 'Unknown Authors'
+    except Exception:
+        return 'Unknown Authors'
+
+def extract_published_date(published_info: Dict) -> str:
+    """Extract published date from Crossref date format."""
+    try:
+        if published_info and 'date-parts' in published_info:
+            date_parts = published_info['date-parts'][0]
+            if len(date_parts) >= 3:
+                return f"{date_parts[0]}-{date_parts[1]:02d}-{date_parts[2]:02d}"
+            elif len(date_parts) >= 2:
+                return f"{date_parts[0]}-{date_parts[1]:02d}"
+            elif len(date_parts) >= 1:
+                return str(date_parts[0])
+        return ''
+    except Exception:
+        return ''
+
+@tool
+def calculate_article_relevance_score(article_data: Dict, original_keywords: Dict) -> float:
+    """Calculate relevance score between scholarly article and keywords."""
+    try:
+        score = 0.0
+        total_weight = 0.0
+        
+        # Combine article text fields for matching
+        article_text = f"{article_data.get('title', '')} {article_data.get('abstract', '')} {article_data.get('journal', '')}"
+        article_text_lower = article_text.lower()
+        
+        # Weight different keyword categories for academic articles
+        weights = {
+            'mechanism_composition': 0.35,  # Technical terms are important
+            'application_use': 0.35,        # Application context is important
+            'synonyms': 0.20,               # Alternative terms help matching
+            'patent_classifications': 0.10   # Less relevant for academic articles
+        }
+        
+        for category, weight in weights.items():
+            keywords = original_keywords.get(category, '')
+            if keywords:
+                keyword_list = [k.strip() for k in keywords.split(',') if k.strip()]
+                matches = sum(1 for keyword in keyword_list if keyword.lower() in article_text_lower)
+                category_score = min(matches / len(keyword_list), 1.0) if keyword_list else 0.0
+                score += category_score * weight
+                total_weight += weight
+        
+        # Bonus for recent publications (articles from last 5 years get slight boost)
+        try:
+            pub_date = article_data.get('published_date', '')
+            if pub_date and len(pub_date) >= 4:
+                pub_year = int(pub_date[:4])
+                current_year = datetime.utcnow().year
+                if current_year - pub_year <= 5:
+                    score += 0.05  # Small bonus for recent articles
+        except:
+            pass
+        
+        return round(score / total_weight if total_weight > 0 else 0.0, 3)
+        
+    except Exception as e:
+        print(f"Error calculating article relevance score: {str(e)}")
+        return 0.0
+
+@tool
+def store_article_analysis(pdf_filename: str, article_doi: str, article_title: str, authors: str, journal: str, 
+                          published_date: str, relevance_score: float, search_query: str, citation_count: int = 0, 
+                          article_url: str = '', publisher: str = '', article_type: str = '') -> str:
+    """Store individual scholarly article analysis result in DynamoDB."""
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        table = dynamodb.Table(ARTICLES_TABLE)
+        
+        timestamp = datetime.utcnow().isoformat()
+        
+        item = {
+            'pdf_filename': pdf_filename,
+            'article_doi': article_doi,
+            'article_title': article_title,
+            'authors': authors,
+            'journal': journal,
+            'published_date': published_date,
+            'relevance_score': Decimal(str(relevance_score)),
+            'search_strategy_used': search_query,
+            'search_timestamp': timestamp,
+            'article_url': article_url,
+            'citation_count': citation_count,
+            'publisher': publisher,
+            'article_type': article_type,
+            'matching_keywords': search_query,
+            'rank_position': 1,
+            'total_results_found': 1,
+            'search_strategies_tried': [search_query]
+        }
+        
+        table.put_item(Item=item)
+        return f"Successfully stored article {article_doi}: {article_title}"
+        
+    except Exception as e:
+        return f"Error storing article {article_doi}: {str(e)}"
+
+# =============================================================================
 # AGENT DEFINITIONS
 # =============================================================================
 
@@ -431,6 +720,32 @@ SEARCH STRATEGIES:
 3. Combined technical + application terms
 
 Complete the workflow efficiently and provide a final summary."""
+)
+
+# Scholarly Article Search Agent
+scholarly_article_agent = Agent(
+    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    tools=[read_keywords_from_dynamodb, search_crossref_articles, calculate_article_relevance_score, store_article_analysis],
+    system_prompt="""You are a Scholarly Article Search Expert. Execute this workflow EXACTLY ONCE:
+
+1. Read keywords from DynamoDB using the PDF filename
+2. Execute 2-3 strategic Crossref searches using different keyword combinations
+3. Score and select the top 5 most relevant scholarly articles
+4. Store results in DynamoDB
+
+CRITICAL RULES:
+- Execute each tool call only once per search strategy
+- If a search fails, continue with the next strategy
+- Maximum 3 search attempts total
+- Always store results even if searches fail
+- Do not retry failed searches
+
+SEARCH STRATEGIES:
+1. Core mechanism terms (e.g., "spiral stent", "medical device")
+2. Application terms (e.g., "biliary intervention", "pancreatic stricture")
+3. Combined technical + application terms
+
+Focus on finding scholarly articles that discuss similar technologies, applications, or research areas that could provide academic context for the invention."""
 )
 
 # =============================================================================
@@ -545,6 +860,58 @@ Focus on patents that could impact novelty assessment."""
     except Exception as e:
         yield {"error": f"Error in USPTO search: {str(e)}"}
 
+async def handle_scholarly_search(payload):
+    """Handle scholarly article search requests."""
+    print("🔍 Orchestrator: Routing to Scholarly Article Search Agent")
+    
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            payload = {"pdf_filename": payload}
+    
+    pdf_filename = payload.get("pdf_filename")
+    
+    if not pdf_filename:
+        yield {"error": "Error: 'pdf_filename' is required for scholarly article search."}
+        return
+    
+    enhanced_prompt = f"""Search for scholarly articles related to the invention in PDF: {pdf_filename}
+
+INSTRUCTIONS:
+1. Read keywords from DynamoDB for this PDF
+2. Analyze the invention's technical and application aspects
+3. Execute multiple strategic Crossref searches via Gateway
+4. Score and rank results by relevance to the invention
+5. Select top 5 most relevant scholarly articles
+6. Store results with comprehensive metadata
+
+Focus on finding academic research that discusses similar technologies, methodologies, or applications that could provide scientific context for the patent novelty assessment."""
+    
+    try:
+        full_response = ""
+        search_metadata = {"strategies_used": [], "total_results": 0}
+        
+        async for event in scholarly_article_agent.stream_async(enhanced_prompt):
+            if "data" in event:
+                full_response += event["data"]
+            elif "current_tool_use" in event and event["current_tool_use"].get("name"):
+                tool_name = event["current_tool_use"]["name"]
+                yield {"tool_name": tool_name, "agent": "scholarly_search"}
+                if tool_name == "search_crossref_articles":
+                    search_metadata["strategies_used"].append(tool_name)
+            elif "error" in event:
+                yield {"error": event["error"]}
+                return
+        
+        if full_response.strip():
+            yield {"response": full_response, "search_metadata": search_metadata, "agent": "scholarly_search"}
+        else:
+            yield {"error": "No response generated from scholarly article search agent"}
+                
+    except Exception as e:
+        yield {"error": f"Error in scholarly article search: {str(e)}"}
+
 async def handle_orchestrator_request(payload):
     """Main orchestrator logic - routes requests to appropriate agents."""
     print(f"🎯 Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
@@ -557,6 +924,7 @@ async def handle_orchestrator_request(payload):
         if payload.get("bda_file_path") or "keyword" in str(payload.get("prompt", "")).lower():
             action = "generate_keywords"
         elif payload.get("pdf_filename"):
+            # Default to patent search for backward compatibility
             action = "search_patents"
         else:
             yield {"error": "Unable to determine action. Please specify 'action' field or provide appropriate payload structure."}
@@ -571,8 +939,11 @@ async def handle_orchestrator_request(payload):
     elif action == "search_patents":
         async for event in handle_uspto_search(payload):
             yield event
+    elif action == "search_articles":
+        async for event in handle_scholarly_search(payload):
+            yield event
     else:
-        yield {"error": f"Unknown action: {action}. Supported actions: 'generate_keywords', 'search_patents'"}
+        yield {"error": f"Unknown action: {action}. Supported actions: 'generate_keywords', 'search_patents', 'search_articles'"}
 
 # =============================================================================
 # BEDROCK AGENT CORE APP

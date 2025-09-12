@@ -51,6 +51,15 @@ export class PatentNoveltyStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
+    // DynamoDB table for storing scholarly article search results
+    const scholarlyArticlesTable = new dynamodb.Table(this, 'ScholarlyArticlesTable', {
+      tableName: `scholarly-articles-results-${accountId}`,
+      partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'article_doi', type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
     // Lambda execution role with BDA permissions
     const lambdaRole = new iam.Role(this, 'PdfProcessorLambdaRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -201,7 +210,7 @@ export class PatentNoveltyStack extends cdk.Stack {
                 'dynamodb:Query',
                 'dynamodb:Scan',
               ],
-              resources: [keywordsTable.tableArn, patentResultsTable.tableArn],
+              resources: [keywordsTable.tableArn, patentResultsTable.tableArn, scholarlyArticlesTable.tableArn],
             }),
           ],
         }),
@@ -249,9 +258,14 @@ export class PatentNoveltyStack extends cdk.Stack {
       description: 'DynamoDB table for storing USPTO patent search results',
     });
 
+    new cdk.CfnOutput(this, 'ScholarlyArticlesTableName', {
+      value: scholarlyArticlesTable.tableName,
+      description: 'DynamoDB table for storing scholarly article search results',
+    });
+
     // Instructions for Agent Runtime Environment Variables
     new cdk.CfnOutput(this, 'AgentRuntimeEnvironmentVariables', {
-      value: 'Set these environment variables in Agent Core console: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL, GATEWAY_URL',
+      value: 'Set these environment variables in Agent Core console: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL, GATEWAY_URL, CROSSREF_CLIENT_ID, CROSSREF_CLIENT_SECRET, CROSSREF_TOKEN_URL, CROSSREF_GATEWAY_URL',
       description: 'Required environment variables for Agent Runtime Gateway configuration',
     });
   }

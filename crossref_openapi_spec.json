@@ -1,0 +1,231 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Crossref REST API",
+    "version": "1.0.0",
+    "description": "Crossref REST API for scholarly article search"
+  },
+  "servers": [
+    {
+      "url": "https://api.crossref.org",
+      "description": "Crossref REST API"
+    }
+  ],
+  "paths": {
+    "/works": {
+      "get": {
+        "summary": "Search scholarly works",
+        "operationId": "searchScholarlyWorks",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Free text search query (e.g., 'spiral stent medical device')"
+          },
+          {
+            "name": "query.title",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Search in title field"
+          },
+          {
+            "name": "query.author",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Search in author field"
+          },
+          {
+            "name": "query.container-title",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Search in journal/container title"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Filter results (e.g., 'type:journal-article,from-pub-date:2020')"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string", "enum": ["relevance", "score", "published", "created"]},
+            "description": "Sort results by field"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string", "enum": ["asc", "desc"]},
+            "description": "Sort order"
+          },
+          {
+            "name": "rows",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "default": 20, "maximum": 1000},
+            "description": "Number of results to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "default": 0},
+            "description": "Pagination offset"
+          },
+          {
+            "name": "mailto",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string", "default": "narutouzumakihokage786@gmail.com"},
+            "description": "Email address for polite pool access"
+          },
+          {
+            "name": "select",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Select specific fields (e.g., 'DOI,title,author,published')"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scholarly works search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string"},
+                    "message-type": {"type": "string"},
+                    "message": {
+                      "type": "object",
+                      "properties": {
+                        "total-results": {"type": "integer"},
+                        "items-per-page": {"type": "integer"},
+                        "query": {
+                          "type": "object",
+                          "properties": {
+                            "start-index": {"type": "integer"},
+                            "search-terms": {"type": "string"}
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "DOI": {"type": "string"},
+                              "title": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                              },
+                              "author": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "given": {"type": "string"},
+                                    "family": {"type": "string"},
+                                    "ORCID": {"type": "string"},
+                                    "affiliation": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "name": {"type": "string"}
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "container-title": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                              },
+                              "published": {
+                                "type": "object",
+                                "properties": {
+                                  "date-parts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "array",
+                                      "items": {"type": "integer"}
+                                    }
+                                  }
+                                }
+                              },
+                              "abstract": {"type": "string"},
+                              "subject": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                              },
+                              "publisher": {"type": "string"},
+                              "URL": {"type": "string"},
+                              "is-referenced-by-count": {"type": "integer"},
+                              "type": {"type": "string"},
+                              "created": {
+                                "type": "object",
+                                "properties": {
+                                  "date-parts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "array",
+                                      "items": {"type": "integer"}
+                                    }
+                                  }
+                                }
+                              },
+                              "deposited": {
+                                "type": "object",
+                                "properties": {
+                                  "date-parts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "array",
+                                      "items": {"type": "integer"}
+                                    }
+                                  }
+                                }
+                              },
+                              "score": {"type": "number"},
+                              "volume": {"type": "string"},
+                              "issue": {"type": "string"},
+                              "page": {"type": "string"},
+                              "ISSN": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                              },
+                              "language": {"type": "string"}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        }
+      }
+    }
+  }
+}
