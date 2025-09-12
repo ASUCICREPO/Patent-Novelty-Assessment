@@ -33,7 +33,7 @@ export class PatentNoveltyStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     });
 
-    // DynamoDB table for storing patent keywords
+    // DynamoDB table for storing patent analysis (keywords, title, descriptions)
     const keywordsTable = new dynamodb.Table(this, 'PatentKeywordsTable', {
       tableName: `patent-keywords-${accountId}`,
       partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },

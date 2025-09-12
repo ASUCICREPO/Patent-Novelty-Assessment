@@ -93,7 +93,7 @@ def get_full_tools_list(client):
 
 @tool
 def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
-    """Read patent keywords from DynamoDB."""
+    """Read patent analysis data from DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(KEYWORDS_TABLE)
@@ -105,21 +105,21 @@ def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
         )
         
         if not response['Items']:
-            return {"error": f"No keywords found for PDF: {pdf_filename}"}
+            return {"error": f"No patent analysis found for PDF: {pdf_filename}"}
         
         keywords_data = response['Items'][0]
         return {
             "pdf_filename": keywords_data.get('pdf_filename'),
-            "application_use": keywords_data.get('application_use', ''),
-            "mechanism_composition": keywords_data.get('mechanism_composition', ''),
-            "synonyms": keywords_data.get('synonyms', ''),
-            "patent_classifications": keywords_data.get('patent_classifications', ''),
+            "title": keywords_data.get('title', ''),
+            "technology_description": keywords_data.get('technology_description', ''),
+            "technology_applications": keywords_data.get('technology_applications', ''),
+            "keywords": keywords_data.get('keywords', ''),
             "timestamp": keywords_data.get('timestamp'),
             "processing_status": keywords_data.get('processing_status')
         }
         
     except Exception as e:
-        return {"error": f"Error reading keywords: {str(e)}"}
+        return {"error": f"Error reading patent analysis: {str(e)}"}
 
 @tool
 def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, Any]]:
@@ -215,29 +215,31 @@ def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, A
 def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
     """Calculate relevance score between patent and keywords."""
     try:
-        score = 0.0
-        total_weight = 0.0
-        
         patent_text = f"{patent_data.get('title', '')} {patent_data.get('abstract', '')}"
         patent_text_lower = patent_text.lower()
         
-        weights = {
-            'mechanism_composition': 0.4,
-            'application_use': 0.3,
-            'synonyms': 0.2,
-            'patent_classifications': 0.1
-        }
+        # Get the keywords string and split into individual keywords
+        keywords_string = original_keywords.get('keywords', '')
+        if not keywords_string:
+            return 0.0
         
-        for category, weight in weights.items():
-            keywords = original_keywords.get(category, '')
-            if keywords:
-                keyword_list = [k.strip() for k in keywords.split(',') if k.strip()]
-                matches = sum(1 for keyword in keyword_list if keyword.lower() in patent_text_lower)
-                category_score = min(matches / len(keyword_list), 1.0) if keyword_list else 0.0
-                score += category_score * weight
-                total_weight += weight
+        keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
+        if not keyword_list:
+            return 0.0
         
-        return round(score / total_weight if total_weight > 0 else 0.0, 3)
+        # Count matches
+        matches = sum(1 for keyword in keyword_list if keyword in patent_text_lower)
+        
+        # Calculate score as percentage of keywords found
+        score = matches / len(keyword_list)
+        
+        # Bonus for title matches (more important)
+        title_lower = patent_data.get('title', '').lower()
+        title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
+        if title_matches > 0:
+            score += (title_matches / len(keyword_list)) * 0.2  # 20% bonus for title matches
+        
+        return round(min(score, 1.0), 3)  # Cap at 1.0
         
     except Exception as e:
         print(f"Error calculating relevance score: {str(e)}")
@@ -288,8 +290,8 @@ uspto_search_agent = Agent(
     tools=[read_keywords_from_dynamodb, search_uspto_patents, calculate_relevance_score, store_patent_analysis],
     system_prompt="""You are a USPTO Patent Search Expert. Execute this workflow EXACTLY ONCE:
 
-1. Read keywords from DynamoDB using the PDF filename
-2. Execute 2-3 strategic USPTO searches using different keyword combinations
+1. Read patent analysis data from DynamoDB using the PDF filename
+2. Use the extracted keywords to execute 2-3 strategic USPTO searches
 3. Score and select the top 5 most relevant patents
 4. Store results in DynamoDB
 
@@ -301,9 +303,12 @@ CRITICAL RULES:
 - Do not retry failed searches
 
 SEARCH STRATEGIES:
-1. Core mechanism terms (e.g., "spiraled stent", "threaded deployment")
-2. Application terms (e.g., "biliary duct", "pancreatic stricture")
-3. Combined technical + application terms
+Use the keywords from the patent analysis to create strategic searches:
+1. Core technical keywords (focus on mechanism/technology terms)
+2. Application domain keywords (focus on use case/application terms)
+3. Combined keyword search (mix technical + application terms)
+
+The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
 
 Complete the workflow efficiently and provide a final summary."""
 )

@@ -99,11 +99,11 @@ def read_bda_results(file_path: str) -> str:
 @tool
 def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str:
     """
-    Parse agent response and store keywords in DynamoDB.
+    Parse agent response and store patent analysis data in DynamoDB.
     
     Args:
         pdf_filename: Name of the PDF file
-        keywords_response: Full agent response with structured keywords
+        keywords_response: Full agent response with structured patent analysis
     
     Returns:
         Success or error message
@@ -113,37 +113,50 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(KEYWORDS_TABLE)
         
-        # Parse keywords from response for the 4 specific categories
-        def extract_keywords(section_name: str, text: str) -> str:
-            pattern = f"### {section_name}\\s*\\n([^#]*?)(?=\\n###|\\n##|$)"
+        # Parse the structured response
+        def extract_section(section_name: str, text: str) -> str:
+            # Look for ## Section Name format
+            pattern = f"## {section_name}\\s*\\n([^#]*?)(?=\\n##|$)"
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
             if match:
-                lines = [line.strip('- ').strip() for line in match.group(1).split('\n') 
-                        if line.strip() and line.strip().startswith('-')]
-                return ', '.join(lines)
+                content = match.group(1).strip()
+                # Remove any leading/trailing brackets or formatting
+                content = re.sub(r'^\[|\]$', '', content.strip())
+                return content
             return ""
+        
+        # Extract all sections
+        title = extract_section("Title", keywords_response)
+        technology_description = extract_section("Technology Description", keywords_response)
+        technology_applications = extract_section("Technology Applications", keywords_response)
+        keywords = extract_section("Keywords", keywords_response)
+        
+        # Clean up keywords - remove extra whitespace and ensure proper comma separation
+        if keywords:
+            keyword_list = [kw.strip() for kw in keywords.split(',') if kw.strip()]
+            keywords = ', '.join(keyword_list)
         
         # Create timestamp
         timestamp = datetime.utcnow().isoformat()
         
-        # Store in DynamoDB with only the 4 required categories
+        # Store in DynamoDB with new simplified structure
         item = {
             'pdf_filename': pdf_filename,
             'timestamp': timestamp,
-            'application_use': extract_keywords("Application/Use", keywords_response),
-            'mechanism_composition': extract_keywords("Mechanism/Composition", keywords_response),
-            'synonyms': extract_keywords("Synonyms", keywords_response),
-            'patent_classifications': extract_keywords("Patent Classifications", keywords_response),
+            'title': title or 'Unknown Invention',
+            'technology_description': technology_description or 'No description provided',
+            'technology_applications': technology_applications or 'No applications specified',
+            'keywords': keywords or 'No keywords extracted',
             'processing_status': 'completed'
         }
         
         # Put item in DynamoDB
         table.put_item(Item=item)
         
-        return f"Successfully stored keywords for {pdf_filename} in DynamoDB table {KEYWORDS_TABLE}"
+        return f"Successfully stored patent analysis for {pdf_filename} in DynamoDB table {KEYWORDS_TABLE}. Extracted {len(keywords.split(',')) if keywords else 0} keywords."
         
     except Exception as e:
-        error_msg = f"Error storing keywords in DynamoDB: {str(e)}"
+        error_msg = f"Error storing patent analysis in DynamoDB: {str(e)}"
         print(error_msg)  # Log for debugging
         return error_msg
 
@@ -241,7 +254,7 @@ def get_full_tools_list(client):
 
 @tool
 def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
-    """Read patent keywords from DynamoDB."""
+    """Read patent analysis data from DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(KEYWORDS_TABLE)
@@ -253,21 +266,21 @@ def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
         )
         
         if not response['Items']:
-            return {"error": f"No keywords found for PDF: {pdf_filename}"}
+            return {"error": f"No patent analysis found for PDF: {pdf_filename}"}
         
         keywords_data = response['Items'][0]
         return {
             "pdf_filename": keywords_data.get('pdf_filename'),
-            "application_use": keywords_data.get('application_use', ''),
-            "mechanism_composition": keywords_data.get('mechanism_composition', ''),
-            "synonyms": keywords_data.get('synonyms', ''),
-            "patent_classifications": keywords_data.get('patent_classifications', ''),
+            "title": keywords_data.get('title', ''),
+            "technology_description": keywords_data.get('technology_description', ''),
+            "technology_applications": keywords_data.get('technology_applications', ''),
+            "keywords": keywords_data.get('keywords', ''),
             "timestamp": keywords_data.get('timestamp'),
             "processing_status": keywords_data.get('processing_status')
         }
         
     except Exception as e:
-        return {"error": f"Error reading keywords: {str(e)}"}
+        return {"error": f"Error reading patent analysis: {str(e)}"}
 
 @tool
 def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, Any]]:
@@ -363,29 +376,31 @@ def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, A
 def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
     """Calculate relevance score between patent and keywords."""
     try:
-        score = 0.0
-        total_weight = 0.0
-        
         patent_text = f"{patent_data.get('title', '')} {patent_data.get('abstract', '')}"
         patent_text_lower = patent_text.lower()
         
-        weights = {
-            'mechanism_composition': 0.4,
-            'application_use': 0.3,
-            'synonyms': 0.2,
-            'patent_classifications': 0.1
-        }
+        # Get the keywords string and split into individual keywords
+        keywords_string = original_keywords.get('keywords', '')
+        if not keywords_string:
+            return 0.0
         
-        for category, weight in weights.items():
-            keywords = original_keywords.get(category, '')
-            if keywords:
-                keyword_list = [k.strip() for k in keywords.split(',') if k.strip()]
-                matches = sum(1 for keyword in keyword_list if keyword.lower() in patent_text_lower)
-                category_score = min(matches / len(keyword_list), 1.0) if keyword_list else 0.0
-                score += category_score * weight
-                total_weight += weight
+        keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
+        if not keyword_list:
+            return 0.0
         
-        return round(score / total_weight if total_weight > 0 else 0.0, 3)
+        # Count matches
+        matches = sum(1 for keyword in keyword_list if keyword in patent_text_lower)
+        
+        # Calculate score as percentage of keywords found
+        score = matches / len(keyword_list)
+        
+        # Bonus for title matches (more important)
+        title_lower = patent_data.get('title', '').lower()
+        title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
+        if title_matches > 0:
+            score += (title_matches / len(keyword_list)) * 0.2  # 20% bonus for title matches
+        
+        return round(min(score, 1.0), 3)  # Cap at 1.0
         
     except Exception as e:
         print(f"Error calculating relevance score: {str(e)}")
@@ -583,29 +598,30 @@ def extract_published_date(published_info: Dict) -> str:
 def calculate_article_relevance_score(article_data: Dict, original_keywords: Dict) -> float:
     """Calculate relevance score between scholarly article and keywords."""
     try:
-        score = 0.0
-        total_weight = 0.0
-        
         # Combine article text fields for matching
         article_text = f"{article_data.get('title', '')} {article_data.get('abstract', '')} {article_data.get('journal', '')}"
         article_text_lower = article_text.lower()
         
-        # Weight different keyword categories for academic articles
-        weights = {
-            'mechanism_composition': 0.35,  # Technical terms are important
-            'application_use': 0.35,        # Application context is important
-            'synonyms': 0.20,               # Alternative terms help matching
-            'patent_classifications': 0.10   # Less relevant for academic articles
-        }
+        # Get the keywords string and split into individual keywords
+        keywords_string = original_keywords.get('keywords', '')
+        if not keywords_string:
+            return 0.0
         
-        for category, weight in weights.items():
-            keywords = original_keywords.get(category, '')
-            if keywords:
-                keyword_list = [k.strip() for k in keywords.split(',') if k.strip()]
-                matches = sum(1 for keyword in keyword_list if keyword.lower() in article_text_lower)
-                category_score = min(matches / len(keyword_list), 1.0) if keyword_list else 0.0
-                score += category_score * weight
-                total_weight += weight
+        keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
+        if not keyword_list:
+            return 0.0
+        
+        # Count matches
+        matches = sum(1 for keyword in keyword_list if keyword in article_text_lower)
+        
+        # Calculate score as percentage of keywords found
+        score = matches / len(keyword_list)
+        
+        # Bonus for title matches (more important)
+        title_lower = article_data.get('title', '').lower()
+        title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
+        if title_matches > 0:
+            score += (title_matches / len(keyword_list)) * 0.2  # 20% bonus for title matches
         
         # Bonus for recent publications (articles from last 5 years get slight boost)
         try:
@@ -618,7 +634,7 @@ def calculate_article_relevance_score(article_data: Dict, original_keywords: Dic
         except:
             pass
         
-        return round(score / total_weight if total_weight > 0 else 0.0, 3)
+        return round(min(score, 1.0), 3)  # Cap at 1.0
         
     except Exception as e:
         print(f"Error calculating article relevance score: {str(e)}")
@@ -669,31 +685,53 @@ def store_article_analysis(pdf_filename: str, article_doi: str, article_title: s
 keyword_generator = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
     tools=[read_bda_results, store_keywords_in_dynamodb],
-    system_prompt="""You are a Patent Keyword Generator Agent specialized in analyzing invention disclosure documents.
+    system_prompt="""You are a Patent Search Professional specializing in extracting high-quality keywords from invention disclosure documents for prior art searches.
 
-Your task is to:
-1. Read the BDA processed document using the read_bda_results tool
-2. Analyze the invention content using pure AI reasoning
-3. Generate comprehensive patent search keywords across 4 categories (aim for 15-20 total keywords)
-4. Store the results in DynamoDB using the store_keywords_in_dynamodb tool
+    Your expertise lies in identifying the EXACT terms and phrases that patent examiners and searchers use to find relevant prior art in patent databases. You think like a seasoned patent attorney conducting a comprehensive novelty search.
 
-Analyze the document and intelligently distribute keywords across these 4 categories based on what you identify:
+    CRITICAL MISSION: Extract keywords that capture the complete technical essence of the invention - the terms that would appear in competing patents or prior art.
 
-## Patent Search Keywords
+    WORKFLOW:
+    1. Read the BDA processed document using the read_bda_results tool
+    2. Analyze the invention with patent search expertise
+    3. Extract professional-grade keywords and metadata
+    4. Store results using the store_keywords_in_dynamodb tool
 
-### Application/Use
-- [List keywords for applications, uses, medical conditions, therapeutic areas, target problems - as many as relevant]
+    ANALYSIS APPROACH:
+    Think like a patent professional who needs to find ALL possible prior art. Ask yourself:
+    - What are the CORE technical terms that define this invention?
+    - What synonyms and variations would appear in patent literature?
+    - What application domains and use cases are involved?
+    - What materials, processes, and mechanisms are described?
+    - What problem does this solve and how?
 
-### Mechanism/Composition
-- [List keywords for technical mechanisms, compositions, materials, compounds, processes - as many as relevant]
+    KEYWORD EXTRACTION PRINCIPLES:
+    - Focus on SINGLE WORDS and KEY PHRASES (not sentences)
+    - Include technical terminology that appears in patent databases
+    - Extract both specific terms ("polyethylene") and general terms ("plastic")
+    - Include process terms ("deployment", "rotation", "threading")
+    - Add application domain terms ("biliary", "pancreatic", "endoscopic")
+    - Include synonyms and variations patent searchers would use
+    - Aim for 15-25 high-impact keywords that capture the invention's essence
 
-### Synonyms
-- [List alternative terms, related terminology, similar expressions - as many as useful for search]
+    OUTPUT FORMAT (use this exact structure):
+    # Patent Analysis
 
-### Patent Classifications
-- [List relevant patent classification codes if identifiable from content]
+    ## Title
+    [Create a concise, professional title for the invention - 8-12 words max]
 
-Use your judgment to determine how many keywords belong in each category based on the invention's nature. Some inventions may have more application keywords, others more mechanism keywords. Aim for 15-20 total keywords across all categories. After generating the keywords, ALWAYS use the store_keywords_in_dynamodb tool to save the results."""
+    ## Technology Description
+    [Write a brief 1-2 sentence technical description of what the invention IS - focus on the core technology/mechanism]
+
+    ## Technology Applications
+    [Write a brief 1-2 sentence description of what problems it solves and where it's used]
+
+    ## Keywords
+    [List 15-25 comma-separated keywords and key phrases that capture the invention's essence - mix of single words and 2-3 word phrases]
+
+    QUALITY STANDARD: Your keywords should match the quality of professional patent searchers. Each keyword should be a term that could realistically appear in a competing patent or prior art document.
+
+    After completing your analysis, ALWAYS use the store_keywords_in_dynamodb tool to save all four fields (title, technology_description, technology_applications, keywords)."""
 )
 
 # USPTO Search Agent
@@ -702,24 +740,27 @@ uspto_search_agent = Agent(
     tools=[read_keywords_from_dynamodb, search_uspto_patents, calculate_relevance_score, store_patent_analysis],
     system_prompt="""You are a USPTO Patent Search Expert. Execute this workflow EXACTLY ONCE:
 
-1. Read keywords from DynamoDB using the PDF filename
-2. Execute 2-3 strategic USPTO searches using different keyword combinations
-3. Score and select the top 5 most relevant patents
-4. Store results in DynamoDB
+    1. Read patent analysis data from DynamoDB using the PDF filename
+    2. Use the extracted keywords to execute 2-3 strategic USPTO searches
+    3. Score and select the top 5 most relevant patents
+    4. Store results in DynamoDB
 
-CRITICAL RULES:
-- Execute each tool call only once per search strategy
-- If a search fails, continue with the next strategy
-- Maximum 3 search attempts total
-- Always store results even if searches fail
-- Do not retry failed searches
+    CRITICAL RULES:
+    - Execute each tool call only once per search strategy
+    - If a search fails, continue with the next strategy
+    - Maximum 3 search attempts total
+    - Always store results even if searches fail
+    - Do not retry failed searches
 
-SEARCH STRATEGIES:
-1. Core mechanism terms (e.g., "spiraled stent", "threaded deployment")
-2. Application terms (e.g., "biliary duct", "pancreatic stricture")
-3. Combined technical + application terms
+    SEARCH STRATEGIES:
+    Use the keywords from the patent analysis to create strategic searches:
+    1. Core technical keywords (focus on mechanism/technology terms)
+    2. Application domain keywords (focus on use case/application terms)
+    3. Combined keyword search (mix technical + application terms)
 
-Complete the workflow efficiently and provide a final summary."""
+    The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
+
+    Complete the workflow efficiently and provide a final summary."""
 )
 
 # Scholarly Article Search Agent
@@ -728,24 +769,27 @@ scholarly_article_agent = Agent(
     tools=[read_keywords_from_dynamodb, search_crossref_articles, calculate_article_relevance_score, store_article_analysis],
     system_prompt="""You are a Scholarly Article Search Expert. Execute this workflow EXACTLY ONCE:
 
-1. Read keywords from DynamoDB using the PDF filename
-2. Execute 2-3 strategic Crossref searches using different keyword combinations
-3. Score and select the top 5 most relevant scholarly articles
-4. Store results in DynamoDB
+    1. Read patent analysis data from DynamoDB using the PDF filename
+    2. Use the extracted keywords to execute 2-3 strategic Crossref searches
+    3. Score and select the top 5 most relevant scholarly articles
+    4. Store results in DynamoDB
 
-CRITICAL RULES:
-- Execute each tool call only once per search strategy
-- If a search fails, continue with the next strategy
-- Maximum 3 search attempts total
-- Always store results even if searches fail
-- Do not retry failed searches
+    CRITICAL RULES:
+    - Execute each tool call only once per search strategy
+    - If a search fails, continue with the next strategy
+    - Maximum 3 search attempts total
+    - Always store results even if searches fail
+    - Do not retry failed searches
 
-SEARCH STRATEGIES:
-1. Core mechanism terms (e.g., "spiral stent", "medical device")
-2. Application terms (e.g., "biliary intervention", "pancreatic stricture")
-3. Combined technical + application terms
+    SEARCH STRATEGIES:
+    Use the keywords from the patent analysis to create strategic searches:
+    1. Core technical keywords (focus on mechanism/technology terms)
+    2. Application domain keywords (focus on use case/application terms)  
+    3. Combined keyword search (mix technical + application terms)
 
-Focus on finding scholarly articles that discuss similar technologies, applications, or research areas that could provide academic context for the invention."""
+    The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
+
+    Focus on finding scholarly articles that discuss similar technologies, applications, or research areas that could provide academic context for the invention."""
 )
 
 # =============================================================================
@@ -780,13 +824,18 @@ async def handle_keyword_generation(payload):
             pdf_filename = filename_timestamp.split('-2025-')[0] if '-2025-' in filename_timestamp else filename_timestamp
     
     # Add BDA file path and PDF filename to prompt
-    enhanced_prompt = prompt
-    if bda_file_path:
-        enhanced_prompt += f"\n\nFirst, use the read_bda_results tool to read the document content from: {bda_file_path}"
-        enhanced_prompt += f"\n\nAfter generating the keywords, use the store_keywords_in_dynamodb tool with:"
-        enhanced_prompt += f"\n- pdf_filename: '{pdf_filename}'"
-        enhanced_prompt += f"\n- keywords_response: [your complete keyword generation response]"
-    
+    enhanced_prompt = f"""Conduct a professional patent search keyword analysis for the invention disclosure document.
+
+    First, use the read_bda_results tool to read the document content from: {bda_file_path}
+
+    Analyze the invention like a patent search professional and extract high-quality keywords that would be used to find prior art in patent databases.
+
+    After completing your analysis, use the store_keywords_in_dynamodb tool with:
+    - pdf_filename: '{pdf_filename}'
+    - keywords_response: [your complete structured response with Title, Technology Description, Technology Applications, and Keywords sections]
+
+    Focus on extracting keywords that capture the technical essence of the invention - terms that would appear in competing patents or prior art documents."""
+        
     try:
         # Collect the complete response from streaming events
         full_response = ""
@@ -826,15 +875,15 @@ async def handle_uspto_search(payload):
     
     enhanced_prompt = f"""Search for patents similar to the invention in PDF: {pdf_filename}
 
-INSTRUCTIONS:
-1. Read keywords from DynamoDB for this PDF
-2. Analyze the invention's technical aspects
-3. Execute multiple strategic patent searches via Gateway
-4. Score and rank results by relevance
-5. Select top 5 most relevant patents
-6. Store results with comprehensive metadata
+    INSTRUCTIONS:
+    1. Read keywords from DynamoDB for this PDF
+    2. Analyze the invention's technical aspects
+    3. Execute multiple strategic patent searches via Gateway
+    4. Score and rank results by relevance
+    5. Select top 5 most relevant patents
+    6. Store results with comprehensive metadata
 
-Focus on patents that could impact novelty assessment."""
+    Focus on patents that could impact novelty assessment."""
     
     try:
         full_response = ""
@@ -878,16 +927,16 @@ async def handle_scholarly_search(payload):
     
     enhanced_prompt = f"""Search for scholarly articles related to the invention in PDF: {pdf_filename}
 
-INSTRUCTIONS:
-1. Read keywords from DynamoDB for this PDF
-2. Analyze the invention's technical and application aspects
-3. Execute multiple strategic Crossref searches via Gateway
-4. Score and rank results by relevance to the invention
-5. Select top 5 most relevant scholarly articles
-6. Store results with comprehensive metadata
+    INSTRUCTIONS:
+    1. Read keywords from DynamoDB for this PDF
+    2. Analyze the invention's technical and application aspects
+    3. Execute multiple strategic Crossref searches via Gateway
+    4. Score and rank results by relevance to the invention
+    5. Select top 5 most relevant scholarly articles
+    6. Store results with comprehensive metadata
 
-Focus on finding academic research that discusses similar technologies, methodologies, or applications that could provide scientific context for the patent novelty assessment."""
-    
+    Focus on finding academic research that discusses similar technologies, methodologies, or applications that could provide scientific context for the patent novelty assessment."""
+        
     try:
         full_response = ""
         search_metadata = {"strategies_used": [], "total_results": 0}

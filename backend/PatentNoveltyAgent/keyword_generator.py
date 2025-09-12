@@ -49,11 +49,11 @@ def read_bda_results(file_path: str) -> str:
 @tool
 def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str:
     """
-    Parse agent response and store keywords in DynamoDB.
+    Parse agent response and store patent analysis data in DynamoDB.
     
     Args:
         pdf_filename: Name of the PDF file
-        keywords_response: Full agent response with structured keywords
+        keywords_response: Full agent response with structured patent analysis
     
     Returns:
         Success or error message
@@ -63,37 +63,50 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(DYNAMODB_TABLE)
         
-        # Parse keywords from response for the 4 specific categories
-        def extract_keywords(section_name: str, text: str) -> str:
-            pattern = f"### {section_name}\\s*\\n([^#]*?)(?=\\n###|\\n##|$)"
+        # Parse the structured response
+        def extract_section(section_name: str, text: str) -> str:
+            # Look for ## Section Name format
+            pattern = f"## {section_name}\\s*\\n([^#]*?)(?=\\n##|$)"
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
             if match:
-                lines = [line.strip('- ').strip() for line in match.group(1).split('\n') 
-                        if line.strip() and line.strip().startswith('-')]
-                return ', '.join(lines)
+                content = match.group(1).strip()
+                # Remove any leading/trailing brackets or formatting
+                content = re.sub(r'^\[|\]$', '', content.strip())
+                return content
             return ""
+        
+        # Extract all sections
+        title = extract_section("Title", keywords_response)
+        technology_description = extract_section("Technology Description", keywords_response)
+        technology_applications = extract_section("Technology Applications", keywords_response)
+        keywords = extract_section("Keywords", keywords_response)
+        
+        # Clean up keywords - remove extra whitespace and ensure proper comma separation
+        if keywords:
+            keyword_list = [kw.strip() for kw in keywords.split(',') if kw.strip()]
+            keywords = ', '.join(keyword_list)
         
         # Create timestamp
         timestamp = datetime.utcnow().isoformat()
         
-        # Store in DynamoDB with only the 4 required categories
+        # Store in DynamoDB with new simplified structure
         item = {
             'pdf_filename': pdf_filename,
             'timestamp': timestamp,
-            'application_use': extract_keywords("Application/Use", keywords_response),
-            'mechanism_composition': extract_keywords("Mechanism/Composition", keywords_response),
-            'synonyms': extract_keywords("Synonyms", keywords_response),
-            'patent_classifications': extract_keywords("Patent Classifications", keywords_response),
+            'title': title or 'Unknown Invention',
+            'technology_description': technology_description or 'No description provided',
+            'technology_applications': technology_applications or 'No applications specified',
+            'keywords': keywords or 'No keywords extracted',
             'processing_status': 'completed'
         }
         
         # Put item in DynamoDB
         table.put_item(Item=item)
         
-        return f"Successfully stored keywords for {pdf_filename} in DynamoDB table {DYNAMODB_TABLE}"
+        return f"Successfully stored patent analysis for {pdf_filename} in DynamoDB table {DYNAMODB_TABLE}. Extracted {len(keywords.split(',')) if keywords else 0} keywords."
         
     except Exception as e:
-        error_msg = f"Error storing keywords in DynamoDB: {str(e)}"
+        error_msg = f"Error storing patent analysis in DynamoDB: {str(e)}"
         print(error_msg)  # Log for debugging
         return error_msg
 
@@ -101,31 +114,53 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
 keyword_generator = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
     tools=[read_bda_results, store_keywords_in_dynamodb],
-    system_prompt="""You are a Patent Keyword Generator Agent specialized in analyzing invention disclosure documents.
+    system_prompt="""You are a Patent Search Professional specializing in extracting high-quality keywords from invention disclosure documents for prior art searches.
 
-Your task is to:
+Your expertise lies in identifying the EXACT terms and phrases that patent examiners and searchers use to find relevant prior art in patent databases. You think like a seasoned patent attorney conducting a comprehensive novelty search.
+
+CRITICAL MISSION: Extract keywords that capture the complete technical essence of the invention - the terms that would appear in competing patents or prior art.
+
+WORKFLOW:
 1. Read the BDA processed document using the read_bda_results tool
-2. Analyze the invention content using pure AI reasoning
-3. Generate comprehensive patent search keywords across 4 categories (aim for 15-20 total keywords)
-4. Store the results in DynamoDB using the store_keywords_in_dynamodb tool
+2. Analyze the invention with patent search expertise
+3. Extract professional-grade keywords and metadata
+4. Store results using the store_keywords_in_dynamodb tool
 
-Analyze the document and intelligently distribute keywords across these 4 categories based on what you identify:
+ANALYSIS APPROACH:
+Think like a patent professional who needs to find ALL possible prior art. Ask yourself:
+- What are the CORE technical terms that define this invention?
+- What synonyms and variations would appear in patent literature?
+- What application domains and use cases are involved?
+- What materials, processes, and mechanisms are described?
+- What problem does this solve and how?
 
-## Patent Search Keywords
+KEYWORD EXTRACTION PRINCIPLES:
+- Focus on SINGLE WORDS and KEY PHRASES (not sentences)
+- Include technical terminology that appears in patent databases
+- Extract both specific terms ("polyethylene") and general terms ("plastic")
+- Include process terms ("deployment", "rotation", "threading")
+- Add application domain terms ("biliary", "pancreatic", "endoscopic")
+- Include synonyms and variations patent searchers would use
+- Aim for 15-25 high-impact keywords that capture the invention's essence
 
-### Application/Use
-- [List keywords for applications, uses, medical conditions, therapeutic areas, target problems - as many as relevant]
+OUTPUT FORMAT (use this exact structure):
+# Patent Analysis
 
-### Mechanism/Composition
-- [List keywords for technical mechanisms, compositions, materials, compounds, processes - as many as relevant]
+## Title
+[Create a concise, professional title for the invention - 8-12 words max]
 
-### Synonyms
-- [List alternative terms, related terminology, similar expressions - as many as useful for search]
+## Technology Description
+[Write a brief 1-2 sentence technical description of what the invention IS - focus on the core technology/mechanism]
 
-### Patent Classifications
-- [List relevant patent classification codes if identifiable from content]
+## Technology Applications
+[Write a brief 1-2 sentence description of what problems it solves and where it's used]
 
-Use your judgment to determine how many keywords belong in each category based on the invention's nature. Some inventions may have more application keywords, others more mechanism keywords. Aim for 15-20 total keywords across all categories. After generating the keywords, ALWAYS use the store_keywords_in_dynamodb tool to save the results."""
+## Keywords
+[List 15-25 comma-separated keywords and key phrases that capture the invention's essence - mix of single words and 2-3 word phrases]
+
+QUALITY STANDARD: Your keywords should match the quality of professional patent searchers. Each keyword should be a term that could realistically appear in a competing patent or prior art document.
+
+After completing your analysis, ALWAYS use the store_keywords_in_dynamodb tool to save all four fields (title, technology_description, technology_applications, keywords)."""
 )
 
 async def handle_agent_request(payload):
@@ -154,12 +189,17 @@ async def handle_agent_request(payload):
             pdf_filename = filename_timestamp.split('-2025-')[0] if '-2025-' in filename_timestamp else filename_timestamp
     
     # Add BDA file path and PDF filename to prompt
-    enhanced_prompt = prompt
-    if bda_file_path:
-        enhanced_prompt += f"\n\nFirst, use the read_bda_results tool to read the document content from: {bda_file_path}"
-        enhanced_prompt += f"\n\nAfter generating the keywords, use the store_keywords_in_dynamodb tool with:"
-        enhanced_prompt += f"\n- pdf_filename: '{pdf_filename}'"
-        enhanced_prompt += f"\n- keywords_response: [your complete keyword generation response]"
+    enhanced_prompt = f"""Conduct a professional patent search keyword analysis for the invention disclosure document.
+
+First, use the read_bda_results tool to read the document content from: {bda_file_path}
+
+Analyze the invention like a patent search professional and extract high-quality keywords that would be used to find prior art in patent databases.
+
+After completing your analysis, use the store_keywords_in_dynamodb tool with:
+- pdf_filename: '{pdf_filename}'
+- keywords_response: [your complete structured response with Title, Technology Description, Technology Applications, and Keywords sections]
+
+Focus on extracting keywords that capture the technical essence of the invention - terms that would appear in competing patents or prior art documents."""
     
     try:
         # Collect the complete response from streaming events
