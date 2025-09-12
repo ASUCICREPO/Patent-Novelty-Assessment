@@ -706,7 +706,7 @@ keyword_generator = Agent(
     - What problem does this solve and how?
 
     KEYWORD EXTRACTION PRINCIPLES:
-    - Focus on SINGLE WORDS and KEY PHRASES (not sentences)
+    - Focus on SINGLE WORDS (not sentences or phrases)
     - Include technical terminology that appears in patent databases
     - Extract both specific terms ("polyethylene") and general terms ("plastic")
     - Include process terms ("deployment", "rotation", "threading")
