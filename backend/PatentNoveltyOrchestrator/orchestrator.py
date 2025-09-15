@@ -164,38 +164,7 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
 # USPTO SEARCH TOOLS
 # =============================================================================
 
-def fetch_access_token():
-    """Get OAuth access token for USPTO Gateway."""
-    try:
-        if not all([CLIENT_ID, CLIENT_SECRET, TOKEN_URL]):
-            raise Exception("Missing required environment variables: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL")
-            
-        print(f"Fetching USPTO token from: {TOKEN_URL}")
-        print(f"USPTO Client ID: {CLIENT_ID}")
-        
-        response = requests.post(
-            TOKEN_URL,
-            data=f"grant_type=client_credentials&client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}",
-            headers={'Content-Type': 'application/x-www-form-urlencoded'},
-            timeout=30
-        )
-        
-        print(f"USPTO token response status: {response.status_code}")
-        
-        if response.status_code != 200:
-            raise Exception(f"USPTO token request failed: {response.status_code} - {response.text}")
-        
-        token_data = response.json()
-        access_token = token_data.get('access_token')
-        
-        if not access_token:
-            raise Exception(f"No access token in USPTO response: {token_data}")
-        
-        return access_token
-        
-    except Exception as e:
-        print(f"Error fetching USPTO access token: {e}")
-        raise
+
 
 def fetch_crossref_access_token():
     """Get OAuth access token for Crossref Gateway using your exact method."""
@@ -407,7 +376,103 @@ def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> flo
         return 0.0
 
 @tool
-def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: str, inventor: str, assignee: str, relevance_score: float, search_query: str) -> str:
+def analyze_patent_results_quality(
+    patents: List[Dict], 
+    original_keywords: Dict, 
+    quality_threshold: float = 0.25,
+    min_patents: int = 3
+) -> Dict[str, Any]:
+    """
+    Analyze the quality of USPTO patent search results.
+    
+    Args:
+        patents: List of patents from search
+        original_keywords: Original invention keywords
+        quality_threshold: Minimum average relevance score required
+        min_patents: Minimum number of patents needed
+    
+    Returns:
+        Quality analysis with recommendations
+    """
+    try:
+        if not patents:
+            return {
+                "meets_threshold": False,
+                "average_score": 0.0,
+                "patent_count": 0,
+                "quality_assessment": "No patents found",
+                "recommendation": "try_different_strategy",
+                "detailed_scores": []
+            }
+        
+        # Calculate relevance scores for all patents
+        scores = []
+        detailed_analysis = []
+        
+        for patent in patents:
+            score = calculate_relevance_score(patent, original_keywords)
+            scores.append(score)
+            
+            # Extract patent metadata
+            app_meta = patent.get('applicationMetaData', {})
+            detailed_analysis.append({
+                "patent_number": patent.get('applicationNumberText', 'Unknown'),
+                "title": app_meta.get('inventionTitle', 'Unknown Title'),
+                "relevance_score": score,
+                "applicant": app_meta.get('applicantName', 'Unknown'),
+                "filing_date": app_meta.get('filingDate', ''),
+                "status": app_meta.get('applicationStatus', 'Unknown')
+            })
+        
+        # Calculate quality metrics
+        average_score = sum(scores) / len(scores) if scores else 0.0
+        max_score = max(scores) if scores else 0.0
+        high_quality_count = sum(1 for score in scores if score >= quality_threshold)
+        
+        # Filter patents that meet individual threshold
+        qualifying_patents = [
+            analysis for analysis in detailed_analysis 
+            if analysis["relevance_score"] >= quality_threshold
+        ]
+        
+        # Determine if we have enough qualifying patents
+        meets_threshold = len(qualifying_patents) >= min_patents
+        
+        # Generate quality assessment based on individual patent thresholds
+        if meets_threshold:
+            quality_assessment = f"Success: {len(qualifying_patents)} patents meet {quality_threshold} threshold (need {min_patents})"
+            recommendation = "accept_results"
+        elif len(qualifying_patents) > 0:
+            quality_assessment = f"Partial success: {len(qualifying_patents)} patents meet threshold, need {min_patents - len(qualifying_patents)} more"
+            recommendation = "try_refined_strategy"
+        else:
+            quality_assessment = f"No qualifying patents: 0 patents meet {quality_threshold} threshold (highest: {max_score:.3f})"
+            recommendation = "try_different_strategy"
+        
+        return {
+            "meets_threshold": meets_threshold,
+            "average_score": round(average_score, 3),
+            "max_score": round(max_score, 3),
+            "patent_count": len(patents),
+            "qualifying_patents_count": len(qualifying_patents),
+            "quality_assessment": quality_assessment,
+            "recommendation": recommendation,
+            "qualifying_patents": qualifying_patents,  # Patents that meet threshold
+            "detailed_scores": detailed_analysis[:10]  # Top 10 for analysis
+        }
+        
+    except Exception as e:
+        return {
+            "meets_threshold": False,
+            "average_score": 0.0,
+            "patent_count": 0,
+            "quality_assessment": f"Error analyzing patent results: {str(e)}",
+            "recommendation": "try_different_strategy",
+            "detailed_scores": []
+        }
+
+@tool
+def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: str, inventor: str, assignee: str, relevance_score: float, search_query: str, rank_position: int = 1) -> str:
     """Store individual patent analysis result in DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
@@ -426,7 +491,7 @@ def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: s
             'search_timestamp': timestamp,
             'uspto_url': f"https://patents.uspto.gov/patent/{patent_number}",
             'patent_abstract': f"Patent analysis for {patent_title}",
-            'rank_position': 1,
+            'rank_position': rank_position,
             'filing_date': '',
             'publication_date': '',
             'patent_status': '',
@@ -449,80 +514,88 @@ def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: s
 # SCHOLARLY ARTICLE SEARCH TOOLS
 # =============================================================================
 
-def run_crossref_search(search_query: str, limit: int = 25):
-    """Run Crossref search using your exact invocation method."""
-    try:
-        access_token = fetch_crossref_access_token()
-        mcp_client = MCPClient(lambda: create_streamable_http_transport(CROSSREF_GATEWAY_URL, access_token))
-        
-        with mcp_client:
-            tools = get_full_tools_list(mcp_client)
-            print(f"Found the following Crossref tools: {[tool.tool_name for tool in tools]}")
-            
-            # Find the Crossref-specific tool (following your pattern)
-            if tools:
-                # Look for the Crossref search tool specifically
-                crossref_tool = None
-                for tool in tools:
-                    if 'crossref' in tool.tool_name.lower() or 'searchScholarlyWorks' in tool.tool_name:
-                        crossref_tool = tool
-                        break
-                
-                # Use Crossref tool if found, otherwise use first tool
-                tool_name = crossref_tool.tool_name if crossref_tool else tools[0].tool_name
-                print(f"Using Crossref tool: {tool_name}")
-                
-                # Call tool with arguments matching your OpenAPI spec
-                result = mcp_client.call_tool_sync(
-                    name=tool_name,
-                    arguments={
-                        "query": search_query,
-                        "rows": limit,
-                        "mailto": "narutouzumakihokage786@gmail.com"
-                    },
-                    tool_use_id=f"crossref-search-{hash(search_query)}"
-                )
-                return result
-            else:
-                print("No Crossref tools available")
-                return None
-                
-    except Exception as e:
-        print(f"Error in Crossref search: {e}")
-        return None
+
 
 @tool
-def search_crossref_articles(search_query: str, limit: int = 25) -> List[Dict[str, Any]]:
-    """Search scholarly articles via Crossref Gateway using your exact invocation method."""
+def advanced_crossref_search(
+    query: str, 
+    search_type: str = "simple",
+    search_fields: str = "all", 
+    use_boolean: bool = False,
+    phrase_search: bool = False,
+    limit: int = 25
+) -> List[Dict[str, Any]]:
+    """
+    Advanced Crossref search with multiple search strategies and parameters.
+    
+    Args:
+        query: Search query string
+        search_type: "simple", "title_only", "abstract_focus", "author_focus", "journal_focus"
+        search_fields: "all", "title", "abstract", "author", "journal" 
+        use_boolean: Whether to treat query as boolean expression
+        phrase_search: Whether to search for exact phrases
+        limit: Maximum results to return
+    
+    Returns:
+        List of processed articles with metadata
+    """
     try:
         if not CROSSREF_GATEWAY_URL:
             print("❌ CROSSREF_GATEWAY_URL not configured")
             return []
         
-        print(f"🔍 Searching Crossref for: {search_query}")
+        # Construct search parameters based on strategy
+        search_params = {
+            "query": query,
+            "rows": limit,
+            "mailto": "narutouzumakihokage786@gmail.com"
+        }
         
-        # Use your exact invocation pattern
-        result = run_crossref_search(search_query, limit)
+        # Apply search type modifications
+        if search_type == "title_only":
+            search_params["query.title"] = query
+            search_params.pop("query", None)
+        elif search_type == "abstract_focus":
+            search_params["query.abstract"] = query
+            search_params.pop("query", None)
+        elif search_type == "author_focus":
+            search_params["query.author"] = query
+            search_params.pop("query", None)
+        elif search_type == "journal_focus":
+            search_params["query.container-title"] = query
+            search_params.pop("query", None)
         
-        print(f"Crossref tool call result type: {type(result)}")
+        # Add phrase search handling
+        if phrase_search and "query" in search_params:
+            # Wrap phrases in quotes for exact matching
+            if not query.startswith('"'):
+                search_params["query"] = f'"{query}"'
+        
+        print(f"🔍 Advanced Crossref Search:")
+        print(f"   Type: {search_type}")
+        print(f"   Fields: {search_fields}")
+        print(f"   Boolean: {use_boolean}")
+        print(f"   Phrase: {phrase_search}")
+        print(f"   Query: {query}")
+        
+        # Execute search using modified parameters
+        result = run_crossref_search_advanced(search_params)
         
         if result and isinstance(result, dict) and 'content' in result:
             content = result['content']
             if isinstance(content, list) and len(content) > 0:
                 text_content = content[0].get('text', '') if isinstance(content[0], dict) else str(content[0])
-                print(f"Crossref content preview: {text_content[:200]}...")
                 
                 try:
                     data = json.loads(text_content)
                     articles = data.get("message", {}).get("items", [])
                     
                     if articles:
-                        print(f"✅ Found {len(articles)} scholarly articles!")
+                        print(f"✅ Found {len(articles)} articles with {search_type} strategy")
                         
                         # Process articles to extract relevant information
                         processed_articles = []
                         for article in articles:
-                            # Extract key information from Crossref response
                             processed_article = {
                                 'DOI': article.get('DOI', 'unknown'),
                                 'title': article.get('title', ['Unknown Title'])[0] if article.get('title') else 'Unknown Title',
@@ -535,29 +608,63 @@ def search_crossref_articles(search_query: str, limit: int = 25) -> List[Dict[st
                                 'citation_count': article.get('is-referenced-by-count', 0),
                                 'type': article.get('type', 'journal-article'),
                                 'subject': article.get('subject', []),
-                                'search_query_used': search_query,
-                                'relevance_score': 0.8,  # Default relevance score
-                                'matching_keywords': search_query
+                                'search_strategy': search_type,
+                                'search_query_used': query,
+                                'search_parameters': search_params
                             }
                             processed_articles.append(processed_article)
                         
                         return processed_articles
                     else:
-                        print(f"⚠️ No articles found in Crossref response")
+                        print(f"⚠️ No articles found with {search_type} strategy")
                         return []
                         
                 except json.JSONDecodeError as je:
-                    print(f"JSON decode error in Crossref response: {je}")
+                    print(f"JSON decode error: {je}")
                     return []
             else:
-                print(f"No content in Crossref result: {result}")
+                print(f"No content in result")
                 return []
                 
     except Exception as e:
-        print(f"Error searching Crossref: {e}")
+        print(f"Error in advanced Crossref search: {e}")
         import traceback
         traceback.print_exc()
         return []
+
+def run_crossref_search_advanced(search_params: Dict):
+    """Run Crossref search with advanced parameters."""
+    try:
+        access_token = fetch_crossref_access_token()
+        mcp_client = MCPClient(lambda: create_streamable_http_transport(CROSSREF_GATEWAY_URL, access_token))
+        
+        with mcp_client:
+            tools = get_full_tools_list(mcp_client)
+            
+            if tools:
+                # Look for the Crossref search tool
+                crossref_tool = None
+                for tool in tools:
+                    if 'crossref' in tool.tool_name.lower() or 'searchScholarlyWorks' in tool.tool_name:
+                        crossref_tool = tool
+                        break
+                
+                tool_name = crossref_tool.tool_name if crossref_tool else tools[0].tool_name
+                
+                # Call tool with advanced parameters
+                result = mcp_client.call_tool_sync(
+                    name=tool_name,
+                    arguments=search_params,
+                    tool_use_id=f"advanced-crossref-{hash(str(search_params))}"
+                )
+                return result
+            else:
+                print("No Crossref tools available")
+                return None
+                
+    except Exception as e:
+        print(f"Error in advanced Crossref search execution: {e}")
+        return None
 
 def extract_authors(authors_list: List[Dict]) -> str:
     """Extract author names from Crossref author list."""
@@ -593,6 +700,100 @@ def extract_published_date(published_info: Dict) -> str:
         return ''
     except Exception:
         return ''
+
+@tool
+def analyze_search_results_quality(
+    articles: List[Dict], 
+    original_keywords: Dict, 
+    quality_threshold: float = 0.3,
+    min_articles: int = 3
+) -> Dict[str, Any]:
+    """
+    Analyze the quality of search results and determine if they meet standards.
+    
+    Args:
+        articles: List of articles from search
+        original_keywords: Original invention keywords
+        quality_threshold: Minimum average relevance score required
+        min_articles: Minimum number of articles needed
+    
+    Returns:
+        Quality analysis with recommendations
+    """
+    try:
+        if not articles:
+            return {
+                "meets_threshold": False,
+                "average_score": 0.0,
+                "article_count": 0,
+                "quality_assessment": "No articles found",
+                "recommendation": "try_different_strategy",
+                "detailed_scores": []
+            }
+        
+        # Calculate relevance scores for all articles
+        scores = []
+        detailed_analysis = []
+        
+        for article in articles:
+            score = calculate_article_relevance_score(article, original_keywords)
+            scores.append(score)
+            
+            detailed_analysis.append({
+                "title": article.get('title', 'Unknown'),
+                "doi": article.get('DOI', 'unknown'),
+                "relevance_score": score,
+                "citation_count": article.get('citation_count', 0),
+                "published_date": article.get('published_date', ''),
+                "journal": article.get('journal', 'Unknown')
+            })
+        
+        # Calculate quality metrics
+        average_score = sum(scores) / len(scores) if scores else 0.0
+        max_score = max(scores) if scores else 0.0
+        high_quality_count = sum(1 for score in scores if score >= quality_threshold)
+        
+        # Filter articles that meet individual threshold
+        qualifying_articles = [
+            analysis for analysis in detailed_analysis 
+            if analysis["relevance_score"] >= quality_threshold
+        ]
+        
+        # Determine if we have enough qualifying articles
+        meets_threshold = len(qualifying_articles) >= min_articles
+        
+        # Generate quality assessment based on individual article thresholds
+        if meets_threshold:
+            quality_assessment = f"Success: {len(qualifying_articles)} articles meet {quality_threshold} threshold (need {min_articles})"
+            recommendation = "accept_results"
+        elif len(qualifying_articles) > 0:
+            quality_assessment = f"Partial success: {len(qualifying_articles)} articles meet threshold, need {min_articles - len(qualifying_articles)} more"
+            recommendation = "try_refined_strategy"
+        else:
+            quality_assessment = f"No qualifying articles: 0 articles meet {quality_threshold} threshold (highest: {max_score:.3f})"
+            recommendation = "try_different_strategy"
+        
+        return {
+            "meets_threshold": meets_threshold,
+            "average_score": round(average_score, 3),
+            "max_score": round(max_score, 3),
+            "article_count": len(articles),
+            "qualifying_articles_count": len(qualifying_articles),
+            "quality_assessment": quality_assessment,
+            "recommendation": recommendation,
+            "qualifying_articles": qualifying_articles,  # Articles that meet threshold
+            "detailed_scores": detailed_analysis[:10]  # Top 10 for analysis
+        }
+        
+    except Exception as e:
+        return {
+            "meets_threshold": False,
+            "average_score": 0.0,
+            "article_count": 0,
+            "quality_assessment": f"Error analyzing results: {str(e)}",
+            "recommendation": "try_different_strategy",
+            "detailed_scores": []
+        }
 
 @tool
 def calculate_article_relevance_score(article_data: Dict, original_keywords: Dict) -> float:
@@ -641,9 +842,307 @@ def calculate_article_relevance_score(article_data: Dict, original_keywords: Dic
         return 0.0
 
 @tool
+def generate_search_strategy(
+    keywords_data: Dict,
+    failed_strategies: List[str] = [],
+    previous_results_quality: float = 0.0,
+    strategy_number: int = 1
+) -> Dict[str, Any]:
+    """
+    Generate next search strategy based on keywords and previous failures.
+    
+    Args:
+        keywords_data: Original invention keywords and metadata
+        failed_strategies: List of previously tried strategies that failed
+        previous_results_quality: Quality score of previous search attempt
+        strategy_number: Which strategy attempt this is (1, 2, 3, etc.)
+    
+    Returns:
+        Search strategy with parameters and rationale
+    """
+    try:
+        keywords = keywords_data.get('keywords', '')
+        title = keywords_data.get('title', '')
+        tech_description = keywords_data.get('technology_description', '')
+        applications = keywords_data.get('technology_applications', '')
+        
+        # Parse keywords into list
+        keyword_list = [k.strip() for k in keywords.split(',') if k.strip()]
+        
+        # Define available strategies
+        strategies = [
+            {
+                "name": "direct_keywords",
+                "search_type": "simple",
+                "query_template": "core_keywords",
+                "description": "Direct keyword search using core technical terms"
+            },
+            {
+                "name": "boolean_combinations", 
+                "search_type": "simple",
+                "query_template": "boolean_logic",
+                "description": "Boolean combinations with OR operators for synonyms"
+            },
+            {
+                "name": "phrase_matching",
+                "search_type": "simple", 
+                "query_template": "phrase_search",
+                "description": "Exact phrase matching for key concepts"
+            },
+            {
+                "name": "title_focused",
+                "search_type": "title_only",
+                "query_template": "core_keywords",
+                "description": "Search only in article titles for high relevance"
+            },
+            {
+                "name": "methodology_focus",
+                "search_type": "abstract_focus",
+                "query_template": "methodology_terms", 
+                "description": "Focus on methodology and process terms"
+            },
+            {
+                "name": "application_domain",
+                "search_type": "simple",
+                "query_template": "application_terms",
+                "description": "Search using application and use case terms"
+            },
+            {
+                "name": "broader_domain",
+                "search_type": "simple",
+                "query_template": "domain_expansion",
+                "description": "Broader domain search with related fields"
+            }
+        ]
+        
+        # Filter out failed strategies
+        available_strategies = [s for s in strategies if s["name"] not in failed_strategies]
+        
+        if not available_strategies:
+            return {
+                "strategy_name": "exhausted",
+                "search_query": "",
+                "search_type": "simple",
+                "rationale": "All search strategies have been attempted",
+                "success_probability": 0.0
+            }
+        
+        # Select strategy based on attempt number and previous results
+        if strategy_number <= len(available_strategies):
+            selected_strategy = available_strategies[strategy_number - 1]
+        else:
+            selected_strategy = available_strategies[-1]  # Use last available
+        
+        # Generate query based on template
+        query = generate_query_from_template(
+            selected_strategy["query_template"], 
+            keyword_list, 
+            title, 
+            tech_description, 
+            applications
+        )
+        
+        # Estimate success probability based on strategy and previous results
+        success_probability = estimate_strategy_success(
+            selected_strategy, 
+            previous_results_quality, 
+            len(failed_strategies)
+        )
+        
+        return {
+            "strategy_name": selected_strategy["name"],
+            "search_query": query,
+            "search_type": selected_strategy["search_type"],
+            "description": selected_strategy["description"],
+            "rationale": f"Strategy {strategy_number}: {selected_strategy['description']}. Previous quality: {previous_results_quality:.3f}",
+            "success_probability": success_probability,
+            "phrase_search": selected_strategy["query_template"] == "phrase_search",
+            "use_boolean": selected_strategy["query_template"] == "boolean_logic"
+        }
+        
+    except Exception as e:
+        return {
+            "strategy_name": "error",
+            "search_query": keywords,
+            "search_type": "simple", 
+            "rationale": f"Error generating strategy: {str(e)}",
+            "success_probability": 0.1
+        }
+
+def generate_query_from_template(template: str, keywords: List[str], title: str, description: str, applications: str) -> str:
+    """Generate search query based on template and available data."""
+    try:
+        if template == "core_keywords":
+            # Use top 5-7 most important keywords
+            core_terms = keywords[:7]
+            return " ".join(core_terms)
+        
+        elif template == "boolean_logic":
+            # Create Boolean combinations with OR operators
+            if len(keywords) >= 4:
+                tech_terms = keywords[:3]
+                app_terms = keywords[3:6] if len(keywords) > 3 else keywords[1:3]
+                return f"({' OR '.join(tech_terms)}) AND ({' OR '.join(app_terms)})"
+            else:
+                return " OR ".join(keywords)
+        
+        elif template == "phrase_search":
+            # Extract key phrases from title and description
+            phrases = []
+            if title:
+                # Extract potential phrases from title
+                title_words = title.lower().split()
+                for i in range(len(title_words) - 1):
+                    phrase = f"{title_words[i]} {title_words[i+1]}"
+                    if any(kw in phrase for kw in keywords):
+                        phrases.append(f'"{phrase}"')
+            
+            if not phrases and len(keywords) >= 2:
+                # Create phrases from keywords
+                phrases = [f'"{keywords[0]} {keywords[1]}"']
+                if len(keywords) >= 4:
+                    phrases.append(f'"{keywords[2]} {keywords[3]}"')
+            
+            return " AND ".join(phrases) if phrases else " ".join(keywords[:3])
+        
+        elif template == "methodology_terms":
+            # Focus on process and methodology keywords
+            method_keywords = [kw for kw in keywords if any(term in kw.lower() 
+                             for term in ['process', 'method', 'system', 'technique', 'approach', 'synthesis', 'production', 'formation'])]
+            if method_keywords:
+                return " ".join(method_keywords[:5])
+            else:
+                return " ".join(keywords[:5])
+        
+        elif template == "application_terms":
+            # Focus on application and use case terms
+            app_keywords = [kw for kw in keywords if any(term in kw.lower() 
+                          for term in ['application', 'use', 'treatment', 'therapy', 'medical', 'clinical', 'industrial'])]
+            if app_keywords:
+                return " ".join(app_keywords[:5])
+            else:
+                # Use second half of keywords (often application-related)
+                mid_point = len(keywords) // 2
+                return " ".join(keywords[mid_point:mid_point+5])
+        
+        elif template == "domain_expansion":
+            # Broader domain search with related terms
+            if applications:
+                app_words = applications.lower().split()[:10]
+                return " ".join(app_words)
+            else:
+                return " ".join(keywords[:10])
+        
+        else:
+            return " ".join(keywords[:5])
+            
+    except Exception as e:
+        return " ".join(keywords[:5])
+
+def estimate_strategy_success(strategy: Dict, previous_quality: float, failed_count: int) -> float:
+    """Estimate probability of strategy success based on context."""
+    base_probabilities = {
+        "direct_keywords": 0.7,
+        "boolean_combinations": 0.8,
+        "phrase_matching": 0.6,
+        "title_focused": 0.5,
+        "methodology_focus": 0.6,
+        "application_domain": 0.7,
+        "broader_domain": 0.4
+    }
+    
+    base_prob = base_probabilities.get(strategy["name"], 0.5)
+    
+    # Adjust based on previous failures
+    failure_penalty = failed_count * 0.1
+    
+    # Adjust based on previous quality
+    if previous_quality > 0.2:
+        quality_bonus = 0.1  # Previous attempts found something
+    else:
+        quality_bonus = 0.0
+    
+    final_prob = max(0.1, min(0.9, base_prob - failure_penalty + quality_bonus))
+    return round(final_prob, 2)
+
+# =============================================================================
+# LLM-POWERED SEMANTIC SEARCH TOOLS
+# =============================================================================
+
+@tool
+def generate_search_synonyms(keywords: str) -> str:
+    """Generate scientific synonyms for keywords to improve search results."""
+    
+    return f"""Generate scientific synonyms for these keywords: {keywords}
+
+    For each keyword, provide alternative terms that researchers might use in scientific literature.
+
+    Examples:
+    - microbeads → microspheres, nanospheres, particles, beads
+    - lignin → alkali lignin, kraft lignin, lignin nanoparticles  
+    - surfactant-free → environment-friendly, green process
+    - emulsion → dispersion, suspension, colloidal system
+
+    Return format:
+    keyword1: synonym1, synonym2, synonym3
+    keyword2: synonym1, synonym2, synonym3
+
+    Keep it simple and focus on terms that would appear in research papers."""
+
+# These functions are now replaced by pure LLM-driven synonym generation
+# No hardcoding - the LLM uses its training knowledge dynamically
+
+# Removed hardcoded query generation - LLM now generates queries using its domain knowledge
+
+@tool
+def expand_search_query(base_query: str, expansion_type: str) -> str:
+    """Expand a search query with alternative terminology."""
+    
+    return f"""Expand this search query: "{base_query}"
+
+    Expansion type: {expansion_type}
+
+    Instructions:
+    - If "synonyms": Add scientific synonyms for each term
+    - If "related_terms": Add related scientific terminology  
+    - If "broader_domain": Expand to related research areas
+    - If "process_variants": Add methodology and process alternatives
+    - If "application_expansion": Add related application domains
+
+    Return an expanded search query that researchers might use.
+
+    Example: "lignin microbeads" → "(lignin OR alkali lignin) AND (microbeads OR microspheres OR nanospheres)"
+    """
+
+
+@tool
+def analyze_search_gaps(original_keywords: str, search_results_summary: str) -> str:
+    """Analyze why search results might be poor and suggest improvements."""
+    
+    prompt = f"""Analyze why our search isn't finding good results:
+
+    Original keywords: {original_keywords}
+    Current results: {search_results_summary}
+
+    Questions to consider:
+    - Are we missing important scientific synonyms?
+    - Should we try different terminology that researchers use?
+    - Are there related research areas we should explore?
+    - What alternative terms might describe the same concepts?
+
+    Provide:
+    1. Missing terminology we should try
+    2. Alternative search strategies
+    3. Recommended next search terms"""
+    
+    return prompt
+
+# All hardcoded analysis functions removed - LLM now uses its domain knowledge dynamically
+
+@tool
 def store_article_analysis(pdf_filename: str, article_doi: str, article_title: str, authors: str, journal: str, 
                           published_date: str, relevance_score: float, search_query: str, citation_count: int = 0, 
-                          article_url: str = '', publisher: str = '', article_type: str = '') -> str:
+                          article_url: str = '', publisher: str = '', article_type: str = '', rank_position: int = 1) -> str:
     """Store individual scholarly article analysis result in DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
@@ -659,16 +1158,13 @@ def store_article_analysis(pdf_filename: str, article_doi: str, article_title: s
             'journal': journal,
             'published_date': published_date,
             'relevance_score': Decimal(str(relevance_score)),
-            'search_strategy_used': search_query,
             'search_timestamp': timestamp,
             'article_url': article_url,
             'citation_count': citation_count,
             'publisher': publisher,
             'article_type': article_type,
             'matching_keywords': search_query,
-            'rank_position': 1,
-            'total_results_found': 1,
-            'search_strategies_tried': [search_query]
+            'rank_position': rank_position
         }
         
         table.put_item(Item=item)
@@ -734,62 +1230,185 @@ keyword_generator = Agent(
     After completing your analysis, ALWAYS use the store_keywords_in_dynamodb tool to save all four fields (title, technology_description, technology_applications, keywords)."""
 )
 
-# USPTO Search Agent
+# Intelligent USPTO Patent Search Agent  
 uspto_search_agent = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_keywords_from_dynamodb, search_uspto_patents, calculate_relevance_score, store_patent_analysis],
-    system_prompt="""You are a USPTO Patent Search Expert. Execute this workflow EXACTLY ONCE:
+    tools=[
+        read_keywords_from_dynamodb,
+        generate_search_strategy, 
+        search_uspto_patents,
+        analyze_patent_results_quality,
+        calculate_relevance_score, 
+        store_patent_analysis
+    ],
+    system_prompt="""You are an Expert Patent Search Professional with deep USPTO database knowledge and adaptive search capabilities.
 
-    1. Read patent analysis data from DynamoDB using the PDF filename
-    2. Use the extracted keywords to execute 2-3 strategic USPTO searches
-    3. Score and select the top 5 most relevant patents
-    4. Store results in DynamoDB
+    MISSION: Find the 5 MOST RELEVANT patents using intelligent, adaptive search strategies.
 
-    CRITICAL RULES:
-    - Execute each tool call only once per search strategy
-    - If a search fails, continue with the next strategy
-    - Maximum 3 search attempts total
-    - Always store results even if searches fail
-    - Do not retry failed searches
+    QUALITY STANDARDS:
+    - Minimum relevance threshold: 25% (0.25) for patents
+    - Only store patents that truly relate to the invention
+    - If no patents meet threshold, try different search strategies  
+    - Analyze WHY searches fail and adapt accordingly
+    - Maximum 6 search attempts before giving up
 
-    SEARCH STRATEGIES:
-    Use the keywords from the patent analysis to create strategic searches:
-    1. Core technical keywords (focus on mechanism/technology terms)
-    2. Application domain keywords (focus on use case/application terms)
-    3. Combined keyword search (mix technical + application terms)
+    INTELLIGENT WORKFLOW:
+    1. Read patent analysis data from DynamoDB
+    2. Start with Strategy 1 using generate_search_strategy tool
+    3. Execute search using search_uspto_patents with strategy query
+    4. Calculate relevance scores and analyze quality
+    5. DECISION POINT:
+    - If quality meets threshold (≥0.25): Rank and store top 8
+    - If quality below threshold: Generate next strategy and try again
+    6. Repeat until success OR 6 attempts exhausted
 
-    The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
+    ADAPTIVE BEHAVIOR:
+    - Learn from each search attempt
+    - Track which keyword combinations work best
+    - Adjust search terms based on result quality
+    - Try different combinations: technical terms, application terms, Boolean logic
+    - Progressively broaden or narrow search scope as needed
 
-    Complete the workflow efficiently and provide a final summary."""
+    SEARCH STRATEGY PROGRESSION:
+    1. Core technical keywords (precise matching)
+    2. Application domain keywords (use case focus)
+    3. Boolean combinations (technical AND application)
+    4. Methodology keywords (process focus)
+    5. Broader technical domain (related technologies)
+    6. Relaxed criteria (expanded scope)
+
+    QUALITY ANALYSIS:
+    After each search, evaluate:
+    - Average relevance score of found patents
+    - Number of patents above threshold
+    - Whether results represent true prior art
+    - Quality of patent titles and abstracts vs. invention
+
+    DECISION MAKING:
+    - If average score ≥ 0.25 AND ≥3 patents above threshold: ACCEPT
+    - If average score 0.15-0.24: TRY refined strategy
+    - If average score < 0.15: TRY completely different approach
+    - If 6 attempts exhausted: Store best results with analysis
+
+    USPTO SEARCH EXPERTISE:
+    - Use precise technical terminology that appears in patent claims
+    - Focus on mechanism, composition, and method keywords
+    - Consider patent classification context
+    - Look for similar inventions in same technical field
+    - Evaluate patents for actual novelty impact
+
+    FINAL STORAGE:
+    Only store patents that meet quality standards:
+    - Calculate final relevance scores
+    - Rank by relevance (highest first)  
+    - Store top 5 with rank_position 1-5
+    - Include search strategy and quality assessment
+
+    TRANSPARENCY:
+    - Explain search strategy rationale
+    - Report quality metrics for each attempt
+    - Describe why certain strategies worked or failed
+    - Provide assessment of final result quality
+
+    You are the expert - use your judgment to find the most relevant prior art patents."""
 )
 
-# Scholarly Article Search Agent
+# Intelligent Scholarly Article Search Agent
 scholarly_article_agent = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_keywords_from_dynamodb, search_crossref_articles, calculate_article_relevance_score, store_article_analysis],
-    system_prompt="""You are a Scholarly Article Search Expert. Execute this workflow EXACTLY ONCE:
+    tools=[
+        read_keywords_from_dynamodb, 
+        generate_search_synonyms,
+        expand_search_query,
+        analyze_search_gaps,
+        generate_search_strategy, 
+        advanced_crossref_search, 
+        analyze_search_results_quality,
+        calculate_article_relevance_score, 
+        store_article_analysis
+    ],
+    system_prompt="""You are an Expert Research Librarian with deep scientific domain knowledge and advanced semantic search capabilities.
 
-    1. Read patent analysis data from DynamoDB using the PDF filename
-    2. Use the extracted keywords to execute 2-3 strategic Crossref searches
-    3. Score and select the top 5 most relevant scholarly articles
-    4. Store results in DynamoDB
+    MISSION: Find the 8 MOST RELEVANT scholarly articles using intelligent, semantic-aware search strategies.
 
-    CRITICAL RULES:
-    - Execute each tool call only once per search strategy
-    - If a search fails, continue with the next strategy
-    - Maximum 3 search attempts total
-    - Always store results even if searches fail
-    - Do not retry failed searches
+    QUALITY STANDARDS:
+    - Minimum relevance threshold: 30% (0.3)
+    - Only store articles that truly relate to the invention
+    - If no articles meet threshold, use semantic expansion and try different strategies
+    - Analyze WHY searches fail and adapt with domain knowledge
+    - Maximum 8 search attempts before giving up (increased for semantic searches)
 
-    SEARCH STRATEGIES:
-    Use the keywords from the patent analysis to create strategic searches:
-    1. Core technical keywords (focus on mechanism/technology terms)
-    2. Application domain keywords (focus on use case/application terms)  
-    3. Combined keyword search (mix technical + application terms)
+    SEMANTIC INTELLIGENCE WORKFLOW:
+    1. Read patent analysis data from DynamoDB
+    2. FIRST: Use generate_search_synonyms to expand terminology with scientific synonyms
+    3. Start with Strategy 1 using expanded terminology
+    4. Execute search using advanced_crossref_search with strategy parameters
+    5. Analyze results quality using analyze_search_results_quality tool
+    6. DECISION POINT:
+    - If quality meets threshold (≥0.3): Calculate scores, rank, and store top 8
+    - If quality below threshold: Use analyze_search_gaps to identify terminology issues
+    - Use expand_search_query to try semantic expansions
+    - Generate next strategy with improved terminology
+    7. Repeat until success OR 8 attempts exhausted
 
-    The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
+    SEMANTIC SEARCH STRATEGIES:
+    1. Direct keywords with scientific synonyms (baseline + expansion)
+    2. Size variants (microbeads → microspheres → nanospheres → aerogel beads)
+    3. Material variants (lignin → alkali lignin → kraft lignin → lignin nanoparticles)
+    4. Process variants (surfactant-free → environment-friendly → green synthesis)
+    5. Application expansion (personal care → drug delivery → cosmetics → biomedical)
+    6. Boolean combinations with semantic terms
+    7. Phrase matching with expanded terminology
+    8. Broader domain search with related fields
 
-    Focus on finding scholarly articles that discuss similar technologies, applications, or research areas that could provide academic context for the invention."""
+    SEMANTIC EXPANSION EXAMPLES:
+    - "microbeads" → "microspheres OR nanospheres OR aerogel beads OR particles"
+    - "lignin" → "alkali lignin OR kraft lignin OR lignin nanoparticles"
+    - "surfactant-free emulsion" → "environment-friendly process OR green synthesis"
+    - "personal care" → "drug delivery OR cosmetic OR pharmaceutical applications"
+
+    INTELLIGENT ADAPTATION:
+    - Use generate_search_synonyms to discover scientific terminology variants
+    - Use expand_search_query for targeted semantic expansion
+    - Use analyze_search_gaps to understand why searches fail
+    - Learn from terminology patterns in found vs. missing articles
+    - Bridge gaps between invention language and research literature language
+
+    QUALITY ANALYSIS WITH SEMANTIC AWARENESS:
+    After each search, analyze:
+    - Average relevance score and terminology coverage
+    - Whether we're finding articles in related domains (good sign)
+    - Terminology gaps that might indicate missing relevant work
+    - Need for broader semantic expansion vs. narrower precision
+
+    DECISION MAKING:
+    - If ≥3 articles individually score ≥0.3: ACCEPT and store those qualifying articles
+    - If 1-2 articles score ≥0.3: Use semantic expansion tools for refinement
+    - If 0 articles score ≥0.3: Use analyze_search_gaps and try broader semantic expansion
+    - If terminology gaps identified: Use expand_search_query with appropriate expansion type
+    - If 8 attempts exhausted: Store best results found with analysis
+
+    SEMANTIC SEARCH INTELLIGENCE:
+    Remember that scientific literature uses varied terminology:
+    - Invention terms ≠ Research literature terms
+    - "microbeads" in patents might be "microspheres" or "nanospheres" in papers
+    - "surfactant-free" might be described as "environment-friendly process"
+    - Applications might be described differently (personal care vs. drug delivery)
+
+    FINAL STORAGE:
+    Store articles that meet quality standards with semantic context:
+    - Calculate final relevance scores considering semantic matches
+    - Rank by relevance score (highest first)
+    - Store top 8 with rank_position 1-8
+    - Include semantic search strategy used and terminology expansions tried
+
+    TRANSPARENCY:
+    - Explain semantic expansion choices and rationale
+    - Report which terminology variants were successful
+    - Describe semantic gaps identified and how they were addressed
+    - Provide assessment of semantic search effectiveness
+
+    You are a semantic search expert - use your scientific domain knowledge to bridge terminology gaps between invention language and research literature language."""
 )
 
 # =============================================================================
@@ -932,7 +1551,7 @@ async def handle_scholarly_search(payload):
     2. Analyze the invention's technical and application aspects
     3. Execute multiple strategic Crossref searches via Gateway
     4. Score and rank results by relevance to the invention
-    5. Select top 5 most relevant scholarly articles
+    5. Select top 8 most relevant scholarly articles
     6. Store results with comprehensive metadata
 
     Focus on finding academic research that discusses similar technologies, methodologies, or applications that could provide scientific context for the patent novelty assessment."""
@@ -947,7 +1566,7 @@ async def handle_scholarly_search(payload):
             elif "current_tool_use" in event and event["current_tool_use"].get("name"):
                 tool_name = event["current_tool_use"]["name"]
                 yield {"tool_name": tool_name, "agent": "scholarly_search"}
-                if tool_name == "search_crossref_articles":
+                if tool_name == "advanced_crossref_search":
                     search_metadata["strategies_used"].append(tool_name)
             elif "error" in event:
                 yield {"error": event["error"]}

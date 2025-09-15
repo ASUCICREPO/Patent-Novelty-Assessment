@@ -246,7 +246,7 @@ def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> flo
         return 0.0
 
 @tool
-def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: str, inventor: str, assignee: str, relevance_score: float, search_query: str) -> str:
+def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: str, inventor: str, assignee: str, relevance_score: float, search_query: str, rank_position: int = 1) -> str:
     """Store individual patent analysis result in DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
@@ -265,7 +265,7 @@ def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: s
             'search_timestamp': timestamp,
             'uspto_url': f"https://patents.uspto.gov/patent/{patent_number}",
             'patent_abstract': f"Patent analysis for {patent_title}",
-            'rank_position': 1,
+            'rank_position': rank_position,
             'filing_date': '',
             'publication_date': '',
             'patent_status': '',
@@ -292,14 +292,19 @@ uspto_search_agent = Agent(
 
 1. Read patent analysis data from DynamoDB using the PDF filename
 2. Use the extracted keywords to execute 2-3 strategic USPTO searches
-3. Score and select the top 5 most relevant patents
-4. Store results in DynamoDB
+3. Collect ALL patents found from all searches into a single list
+4. Calculate relevance scores for ALL patents using calculate_relevance_score
+5. Rank patents by relevance score (highest scores first)
+6. Select ONLY the top 5 highest scoring patents
+7. Store the top 5 patents in DynamoDB with their relevance scores
 
 CRITICAL RULES:
 - Execute each tool call only once per search strategy
 - If a search fails, continue with the next strategy
 - Maximum 3 search attempts total
-- Always store results even if searches fail
+- ALWAYS calculate relevance scores for ALL patents found
+- ALWAYS rank by relevance score before selecting top 5
+- Store patents in order of relevance (rank_position 1-5)
 - Do not retry failed searches
 
 SEARCH STRATEGIES:
@@ -307,6 +312,14 @@ Use the keywords from the patent analysis to create strategic searches:
 1. Core technical keywords (focus on mechanism/technology terms)
 2. Application domain keywords (focus on use case/application terms)
 3. Combined keyword search (mix technical + application terms)
+
+RANKING PROCESS:
+After all searches are complete:
+1. Combine all patents from all searches (remove duplicates by patent number)
+2. Calculate relevance score for each patent
+3. Sort patents by relevance score (highest first)
+4. Take top 5 patents only
+5. Store each with rank_position (1=highest score, 5=lowest of top 5)
 
 The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
 
