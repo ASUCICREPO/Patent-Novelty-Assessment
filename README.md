@@ -1,6 +1,6 @@
 # Patent Novelty PDF Processing Pipeline
 
-A serverless pipeline that automatically processes PDF files uploaded to S3 using AWS Bedrock Data Automation (BDA) to extract text and images, then generates patent search keywords using a Strands Agent.
+A serverless pipeline that automatically processes PDF files uploaded to S3 using AWS Bedrock Data Automation (BDA) to extract text and images, then performs comprehensive patent novelty analysis using a multi-agent orchestrator system.
 
 ## Architecture
 
@@ -8,12 +8,26 @@ A serverless pipeline that automatically processes PDF files uploaded to S3 usin
 - **Lambda Function (PDF Processor)**: Triggered by S3 events to invoke BDA processing
 - **Lambda Function (Agent Trigger)**: Triggered when BDA completes to invoke Agent Core
 - **Bedrock Data Automation**: Extracts text and images from PDFs
-- **Agent Core Runtime**: Runs Strands Agent to generate patent search keywords
+- **Patent Novelty Orchestrator**: Multi-agent system that handles keyword generation, USPTO patent search, and scholarly article search
+- **DynamoDB Tables**: Store keywords, patent results, and scholarly article results
+- **API Gateways**: USPTO and Crossref gateways for patent and article searches
 - **CDK**: Infrastructure as Code for deployment
 
-## Folder Structure
+## Project Structure
 
 ```
+backend/
+├── PatentNoveltyOrchestrator/     # Multi-agent orchestrator system
+│   ├── orchestrator.py            # Main orchestrator with all 4 agents
+│   ├── requirements.txt           # Python dependencies
+│   └── Dockerfile                 # Container configuration
+├── lambda/                        # Lambda functions
+│   ├── pdf_processor.py           # Triggers BDA processing
+│   └── agent_trigger.py           # Triggers orchestrator
+└── infrastructure/                # CDK infrastructure
+    └── patent-novelty-stack.ts    # AWS resources definition
+
+S3 Bucket Structure:
 uploads/          # Upload PDF files here
 temp/
   ├── docParser/  # JSON outputs from BDA
@@ -43,10 +57,13 @@ This script will:
 
 **Manual Steps After Deployment**:
 1. Go to AWS Console > Bedrock > Agent Core
-2. Create new Agent Runtime using the Docker image URI from CDK output
-3. Use the IAM Role ARN from CDK output
-4. Update the `AGENT_RUNTIME_ARN` in the CDK stack
-5. Redeploy: `npx cdk deploy`
+2. Create new Agent Runtime using the Patent Orchestrator Docker image URI from CDK output
+3. Use the Patent Orchestrator IAM Role ARN from CDK output
+4. Configure the following environment variables in Agent Core:
+   - `GATEWAY_CLIENT_ID`, `GATEWAY_CLIENT_SECRET`, `GATEWAY_TOKEN_URL`, `GATEWAY_URL` (for USPTO)
+   - `CROSSREF_CLIENT_ID`, `CROSSREF_CLIENT_SECRET`, `CROSSREF_TOKEN_URL`, `CROSSREF_GATEWAY_URL` (for Crossref)
+5. Update the `AGENT_RUNTIME_ARN` in the CDK stack with the created runtime ARN
+6. Redeploy: `npx cdk deploy`
 
 ## Usage
 
@@ -54,14 +71,30 @@ This script will:
 2. The PDF processor Lambda function will automatically trigger BDA processing
 3. BDA processes the PDF and outputs JSON to `temp/docParser/`
 4. The agent trigger Lambda function automatically detects the BDA completion
-5. Agent Core is invoked to generate patent search keywords
-6. Results are processed and logged
+5. Patent Novelty Orchestrator is invoked to:
+   - Generate patent search keywords from the document
+   - Search USPTO patents for prior art
+   - Search scholarly articles for academic context
+6. Results are stored in DynamoDB tables and logged
 
 ## Automated Pipeline Flow
 
 ```
-PDF Upload → BDA Processing → result.json → Agent Trigger → Keyword Generation
+PDF Upload → BDA Processing → result.json → Agent Trigger → Orchestrator → [Keywords + USPTO Search + Scholarly Search]
 ```
+
+## Multi-Agent Orchestrator
+
+The system uses a single orchestrator that manages three specialized agents:
+
+1. **Keyword Generator Agent**: Extracts patent search keywords from BDA results
+2. **USPTO Search Agent**: Searches patents using extracted keywords via USPTO Gateway
+3. **Scholarly Article Agent**: Searches academic literature via Crossref Gateway
+
+Each agent can be invoked independently by specifying the appropriate action:
+- `action: "generate_keywords"` - Keyword generation
+- `action: "search_patents"` - USPTO patent search  
+- `action: "search_articles"` - Scholarly article search
 
 ## Monitoring
 
@@ -83,3 +116,38 @@ npx cdk destroy
 
 ### Agent Trigger Lambda  
 - `AGENT_RUNTIME_ARN`: Agent Core runtime ARN (format: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID`)
+
+### Patent Novelty Orchestrator (Agent Core Runtime)
+- `BUCKET_NAME`: S3 bucket name
+- `KEYWORDS_TABLE_NAME`: DynamoDB table for patent keywords
+- `RESULTS_TABLE_NAME`: DynamoDB table for USPTO patent results
+- `ARTICLES_TABLE_NAME`: DynamoDB table for scholarly article results
+- `GATEWAY_CLIENT_ID`, `GATEWAY_CLIENT_SECRET`, `GATEWAY_TOKEN_URL`, `GATEWAY_URL`: USPTO Gateway configuration
+- `CROSSREF_CLIENT_ID`, `CROSSREF_CLIENT_SECRET`, `CROSSREF_TOKEN_URL`, `CROSSREF_GATEWAY_URL`: Crossref Gateway configuration
+
+## DynamoDB Tables
+
+### Keywords Table
+Stores patent analysis results from keyword generation:
+- `pdf_filename` (partition key): Name of the processed PDF
+- `timestamp` (sort key): Processing timestamp
+- `title`: Extracted invention title
+- `technology_description`: Technical description of the invention
+- `technology_applications`: Applications and use cases
+- `keywords`: Comma-separated patent search keywords
+
+### Patent Results Table  
+Stores USPTO patent search results:
+- `pdf_filename` (partition key): Name of the processed PDF
+- `patent_number` (sort key): USPTO patent number
+- `patent_title`, `patent_inventors`, `patent_assignee`: Patent metadata
+- `relevance_score`: Calculated relevance to original invention
+- `search_strategy_used`: Keywords used for this search
+
+### Scholarly Articles Table
+Stores Crossref scholarly article search results:
+- `pdf_filename` (partition key): Name of the processed PDF  
+- `article_doi` (sort key): Article DOI
+- `article_title`, `authors`, `journal`: Article metadata
+- `relevance_score`: Calculated relevance to original invention
+- `citation_count`: Number of citations
