@@ -336,15 +336,52 @@ def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, A
                         if patents:
                             print(f"✅ Found {len(patents)} real USPTO patents!")
                             
-                            # Pre-process patents to ensure they have the fields store_patent_analysis expects
+                            # Pre-process patents to extract relevant novelty assessment data
                             processed_patents = []
                             for patent in patents:
                                 app_meta = patent.get('applicationMetaData', {})
                                 
-                                # Create a processed patent with all the fields pre-extracted
+                                # Extract publication date from array (first element)
+                                pub_date_bag = app_meta.get('publicationDateBag', [])
+                                publication_date = pub_date_bag[0] if pub_date_bag else app_meta.get('earliestPublicationDate', '')
+                                
+                                # Extract inventor names properly
+                                inventor_bag = app_meta.get('inventorBag', [])
+                                inventor_names = []
+                                for inventor in inventor_bag:
+                                    # Try inventorNameText first, then construct from firstName/lastName
+                                    name = inventor.get('inventorNameText', '')
+                                    if not name:
+                                        first = inventor.get('firstName', '')
+                                        last = inventor.get('lastName', '')
+                                        if first or last:
+                                            name = f"{first} {last}".strip()
+                                    if name:
+                                        inventor_names.append(name)
+                                
+                                # Extract essential patent data for novelty assessment
                                 processed_patent = {
+                                    # Core Identity
                                     'applicationNumberText': patent.get('applicationNumberText', 'unknown'),
-                                    'applicationMetaData': app_meta,
+                                    'patentNumber': app_meta.get('patentNumber', ''),
+                                    'inventionTitle': app_meta.get('inventionTitle', ''),
+                                    
+                                    # Legal Status & Dates
+                                    'applicationStatusDescriptionText': app_meta.get('applicationStatusDescriptionText', ''),
+                                    'filingDate': app_meta.get('filingDate', ''),
+                                    'grantDate': app_meta.get('grantDate', ''),
+                                    'publicationDate': publication_date,
+                                    
+                                    # Publication Info
+                                    'earliestPublicationNumber': app_meta.get('earliestPublicationNumber', ''),
+                                    
+                                    # Inventor Data (processed)
+                                    'inventorNames': inventor_names,
+                                    
+                                    # Parent Patent Info
+                                    'parentContinuityBag': app_meta.get('parentContinuityBag', []),
+                                    
+                                    # Search metadata
                                     'search_query_used': search_query,
                                     'relevance_score': 0.8,  # Default relevance score
                                     'matching_keywords': search_query
@@ -376,8 +413,30 @@ def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, A
 def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
     """Calculate relevance score between patent and keywords."""
     try:
-        patent_text = f"{patent_data.get('title', '')} {patent_data.get('abstract', '')}"
-        patent_text_lower = patent_text.lower()
+        # Combine patent text fields for matching (prioritize title and abstract)
+        patent_text_parts = []
+        
+        # Title is most important
+        title = patent_data.get('inventionTitle', '')
+        if title:
+            patent_text_parts.append(title)
+        
+        # Abstract is very important for novelty assessment
+        abstract = patent_data.get('abstract', '')
+        if abstract:
+            patent_text_parts.append(abstract)
+        
+        # Claims are critical but may not be available in search results
+        claims = patent_data.get('claims', '')
+        if claims:
+            patent_text_parts.append(claims)
+        
+        # Classification can also be relevant
+        cpc_classes = patent_data.get('cpcClassificationBag', [])
+        if cpc_classes:
+            patent_text_parts.append(' '.join(cpc_classes))
+        
+        patent_text = ' '.join(patent_text_parts).lower()
         
         # Get the keywords string and split into individual keywords
         keywords_string = original_keywords.get('keywords', '')
@@ -389,61 +448,98 @@ def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> flo
             return 0.0
         
         # Count matches
-        matches = sum(1 for keyword in keyword_list if keyword in patent_text_lower)
+        matches = sum(1 for keyword in keyword_list if keyword in patent_text)
         
-        # Calculate score as percentage of keywords found
-        score = matches / len(keyword_list)
+        # Calculate base score as percentage of keywords found
+        base_score = matches / len(keyword_list)
         
-        # Bonus for title matches (more important)
-        title_lower = patent_data.get('title', '').lower()
+        # Bonus scoring for different fields
+        title_lower = title.lower()
+        abstract_lower = abstract.lower()
+        
+        # Title matches get highest bonus (30%)
         title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
         if title_matches > 0:
-            score += (title_matches / len(keyword_list)) * 0.2  # 20% bonus for title matches
+            base_score += (title_matches / len(keyword_list)) * 0.3
         
-        return round(min(score, 1.0), 3)  # Cap at 1.0
+        # Abstract matches get medium bonus (20%)
+        abstract_matches = sum(1 for keyword in keyword_list if keyword in abstract_lower)
+        if abstract_matches > 0:
+            base_score += (abstract_matches / len(keyword_list)) * 0.2
+        
+        # Bonus for granted patents (more relevant for novelty)
+        status = patent_data.get('applicationStatusDescriptionText', '').lower()
+        if 'patented case' in status or 'granted' in status:
+            base_score += 0.1
+        
+        return round(min(base_score, 1.0), 3)  # Cap at 1.0
         
     except Exception as e:
         print(f"Error calculating relevance score: {str(e)}")
         return 0.0
 
 @tool
-def store_patent_analysis(pdf_filename: str, patent_number: str, patent_title: str, inventor: str, assignee: str, relevance_score: float, search_query: str) -> str:
-    """Store individual patent analysis result in DynamoDB."""
+def store_patent_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str:
+    """Store comprehensive patent analysis result in DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(RESULTS_TABLE)
         
         timestamp = datetime.utcnow().isoformat()
         
+        # Use patent number as sort key, fallback to application number
+        sort_key = patent_data.get('patentNumber') or patent_data.get('applicationNumberText', 'unknown')
+        
+        # Helper function to handle empty values
+        def get_value_or_na(value):
+            return value if value else "N/A"
+        
+        # Process inventor names
+        inventor_names = patent_data.get('inventorNames', [])
+        inventors_str = '; '.join(inventor_names) if inventor_names else "N/A"
+        
         item = {
+            # Primary Keys
             'pdf_filename': pdf_filename,
-            'patent_number': patent_number,
-            'patent_title': patent_title,
-            'patent_inventors': inventor,
-            'patent_assignee': assignee,
-            'relevance_score': Decimal(str(relevance_score)),
-            'search_strategy_used': search_query,
+            'patent_number': sort_key,
+            
+            # Core Identity
+            'patent_title': get_value_or_na(patent_data.get('inventionTitle', '')),
+            
+            # Legal Status & Dates (Critical for novelty)
+            'application_status': get_value_or_na(patent_data.get('applicationStatusDescriptionText', '')),
+            'filing_date': get_value_or_na(patent_data.get('filingDate', '')),
+            'publication_date': get_value_or_na(patent_data.get('publicationDate', '')),
+            
+            # Ownership
+            'patent_inventors': inventors_str,
+            
+            # Secondary Info
+            'publication_number': get_value_or_na(patent_data.get('earliestPublicationNumber', '')),
+            'parent_patents': patent_data.get('parentContinuityBag', []) and len(patent_data.get('parentContinuityBag', [])) or 0,
+            
+            # Search Metadata
+            'relevance_score': Decimal(str(patent_data.get('relevance_score', 0.0))),
+            'search_strategy_used': get_value_or_na(patent_data.get('search_query_used', '')),
             'search_timestamp': timestamp,
-            'uspto_url': f"https://patents.uspto.gov/patent/{patent_number}",
-            'patent_abstract': f"Patent analysis for {patent_title}",
-            'rank_position': 1,
-            'filing_date': '',
-            'publication_date': '',
-            'patent_status': '',
-            'matching_keywords': search_query,
-            'total_results_found': 1,
-            'search_strategies_tried': [search_query],
-            'patent_class': '',
-            'patent_subclass': '',
-            'examiner': '',
-            'publication_number': ''
+            'matching_keywords': get_value_or_na(patent_data.get('matching_keywords', '')),
+            
+            # URLs for reference
+            'uspto_url': f"https://patents.uspto.gov/patent/{sort_key}",
+            
+            # Processing metadata
+            'rank_position': 1
         }
         
+        # Put item in DynamoDB
         table.put_item(Item=item)
-        return f"Successfully stored patent {patent_number}: {patent_title}"
+        
+        patent_title = patent_data.get('inventionTitle', 'Unknown Title')
+        return f"Successfully stored patent {sort_key}: {patent_title}"
         
     except Exception as e:
-        return f"Error storing patent {patent_number}: {str(e)}"
+        sort_key = patent_data.get('patentNumber') or patent_data.get('applicationNumberText', 'unknown')
+        return f"Error storing patent {sort_key}: {str(e)}"
 
 # =============================================================================
 # SCHOLARLY ARTICLE SEARCH TOOLS
@@ -743,7 +839,7 @@ uspto_search_agent = Agent(
     1. Read patent analysis data from DynamoDB using the PDF filename
     2. Use the extracted keywords to execute 2-3 strategic USPTO searches
     3. Score and select the top 5 most relevant patents
-    4. Store results in DynamoDB
+    4. Store comprehensive patent data in DynamoDB
 
     CRITICAL RULES:
     - Execute each tool call only once per search strategy
@@ -758,9 +854,15 @@ uspto_search_agent = Agent(
     2. Application domain keywords (focus on use case/application terms)
     3. Combined keyword search (mix technical + application terms)
 
-    The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
+    STORING RESULTS:
+    For each relevant patent found, call store_patent_analysis with:
+    - pdf_filename: The original PDF filename
+    - patent_data: The complete patent data dictionary from search results
 
-    Complete the workflow efficiently and provide a final summary."""
+    The patent_data should include all the extracted fields like patentNumber, inventionTitle, 
+    filingDate, grantDate, abstract, claims, classifications, assignees, inventors, etc.
+
+    Focus on patents that could impact novelty assessment - prioritize granted patents over applications."""
 )
 
 # Scholarly Article Search Agent
