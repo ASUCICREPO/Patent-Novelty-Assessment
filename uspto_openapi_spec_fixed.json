@@ -186,6 +186,79 @@
           }
         }
       }
+    },
+    "/patent/applications/{applicationNumber}/documents": {
+      "get": {
+        "summary": "Get documents for a specific patent application",
+        "operationId": "getPatentDocuments",
+        "parameters": [
+          {
+            "name": "applicationNumber",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Patent application number"
+          },
+          {
+            "name": "documentCodes",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Comma-separated document codes (e.g., 'SPEC,ABST,CLM')"
+          },
+          {
+            "name": "officialDateFrom",
+            "in": "query",
+            "schema": {"type": "string", "format": "date"},
+            "description": "Search by document official date from (yyyy-MM-dd)"
+          },
+          {
+            "name": "officialDateTo",
+            "in": "query",
+            "schema": {"type": "string", "format": "date"},
+            "description": "Search by document official date to (yyyy-MM-dd)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Patent document list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {"type": "integer"},
+                    "documentBag": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "applicationNumberText": {"type": "string"},
+                          "officialDate": {"type": "string"},
+                          "documentIdentifier": {"type": "string"},
+                          "documentCode": {"type": "string"},
+                          "documentCodeDescriptionText": {"type": "string"},
+                          "directionCategory": {"type": "string"},
+                          "downloadOptionBag": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "mimeTypeIdentifier": {"type": "string"},
+                                "downloadUrl": {"type": "string"},
+                                "pageTotalQuantity": {"type": "integer"}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

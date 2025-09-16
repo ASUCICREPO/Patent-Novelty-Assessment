@@ -410,6 +410,110 @@ def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, A
         return []
 
 @tool
+def get_patent_documents(application_number: str) -> Dict[str, Any]:
+    """Get patent documents (SPEC, ABST, CLM) for a specific application number."""
+    try:
+        # Get access token (reuse existing function)
+        access_token = fetch_access_token()
+        print(f"Getting documents for application: {application_number}")
+        
+        # Create MCP client using existing pattern
+        mcp_client = MCPClient(lambda: create_streamable_http_transport(GATEWAY_URL, access_token))
+        
+        with mcp_client:
+            # Get tools with pagination
+            tools = get_full_tools_list(mcp_client)
+            
+            # Find document retrieval tool
+            doc_tool = None
+            for tool in tools:
+                if 'getPatentDocuments' in tool.tool_name:
+                    doc_tool = tool
+                    break
+            
+            if not doc_tool:
+                print("No document retrieval tool found")
+                return {"error": "Document retrieval tool not available"}
+            
+            print(f"Using document tool: {doc_tool.tool_name}")
+            
+            # Call the document retrieval tool
+            result = mcp_client.call_tool_sync(
+                name=doc_tool.tool_name,
+                arguments={"applicationNumber": application_number},
+                tool_use_id=f"docs-{hash(application_number)}"
+            )
+            
+            if result and isinstance(result, dict) and 'content' in result:
+                content = result['content']
+                if isinstance(content, list) and len(content) > 0:
+                    text_content = content[0].get('text', '') if isinstance(content[0], dict) else str(content[0])
+                    
+                    try:
+                        data = json.loads(text_content)
+                        document_bag = data.get("documentBag", [])
+                        
+                        # Find target documents (SPEC, ABST, CLM)
+                        target_docs = {'SPEC': None, 'ABST': None, 'CLM': None}
+                        
+                        for doc in document_bag:
+                            doc_code = doc.get('documentCode', '')
+                            official_date = doc.get('officialDate', '')
+                            
+                            # Check if this is a target document
+                            if doc_code in target_docs:
+                                # Keep the most recent version (latest official date)
+                                if target_docs[doc_code] is None or official_date > target_docs[doc_code].get('officialDate', ''):
+                                    target_docs[doc_code] = doc
+                        
+                        # Extract download URLs for each target document
+                        document_urls = {}
+                        for doc_type, doc_data in target_docs.items():
+                            if doc_data:
+                                download_options = doc_data.get('downloadOptionBag', [])
+                                # Prefer PDF format
+                                pdf_url = None
+                                for option in download_options:
+                                    if option.get('mimeTypeIdentifier') == 'PDF':
+                                        pdf_url = option.get('downloadUrl')
+                                        break
+                                
+                                if pdf_url:
+                                    document_urls[doc_type.lower()] = {
+                                        'url': pdf_url,
+                                        'pages': option.get('pageTotalQuantity', 0),
+                                        'official_date': doc_data.get('officialDate', ''),
+                                        'document_id': doc_data.get('documentIdentifier', '')
+                                    }
+                                else:
+                                    document_urls[doc_type.lower()] = None
+                            else:
+                                document_urls[doc_type.lower()] = None
+                        
+                        print(f"✅ Found documents for {application_number}: {list(document_urls.keys())}")
+                        return {
+                            "application_number": application_number,
+                            "documents": document_urls,
+                            "total_documents_found": len(document_bag)
+                        }
+                        
+                    except json.JSONDecodeError as je:
+                        print(f"JSON decode error in document retrieval: {je}")
+                        return {"error": f"Failed to parse document response: {str(je)}"}
+                else:
+                    print("No content in document result")
+                    return {"error": "No content in document response"}
+            else:
+                print(f"No content in document result: {result}")
+                return {"error": "No valid document response"}
+                
+    except Exception as e:
+        print(f"Error getting patent documents: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Document retrieval failed: {str(e)}"}
+
+@tool
 def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
     """Calculate relevance score between patent and keywords."""
     try:
@@ -523,6 +627,16 @@ def store_patent_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str
             'search_strategy_used': get_value_or_na(patent_data.get('search_query_used', '')),
             'search_timestamp': timestamp,
             'matching_keywords': get_value_or_na(patent_data.get('matching_keywords', '')),
+            
+            # Document URLs (NEW)
+            'specification_url': get_value_or_na(patent_data.get('documents', {}).get('spec', {}).get('url', '') if patent_data.get('documents', {}).get('spec') else ''),
+            'abstract_url': get_value_or_na(patent_data.get('documents', {}).get('abst', {}).get('url', '') if patent_data.get('documents', {}).get('abst') else ''),
+            'claims_url': get_value_or_na(patent_data.get('documents', {}).get('clm', {}).get('url', '') if patent_data.get('documents', {}).get('clm') else ''),
+            
+            # Document Metadata (NEW)
+            'specification_pages': patent_data.get('documents', {}).get('spec', {}).get('pages', 0) if patent_data.get('documents', {}).get('spec') else 0,
+            'abstract_pages': patent_data.get('documents', {}).get('abst', {}).get('pages', 0) if patent_data.get('documents', {}).get('abst') else 0,
+            'claims_pages': patent_data.get('documents', {}).get('clm', {}).get('pages', 0) if patent_data.get('documents', {}).get('clm') else 0,
             
             # URLs for reference
             'uspto_url': f"https://patents.uspto.gov/patent/{sort_key}",
@@ -833,20 +947,36 @@ keyword_generator = Agent(
 # USPTO Search Agent
 uspto_search_agent = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_keywords_from_dynamodb, search_uspto_patents, calculate_relevance_score, store_patent_analysis],
+    tools=[read_keywords_from_dynamodb, search_uspto_patents, get_patent_documents, calculate_relevance_score, store_patent_analysis],
     system_prompt="""You are a USPTO Patent Search Expert. Execute this workflow EXACTLY ONCE:
 
     1. Read patent analysis data from DynamoDB using the PDF filename
     2. Use the extracted keywords to execute 2-3 strategic USPTO searches
-    3. Score and select the top 5 most relevant patents
-    4. Store comprehensive patent data in DynamoDB
+    3. For each relevant patent found, get its documents (SPEC, ABST, CLM) using get_patent_documents
+    4. Merge patent data with document URLs before storing
+    5. Store comprehensive patent data including document URLs in DynamoDB
 
-    CRITICAL RULES:
-    - Execute each tool call only once per search strategy
-    - If a search fails, continue with the next strategy
-    - Maximum 3 search attempts total
-    - Always store results even if searches fail
-    - Do not retry failed searches
+    CRITICAL DATA MERGING PROCESS:
+    For each patent you want to store:
+    1. Take the patent data from search_uspto_patents results
+    2. Call get_patent_documents with the patent's applicationNumberText
+    3. Add the 'documents' field from get_patent_documents to the patent data
+    4. Call store_patent_analysis with the merged data structure
+
+    EXAMPLE WORKFLOW:
+    ```
+    # Get patent from search results
+    patent = search_results[0]  # e.g., has applicationNumberText, inventionTitle, etc.
+    
+    # Get documents for this patent
+    docs = get_patent_documents(patent['applicationNumberText'])
+    
+    # Merge the data
+    patent['documents'] = docs['documents']  # Add document URLs to patent data
+    
+    # Store the complete data
+    store_patent_analysis(pdf_filename, patent)
+    ```
 
     SEARCH STRATEGIES:
     Use the keywords from the patent analysis to create strategic searches:
@@ -854,13 +984,14 @@ uspto_search_agent = Agent(
     2. Application domain keywords (focus on use case/application terms)
     3. Combined keyword search (mix technical + application terms)
 
-    STORING RESULTS:
-    For each relevant patent found, call store_patent_analysis with:
-    - pdf_filename: The original PDF filename
-    - patent_data: The complete patent data dictionary from search results
-
-    The patent_data should include all the extracted fields like patentNumber, inventionTitle, 
-    filingDate, grantDate, abstract, claims, classifications, assignees, inventors, etc.
+    CRITICAL RULES:
+    - Execute each tool call only once per search strategy
+    - For each patent found, ALWAYS call get_patent_documents to get document URLs
+    - ALWAYS merge patent data with document data before storing
+    - If a search fails, continue with the next strategy
+    - Maximum 3 search attempts total
+    - Always store results even if searches fail
+    - Do not retry failed searches
 
     Focus on patents that could impact novelty assessment - prioritize granted patents over applications."""
 )
