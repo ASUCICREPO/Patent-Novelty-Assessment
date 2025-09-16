@@ -2,7 +2,7 @@
 FROM public.ecr.aws/docker/library/python:3.12-slim
 WORKDIR /app
 
-# Force rebuild - Updated for USPTO search agent
+# Force rebuild - Updated for Patent Novelty Orchestrator
 COPY requirements.txt requirements.txt
 # Install from requirements file
 RUN pip install -r requirements.txt
@@ -25,4 +25,4 @@ EXPOSE 8000
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
-CMD ["opentelemetry-instrument", "python", "uspto_search_agent_mcp.py"]
+CMD ["opentelemetry-instrument", "python", "orchestrator.py"]

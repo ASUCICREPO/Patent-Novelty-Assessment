@@ -33,7 +33,7 @@ export class PatentNoveltyStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     });
 
-    // DynamoDB table for storing patent keywords
+    // DynamoDB table for storing patent analysis (keywords, title, descriptions)
     const keywordsTable = new dynamodb.Table(this, 'PatentKeywordsTable', {
       tableName: `patent-keywords-${accountId}`,
       partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },
@@ -47,6 +47,15 @@ export class PatentNoveltyStack extends cdk.Stack {
       tableName: `patent-search-results-${accountId}`,
       partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'patent_number', type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    // DynamoDB table for storing scholarly article search results
+    const scholarlyArticlesTable = new dynamodb.Table(this, 'ScholarlyArticlesTable', {
+      tableName: `scholarly-articles-results-${accountId}`,
+      partitionKey: { name: 'pdf_filename', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'article_doi', type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
@@ -141,18 +150,18 @@ export class PatentNoveltyStack extends cdk.Stack {
       { prefix: 'temp/docParser/', suffix: 'result.json' }
     );
 
-    // Build Docker image for Patent Agent with dynamic platform selection
-    const patentAgentImage = new ecrAssets.DockerImageAsset(this, 'PatentNoveltyAgentImage', {
-      directory: path.join(__dirname, '..', 'PatentNoveltyAgent'),
+    // Build Docker image for Patent Orchestrator (Single runtime for all agents)
+    const patentOrchestratorImage = new ecrAssets.DockerImageAsset(this, 'PatentNoveltyOrchestratorImage', {
+      directory: path.join(__dirname, '..', 'PatentNoveltyOrchestrator'),
       platform: lambdaArchitecture === lambda.Architecture.ARM_64 
         ? ecrAssets.Platform.LINUX_ARM64 
         : ecrAssets.Platform.LINUX_AMD64,
     });
 
-    // Create IAM role for the agent
-    const patentAgentRole = new iam.Role(this, 'PatentNoveltyAgentRole', {
+    // Create IAM role for the orchestrator agent
+    const patentOrchestratorRole = new iam.Role(this, 'PatentNoveltyOrchestratorRole', {
       assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com'),
-      description: 'IAM role for Patent Novelty Agent with S3 and Bedrock permissions',
+      description: 'IAM role for Patent Novelty Orchestrator with S3 and Bedrock permissions',
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('BedrockAgentCoreFullAccess'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonBedrockFullAccess'),
@@ -193,7 +202,7 @@ export class PatentNoveltyStack extends cdk.Stack {
                 'dynamodb:Query',
                 'dynamodb:Scan',
               ],
-              resources: [keywordsTable.tableArn, patentResultsTable.tableArn],
+              resources: [keywordsTable.tableArn, patentResultsTable.tableArn, scholarlyArticlesTable.tableArn],
             }),
           ],
         }),
@@ -211,14 +220,14 @@ export class PatentNoveltyStack extends cdk.Stack {
       description: 'Lambda function for PDF processing',
     });
 
-    new cdk.CfnOutput(this, 'PatentAgentDockerImageURI', {
-      value: patentAgentImage.imageUri,
-      description: 'Docker Image URI for Patent Novelty Agent',
+    new cdk.CfnOutput(this, 'PatentOrchestratorDockerImageURI', {
+      value: patentOrchestratorImage.imageUri,
+      description: 'Docker Image URI for Patent Novelty Orchestrator',
     });
 
-    new cdk.CfnOutput(this, 'PatentAgentRoleArn', {
-      value: patentAgentRole.roleArn,
-      description: 'IAM Role ARN for Patent Novelty Agent',
+    new cdk.CfnOutput(this, 'PatentOrchestratorRoleArn', {
+      value: patentOrchestratorRole.roleArn,
+      description: 'IAM Role ARN for Patent Novelty Orchestrator',
     });
 
     new cdk.CfnOutput(this, 'AgentTriggerFunctionName', {
@@ -236,9 +245,14 @@ export class PatentNoveltyStack extends cdk.Stack {
       description: 'DynamoDB table for storing USPTO patent search results',
     });
 
+    new cdk.CfnOutput(this, 'ScholarlyArticlesTableName', {
+      value: scholarlyArticlesTable.tableName,
+      description: 'DynamoDB table for storing scholarly article search results',
+    });
+
     // Instructions for Agent Runtime Environment Variables
     new cdk.CfnOutput(this, 'AgentRuntimeEnvironmentVariables', {
-      value: 'Set these environment variables in Agent Core console: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL, GATEWAY_URL',
+      value: 'Set these environment variables in Agent Core console: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL, GATEWAY_URL, CROSSREF_CLIENT_ID, CROSSREF_CLIENT_SECRET, CROSSREF_TOKEN_URL, CROSSREF_GATEWAY_URL',
       description: 'Required environment variables for Agent Runtime Gateway configuration',
     });
   }

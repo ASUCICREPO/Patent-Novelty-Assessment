@@ -20,5 +20,5 @@
     "strictPropertyInitialization": false,
     "typeRoots": ["./node_modules/@types"]
   },
-  "exclude": ["cdk.out", "Agentic-Job-Search", "strands-sdk", "PatentNoveltyAgent", "backend/lambda/pdf-processor/node_modules", "dist"]
+  "exclude": ["cdk.out", "Agentic-Job-Search", "strands-sdk", "backend/lambda/pdf-processor/node_modules", "dist"]
 }
