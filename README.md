@@ -61,7 +61,8 @@ This script will:
 3. Use the Patent Orchestrator IAM Role ARN from CDK output
 4. Configure the following environment variables in Agent Core:
    - `GATEWAY_CLIENT_ID`, `GATEWAY_CLIENT_SECRET`, `GATEWAY_TOKEN_URL`, `GATEWAY_URL` (for USPTO)
-   - `CROSSREF_CLIENT_ID`, `CROSSREF_CLIENT_SECRET`, `CROSSREF_TOKEN_URL`, `CROSSREF_GATEWAY_URL` (for Crossref)
+   - `CROSSREF_CLIENT_ID`, `CROSSREF_CLIENT_SECRET`, `CROSSREF_TOKEN_URL`, `CROSSREF_GATEWAY_URL` (for Crossref - fallback)
+   - `SEMANTIC_SCHOLAR_CLIENT_ID`, `SEMANTIC_SCHOLAR_CLIENT_SECRET`, `SEMANTIC_SCHOLAR_TOKEN_URL`, `SEMANTIC_SCHOLAR_GATEWAY_URL` (for Semantic Scholar - primary)
 5. Update the `AGENT_RUNTIME_ARN` in the CDK stack with the created runtime ARN
 6. Redeploy: `npx cdk deploy`
 
@@ -89,7 +90,7 @@ The system uses a single orchestrator that manages three specialized agents:
 
 1. **Keyword Generator Agent**: Extracts patent search keywords from BDA results
 2. **USPTO Search Agent**: Searches patents using extracted keywords via USPTO Gateway
-3. **Scholarly Article Agent**: Searches academic literature via Crossref Gateway
+3. **Scholarly Article Agent**: Searches academic literature via Semantic Scholar Gateway (primary) and Crossref Gateway (fallback)
 
 Each agent can be invoked independently by specifying the appropriate action:
 - `action: "generate_keywords"` - Keyword generation
@@ -123,7 +124,30 @@ npx cdk destroy
 - `RESULTS_TABLE_NAME`: DynamoDB table for USPTO patent results
 - `ARTICLES_TABLE_NAME`: DynamoDB table for scholarly article results
 - `GATEWAY_CLIENT_ID`, `GATEWAY_CLIENT_SECRET`, `GATEWAY_TOKEN_URL`, `GATEWAY_URL`: USPTO Gateway configuration
-- `CROSSREF_CLIENT_ID`, `CROSSREF_CLIENT_SECRET`, `CROSSREF_TOKEN_URL`, `CROSSREF_GATEWAY_URL`: Crossref Gateway configuration
+- `CROSSREF_CLIENT_ID`, `CROSSREF_CLIENT_SECRET`, `CROSSREF_TOKEN_URL`, `CROSSREF_GATEWAY_URL`: Crossref Gateway configuration (fallback)
+- `SEMANTIC_SCHOLAR_CLIENT_ID`, `SEMANTIC_SCHOLAR_CLIENT_SECRET`, `SEMANTIC_SCHOLAR_TOKEN_URL`, `SEMANTIC_SCHOLAR_GATEWAY_URL`: Semantic Scholar Gateway configuration (primary)
+
+## Scholarly Article Search Services
+
+### Semantic Scholar (Primary)
+- **API**: Semantic Scholar Academic Graph API
+- **Authentication**: API Key via Agent Core Token Vault
+- **Token Vault ARN**: `arn:aws:bedrock-agentcore:us-west-2:216989103356:token-vault/default/apikeycredentialprovider/semantic-scholar`
+- **Advantages**: 
+  - Comprehensive academic paper database
+  - Advanced relevance ranking algorithm
+  - Field-of-study classifications
+  - Citation metrics and open access indicators
+  - Better coverage of recent research
+
+### Crossref (Fallback)
+- **API**: Crossref REST API
+- **Authentication**: OAuth 2.0 + polite pool access
+- **Usage**: Fallback service if Semantic Scholar fails
+- **Advantages**: 
+  - Broad coverage of published literature
+  - DOI-based identification system
+  - Publisher metadata
 
 ## DynamoDB Tables
 
@@ -145,9 +169,12 @@ Stores USPTO patent search results:
 - `search_strategy_used`: Keywords used for this search
 
 ### Scholarly Articles Table
-Stores Crossref scholarly article search results:
+Stores scholarly article search results from Semantic Scholar (primary) and Crossref (fallback):
 - `pdf_filename` (partition key): Name of the processed PDF  
-- `article_doi` (sort key): Article DOI
+- `article_doi` (sort key): Article DOI/Paper ID
 - `article_title`, `authors`, `journal`: Article metadata
 - `relevance_score`: Calculated relevance to original invention
 - `citation_count`: Number of citations
+- `fields_of_study`: Academic field classifications (Semantic Scholar)
+- `open_access_pdf_url`: Direct link to open access PDF (Semantic Scholar)
+- `publisher`: Source service (Semantic Scholar or Crossref)

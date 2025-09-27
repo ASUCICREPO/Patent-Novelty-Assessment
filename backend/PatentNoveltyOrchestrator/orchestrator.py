@@ -37,6 +37,12 @@ CROSSREF_CLIENT_SECRET = os.environ.get('CROSSREF_CLIENT_SECRET')
 CROSSREF_TOKEN_URL = os.environ.get('CROSSREF_TOKEN_URL')
 CROSSREF_GATEWAY_URL = os.environ.get('CROSSREF_GATEWAY_URL')
 
+# Gateway Configuration for Semantic Scholar Search
+SEMANTIC_SCHOLAR_CLIENT_ID = os.environ.get('SEMANTIC_SCHOLAR_CLIENT_ID')
+SEMANTIC_SCHOLAR_CLIENT_SECRET = os.environ.get('SEMANTIC_SCHOLAR_CLIENT_SECRET')
+SEMANTIC_SCHOLAR_TOKEN_URL = os.environ.get('SEMANTIC_SCHOLAR_TOKEN_URL')
+SEMANTIC_SCHOLAR_GATEWAY_URL = os.environ.get('SEMANTIC_SCHOLAR_GATEWAY_URL')
+
 # Validate Gateway environment variables
 missing_vars = []
 if not CLIENT_ID:
@@ -64,6 +70,20 @@ if not CROSSREF_GATEWAY_URL:
 
 if crossref_missing_vars:
     print(f"WARNING: Missing Crossref environment variables: {', '.join(crossref_missing_vars)}. Crossref search will fail.")
+
+# Validate Semantic Scholar Gateway environment variables
+semantic_scholar_missing_vars = []
+if not SEMANTIC_SCHOLAR_CLIENT_ID:
+    semantic_scholar_missing_vars.append('SEMANTIC_SCHOLAR_CLIENT_ID')
+if not SEMANTIC_SCHOLAR_CLIENT_SECRET:
+    semantic_scholar_missing_vars.append('SEMANTIC_SCHOLAR_CLIENT_SECRET')
+if not SEMANTIC_SCHOLAR_TOKEN_URL:
+    semantic_scholar_missing_vars.append('SEMANTIC_SCHOLAR_TOKEN_URL')
+if not SEMANTIC_SCHOLAR_GATEWAY_URL:
+    semantic_scholar_missing_vars.append('SEMANTIC_SCHOLAR_GATEWAY_URL')
+
+if semantic_scholar_missing_vars:
+    print(f"WARNING: Missing Semantic Scholar environment variables: {', '.join(semantic_scholar_missing_vars)}. Semantic Scholar search will fail.")
 
 # =============================================================================
 # KEYWORD GENERATOR TOOLS
@@ -850,6 +870,298 @@ def calculate_article_relevance_score(article_data: Dict, original_keywords: Dic
         print(f"Error calculating article relevance score: {str(e)}")
         return 0.0
 
+# =============================================================================
+# SEMANTIC SCHOLAR SEARCH TOOLS
+# =============================================================================
+
+def fetch_semantic_scholar_access_token():
+    """Get OAuth access token for Semantic Scholar Gateway."""
+    try:
+        if not all([SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL]):
+            raise Exception("Missing required environment variables: SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL")
+            
+        print(f"Fetching Semantic Scholar token from: {SEMANTIC_SCHOLAR_TOKEN_URL}")
+        print(f"Semantic Scholar Client ID: {SEMANTIC_SCHOLAR_CLIENT_ID}")
+        
+        response = requests.post(
+            SEMANTIC_SCHOLAR_TOKEN_URL,
+            data=f"grant_type=client_credentials&client_id={SEMANTIC_SCHOLAR_CLIENT_ID}&client_secret={SEMANTIC_SCHOLAR_CLIENT_SECRET}",
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            timeout=30
+        )
+        
+        print(f"Semantic Scholar token response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            raise Exception(f"Semantic Scholar token request failed: {response.status_code} - {response.text}")
+        
+        token_data = response.json()
+        access_token = token_data.get('access_token')
+        
+        if not access_token:
+            raise Exception(f"No access token in Semantic Scholar response: {token_data}")
+        
+        return access_token
+        
+    except Exception as e:
+        print(f"Error fetching Semantic Scholar access token: {e}")
+        raise
+
+def run_semantic_scholar_search(search_query: str, limit: int = 25):
+    """Run Semantic Scholar search using MCP client with API key authentication."""
+    try:
+        access_token = fetch_semantic_scholar_access_token()
+        mcp_client = MCPClient(lambda: create_streamable_http_transport(SEMANTIC_SCHOLAR_GATEWAY_URL, access_token))
+        
+        with mcp_client:
+            tools = get_full_tools_list(mcp_client)
+            print(f"Found the following Semantic Scholar tools: {[tool.tool_name for tool in tools]}")
+            
+            # Find the Semantic Scholar search tool
+            if tools:
+                semantic_scholar_tool = None
+                for tool in tools:
+                    if 'semantic' in tool.tool_name.lower() or 'searchScholarlyPapers' in tool.tool_name:
+                        semantic_scholar_tool = tool
+                        break
+                
+                # Use Semantic Scholar tool if found, otherwise use first tool
+                tool_name = semantic_scholar_tool.tool_name if semantic_scholar_tool else tools[0].tool_name
+                print(f"Using Semantic Scholar tool: {tool_name}")
+                
+                # Call tool with arguments matching our OpenAPI spec
+                result = mcp_client.call_tool_sync(
+                    name=tool_name,
+                    arguments={
+                        "query": search_query,
+                        "limit": limit,
+                        "fields": "title,abstract,authors,venue,year,citationCount,url,fieldsOfStudy,publicationTypes,openAccessPdf"
+                    },
+                    tool_use_id=f"semantic-scholar-search-{hash(search_query)}"
+                )
+                return result
+            else:
+                print("No Semantic Scholar tools available")
+                return None
+                
+    except Exception as e:
+        print(f"Error in Semantic Scholar search: {e}")
+        return None
+
+@tool
+def search_semantic_scholar_articles(search_query: str, limit: int = 25) -> List[Dict[str, Any]]:
+    """Search scholarly articles via Semantic Scholar Gateway."""
+    try:
+        if not SEMANTIC_SCHOLAR_GATEWAY_URL:
+            print("❌ SEMANTIC_SCHOLAR_GATEWAY_URL not configured")
+            return []
+        
+        print(f"🔍 Searching Semantic Scholar for: {search_query}")
+        
+        # Use Semantic Scholar search
+        result = run_semantic_scholar_search(search_query, limit)
+        
+        print(f"Semantic Scholar tool call result type: {type(result)}")
+        
+        if result and isinstance(result, dict) and 'content' in result:
+            content = result['content']
+            if isinstance(content, list) and len(content) > 0:
+                text_content = content[0].get('text', '') if isinstance(content[0], dict) else str(content[0])
+                print(f"Semantic Scholar content preview: {text_content[:200]}...")
+                
+                try:
+                    data = json.loads(text_content)
+                    articles = data.get("data", [])
+                    
+                    if articles:
+                        print(f"✅ Found {len(articles)} scholarly articles from Semantic Scholar!")
+                        
+                        # Process articles to extract relevant information
+                        processed_articles = []
+                        for article in articles:
+                            # Extract key information from Semantic Scholar response
+                            processed_article = {
+                                'paperId': article.get('paperId', 'unknown'),
+                                'title': article.get('title', 'Unknown Title'),
+                                'authors': extract_semantic_scholar_authors(article.get('authors', [])),
+                                'venue': article.get('venue', 'Unknown Venue'),
+                                'published_date': extract_semantic_scholar_published_date(article),
+                                'abstract': article.get('abstract', ''),
+                                'url': article.get('url', ''),
+                                'citation_count': article.get('citationCount', 0),
+                                'reference_count': article.get('referenceCount', 0),
+                                'fields_of_study': article.get('fieldsOfStudy', []),
+                                'publication_types': article.get('publicationTypes', []),
+                                'open_access_pdf': extract_open_access_pdf(article.get('openAccessPdf')),
+                                'search_query_used': search_query,
+                                'relevance_score': 0.8,  # Default relevance score
+                                'matching_keywords': search_query
+                            }
+                            processed_articles.append(processed_article)
+                        
+                        return processed_articles
+                    else:
+                        print(f"⚠️ No articles found in Semantic Scholar response")
+                        return []
+                        
+                except json.JSONDecodeError as je:
+                    print(f"JSON decode error in Semantic Scholar response: {je}")
+                    return []
+            else:
+                print(f"No content in Semantic Scholar result: {result}")
+                return []
+                
+    except Exception as e:
+        print(f"Error searching Semantic Scholar: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def extract_semantic_scholar_authors(authors_list: List[Dict]) -> str:
+    """Extract author names from Semantic Scholar author list."""
+    try:
+        author_names = []
+        for author in authors_list[:5]:  # Limit to first 5 authors
+            name = author.get('name', '')
+            if name:
+                author_names.append(name)
+        
+        if len(authors_list) > 5:
+            author_names.append("et al.")
+        
+        return '; '.join(author_names) if author_names else 'Unknown Authors'
+    except Exception:
+        return 'Unknown Authors'
+
+def extract_semantic_scholar_published_date(article: Dict) -> str:
+    """Extract published date from Semantic Scholar article."""
+    try:
+        # Try publicationDate first
+        pub_date = article.get('publicationDate')
+        if pub_date:
+            return pub_date
+        
+        # Fallback to year
+        year = article.get('year')
+        if year:
+            return str(year)
+        
+        return ''
+    except Exception:
+        return ''
+
+def extract_open_access_pdf(open_access_info: Dict) -> str:
+    """Extract open access PDF URL from Semantic Scholar response."""
+    try:
+        if open_access_info and isinstance(open_access_info, dict):
+            return open_access_info.get('url', '')
+        return ''
+    except Exception:
+        return ''
+
+@tool
+def calculate_semantic_scholar_relevance_score(article_data: Dict, original_keywords: Dict) -> float:
+    """Calculate relevance score between Semantic Scholar article and keywords."""
+    try:
+        # Combine article text fields for matching
+        article_text = f"{article_data.get('title', '')} {article_data.get('abstract', '')} {article_data.get('venue', '')}"
+        article_text_lower = article_text.lower()
+        
+        # Get the keywords string and split into individual keywords
+        keywords_string = original_keywords.get('keywords', '')
+        if not keywords_string:
+            return 0.0
+        
+        keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
+        if not keyword_list:
+            return 0.0
+        
+        # Count matches
+        matches = sum(1 for keyword in keyword_list if keyword in article_text_lower)
+        
+        # Calculate score as percentage of keywords found
+        score = matches / len(keyword_list)
+        
+        # Bonus for title matches (more important)
+        title_lower = article_data.get('title', '').lower()
+        title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
+        if title_matches > 0:
+            score += (title_matches / len(keyword_list)) * 0.2  # 20% bonus for title matches
+        
+        # Bonus for field of study relevance
+        fields_of_study = article_data.get('fields_of_study', [])
+        relevant_fields = ['Computer Science', 'Medicine', 'Engineering', 'Materials Science', 'Physics', 'Chemistry', 'Biology']
+        if any(field in relevant_fields for field in fields_of_study):
+            score += 0.1  # 10% bonus for relevant fields
+        
+        # Bonus for recent publications (articles from last 5 years get slight boost)
+        try:
+            pub_date = article_data.get('published_date', '')
+            if pub_date and len(pub_date) >= 4:
+                pub_year = int(pub_date[:4])
+                current_year = datetime.utcnow().year
+                if current_year - pub_year <= 5:
+                    score += 0.05  # Small bonus for recent articles
+        except:
+            pass
+        
+        # Bonus for high citation count
+        citation_count = article_data.get('citation_count', 0)
+        if citation_count > 100:
+            score += 0.05  # Bonus for highly cited papers
+        elif citation_count > 50:
+            score += 0.03
+        elif citation_count > 10:
+            score += 0.01
+        
+        return round(min(score, 1.0), 3)  # Cap at 1.0
+        
+    except Exception as e:
+        print(f"Error calculating Semantic Scholar relevance score: {str(e)}")
+        return 0.0
+
+@tool
+def store_semantic_scholar_analysis(pdf_filename: str, paper_id: str, article_title: str, authors: str, venue: str, 
+                                   published_date: str, relevance_score: float, search_query: str, citation_count: int = 0, 
+                                   article_url: str = '', fields_of_study: List[str] = None, 
+                                   publication_types: List[str] = None, open_access_pdf: str = '') -> str:
+    """Store individual Semantic Scholar article analysis result in DynamoDB."""
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        table = dynamodb.Table(ARTICLES_TABLE)
+        
+        timestamp = datetime.utcnow().isoformat()
+        
+        # Use paperId as the sort key (equivalent to DOI in Crossref)
+        item = {
+            'pdf_filename': pdf_filename,
+            'article_doi': paper_id,  # Using paperId as DOI equivalent
+            'article_title': article_title,
+            'authors': authors,
+            'journal': venue,  # Using venue as journal equivalent
+            'published_date': published_date,
+            'relevance_score': Decimal(str(relevance_score)),
+            'search_strategy_used': search_query,
+            'search_timestamp': timestamp,
+            'article_url': article_url,
+            'citation_count': citation_count,
+            'publisher': 'Semantic Scholar',  # Indicate source
+            'article_type': ', '.join(publication_types) if publication_types else 'Unknown',
+            'matching_keywords': search_query,
+            'rank_position': 1,
+            'total_results_found': 1,
+            'search_strategies_tried': [search_query],
+            # Semantic Scholar specific fields
+            'fields_of_study': ', '.join(fields_of_study) if fields_of_study else '',
+            'open_access_pdf_url': open_access_pdf
+        }
+        
+        table.put_item(Item=item)
+        return f"Successfully stored Semantic Scholar article {paper_id}: {article_title}"
+        
+    except Exception as e:
+        return f"Error storing Semantic Scholar article {paper_id}: {str(e)}"
+
 @tool
 def store_article_analysis(pdf_filename: str, article_doi: str, article_title: str, authors: str, journal: str, 
                           published_date: str, relevance_score: float, search_query: str, citation_count: int = 0, 
@@ -996,23 +1308,31 @@ uspto_search_agent = Agent(
     Focus on patents that could impact novelty assessment - prioritize granted patents over applications."""
 )
 
-# Scholarly Article Search Agent
+# Scholarly Article Search Agent (Updated to support both Crossref and Semantic Scholar)
 scholarly_article_agent = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_keywords_from_dynamodb, search_crossref_articles, calculate_article_relevance_score, store_article_analysis],
+    tools=[read_keywords_from_dynamodb, search_semantic_scholar_articles, search_crossref_articles, 
+           calculate_semantic_scholar_relevance_score, calculate_article_relevance_score, 
+           store_semantic_scholar_analysis, store_article_analysis],
     system_prompt="""You are a Scholarly Article Search Expert. Execute this workflow EXACTLY ONCE:
 
     1. Read patent analysis data from DynamoDB using the PDF filename
-    2. Use the extracted keywords to execute 2-3 strategic Crossref searches
+    2. Use the extracted keywords to execute 2-3 strategic searches using SEMANTIC SCHOLAR (preferred)
     3. Score and select the top 5 most relevant scholarly articles
-    4. Store results in DynamoDB
+    4. Store results in DynamoDB using the appropriate storage function
+
+    SEARCH SERVICE PRIORITY:
+    - PRIMARY: Use search_semantic_scholar_articles (better academic coverage and relevance)
+    - FALLBACK: Use search_crossref_articles only if Semantic Scholar fails
 
     CRITICAL RULES:
     - Execute each tool call only once per search strategy
-    - If a search fails, continue with the next strategy
-    - Maximum 3 search attempts total
+    - If Semantic Scholar search fails, try Crossref as fallback
+    - Maximum 3 search attempts total across both services
     - Always store results even if searches fail
     - Do not retry failed searches
+    - Use store_semantic_scholar_analysis for Semantic Scholar results
+    - Use store_article_analysis for Crossref results (legacy compatibility)
 
     SEARCH STRATEGIES:
     Use the keywords from the patent analysis to create strategic searches:
@@ -1021,6 +1341,13 @@ scholarly_article_agent = Agent(
     3. Combined keyword search (mix technical + application terms)
 
     The keywords are provided as a comma-separated list. Select the most relevant terms for each search strategy.
+
+    SEMANTIC SCHOLAR ADVANTAGES:
+    - Better academic paper coverage
+    - Advanced relevance ranking
+    - Field-of-study classifications
+    - Citation metrics and open access indicators
+    - More comprehensive metadata
 
     Focus on finding scholarly articles that discuss similar technologies, applications, or research areas that could provide academic context for the invention."""
 )
@@ -1144,7 +1471,7 @@ async def handle_uspto_search(payload):
 
 async def handle_scholarly_search(payload):
     """Handle scholarly article search requests."""
-    print("🔍 Orchestrator: Routing to Scholarly Article Search Agent")
+    print("🔍 Orchestrator: Routing to Scholarly Article Search Agent (Semantic Scholar + Crossref)")
     
     if isinstance(payload, str):
         try:
@@ -1163,10 +1490,17 @@ async def handle_scholarly_search(payload):
     INSTRUCTIONS:
     1. Read keywords from DynamoDB for this PDF
     2. Analyze the invention's technical and application aspects
-    3. Execute multiple strategic Crossref searches via Gateway
-    4. Score and rank results by relevance to the invention
-    5. Select top 5 most relevant scholarly articles
-    6. Store results with comprehensive metadata
+    3. Execute multiple strategic searches using SEMANTIC SCHOLAR (preferred service)
+    4. If Semantic Scholar fails, use Crossref as fallback
+    5. Score and rank results by relevance to the invention
+    6. Select top 5 most relevant scholarly articles
+    7. Store results with comprehensive metadata using appropriate storage function
+
+    SEARCH SERVICE PRIORITY:
+    - Use search_semantic_scholar_articles for better academic coverage and relevance
+    - Use search_crossref_articles only as fallback if Semantic Scholar fails
+    - Use store_semantic_scholar_analysis for Semantic Scholar results
+    - Use store_article_analysis for Crossref results
 
     Focus on finding academic research that discusses similar technologies, methodologies, or applications that could provide scientific context for the patent novelty assessment."""
         
