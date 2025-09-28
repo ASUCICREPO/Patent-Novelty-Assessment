@@ -1,5 +1,5 @@
-# Use ARM64 base image without platform flag to avoid multi-arch manifest
-FROM public.ecr.aws/docker/library/python:3.12-slim
+# Use standard Docker Hub image to avoid ECR proxy issues
+FROM python:3.12-slim
 WORKDIR /app
 
 # Force rebuild - Updated for Patent Novelty Orchestrator

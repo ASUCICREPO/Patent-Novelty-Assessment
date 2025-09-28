@@ -163,8 +163,13 @@ Stores scholarly article search results from Semantic Scholar:
 - `pdf_filename` (partition key): Name of the processed PDF  
 - `article_doi` (sort key): Paper ID from Semantic Scholar
 - `article_title`, `authors`, `journal`: Article metadata
+- `abstract`: Full paper abstract from Semantic Scholar
 - `relevance_score`: Calculated relevance to original invention
 - `citation_count`: Number of citations
 - `fields_of_study`: Academic field classifications
 - `open_access_pdf_url`: Direct link to open access PDF
+- `llm_decision`: LLM decision (KEEP/DISCARD)
+- `llm_reasoning`: Detailed LLM reasoning for relevance assessment
+- `key_technical_overlaps`: Technical terms that overlap with invention
+- `novelty_impact_assessment`: LLM assessment of novelty impact
 - `publisher`: Always "Semantic Scholar"
