@@ -1035,7 +1035,7 @@ def assess_search_result_quality(articles: List[Dict], total_results: int, query
             }
         else:
             # Check if articles have abstracts (important for relevance assessment)
-            articles_with_abstracts = sum(1 for article in articles if article.get('abstract', '').strip())
+            articles_with_abstracts = sum(1 for article in articles if article.get('abstract') and article.get('abstract').strip())
             if articles_with_abstracts < len(articles) * 0.3:  # Less than 30% have abstracts
                 return {
                     'action': 'refine',
