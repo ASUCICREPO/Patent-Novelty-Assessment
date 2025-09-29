@@ -1325,64 +1325,6 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
 
 
 @tool
-def calculate_llm_confidence_score(article_data: Dict[str, Any]) -> float:
-    """Calculate relevance score based on LLM decision confidence and analysis quality."""
-    try:
-        decision = article_data.get('llm_decision', 'DISCARD')
-        reasoning = article_data.get('llm_reasoning', '')
-        technical_overlaps = article_data.get('technical_overlaps', [])
-        novelty_impact = article_data.get('novelty_impact_assessment', '')
-        
-        # Base score from decision
-        if decision == 'KEEP':
-            base_score = 0.7  # Start with 0.7 for KEEP decisions
-        else:
-            base_score = 0.2  # Start with 0.2 for DISCARD decisions
-        
-        # Confidence indicators in reasoning text
-        high_confidence_terms = ['significant', 'clear', 'direct', 'strong', 'substantial', 'definitive', 'obvious']
-        medium_confidence_terms = ['moderate', 'some', 'potential', 'possible', 'likely', 'relevant']
-        low_confidence_terms = ['minimal', 'limited', 'unlikely', 'weak', 'marginal', 'insufficient']
-        
-        reasoning_lower = reasoning.lower()
-        
-        # Adjust score based on confidence language
-        if any(term in reasoning_lower for term in high_confidence_terms):
-            confidence_bonus = 0.15
-        elif any(term in reasoning_lower for term in medium_confidence_terms):
-            confidence_bonus = 0.05
-        elif any(term in reasoning_lower for term in low_confidence_terms):
-            confidence_bonus = -0.1
-        else:
-            confidence_bonus = 0.0
-        
-        # Technical overlaps bonus (more overlaps = higher confidence)
-        overlap_count = len(technical_overlaps) if isinstance(technical_overlaps, list) else 0
-        overlap_bonus = min(overlap_count * 0.05, 0.15)  # Max 0.15 bonus for overlaps
-        
-        # Novelty impact assessment bonus
-        novelty_impact_lower = novelty_impact.lower()
-        if 'prior art' in novelty_impact_lower or 'significant' in novelty_impact_lower:
-            impact_bonus = 0.1
-        elif 'contextual' in novelty_impact_lower or 'relevant' in novelty_impact_lower:
-            impact_bonus = 0.05
-        else:
-            impact_bonus = 0.0
-        
-        # Calculate final score
-        final_score = base_score + confidence_bonus + overlap_bonus + impact_bonus
-        
-        # Ensure score stays within reasonable bounds
-        final_score = max(0.1, min(1.0, final_score))
-        
-        return round(final_score, 3)
-        
-    except Exception as e:
-        print(f"Error calculating LLM confidence score: {e}")
-        # Fallback to simple decision-based score
-        return 0.8 if article_data.get('llm_decision') == 'KEEP' else 0.2
-
-@tool
 def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, Any]) -> str:
     """Store LLM-analyzed Semantic Scholar article in DynamoDB with enhanced metadata."""
     try:
@@ -1422,8 +1364,8 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'key_technical_overlaps': ', '.join(article_data.get('technical_overlaps', [])) if article_data.get('technical_overlaps') else '',
             'novelty_impact_assessment': article_data.get('novelty_impact_assessment', ''),
             
-            # Calculate relevance score based on LLM confidence and analysis quality
-            'relevance_score': Decimal(str(calculate_llm_confidence_score(article_data))),
+            # Legacy compatibility - set relevance score based on decision
+            'relevance_score': Decimal('0.8') if article_data.get('llm_decision') == 'KEEP' else Decimal('0.2'),
             'matching_keywords': article_data.get('search_query_used', ''),
             'rank_position': 1,
             'total_results_found': 1
