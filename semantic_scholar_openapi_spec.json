@@ -1,0 +1,184 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Semantic Scholar API",
+    "version": "1.0.0",
+    "description": "Semantic Scholar Academic Graph API for scholarly paper search"
+  },
+  "servers": [
+    {
+      "url": "https://api.semanticscholar.org/graph/v1",
+      "description": "Semantic Scholar Academic Graph API"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key"
+      }
+    }
+  },
+  "paths": {
+    "/paper/search": {
+      "get": {
+        "summary": "Search scholarly papers",
+        "operationId": "searchScholarlyPapers",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Plain-text search query (e.g., 'artificial intelligence medical devices')"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string", "default": "title,abstract,authors,venue,year,citationCount,url,fieldsOfStudy,publicationTypes,openAccessPdf"},
+            "description": "Comma-separated list of fields to return"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "default": 25, "maximum": 100},
+            "description": "Maximum number of results to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "default": 0},
+            "description": "Pagination offset"
+          },
+          {
+            "name": "publicationTypes",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Filter by publication types (e.g., 'JournalArticle,Conference')"
+          },
+          {
+            "name": "fieldsOfStudy",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Filter by academic fields (e.g., 'Computer Science,Medicine')"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Publication year range (e.g., '2020-2024' or '2020-')"
+          },
+          {
+            "name": "minCitationCount",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Minimum citation count filter"
+          },
+          {
+            "name": "venue",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Filter by venue/journal names"
+          },
+          {
+            "name": "openAccessPdf",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "string"},
+            "description": "Include only papers with open access PDFs"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scholarly papers search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {"type": "integer"},
+                    "offset": {"type": "integer"},
+                    "next": {"type": "integer"},
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "paperId": {"type": "string"},
+                          "title": {"type": "string"},
+                          "abstract": {"type": "string"},
+                          "authors": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "authorId": {"type": "string"},
+                                "name": {"type": "string"},
+                                "url": {"type": "string"}
+                              }
+                            }
+                          },
+                          "venue": {"type": "string"},
+                          "year": {"type": "integer"},
+                          "publicationDate": {"type": "string"},
+                          "citationCount": {"type": "integer"},
+                          "referenceCount": {"type": "integer"},
+                          "url": {"type": "string"},
+                          "openAccessPdf": {
+                            "type": "object",
+                            "properties": {
+                              "url": {"type": "string"},
+                              "status": {"type": "string"}
+                            }
+                          },
+                          "fieldsOfStudy": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                          },
+                          "publicationTypes": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                          },
+                          "embedding": {
+                            "type": "object",
+                            "properties": {
+                              "model": {"type": "string"},
+                              "vector": {
+                                "type": "array",
+                                "items": {"type": "number"}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        }
+      }
+    }
+  }
+}
