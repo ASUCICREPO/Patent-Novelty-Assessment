@@ -615,9 +615,6 @@ def fetch_semantic_scholar_access_token():
     try:
         if not all([SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL]):
             raise Exception("Missing required environment variables: SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL")
-            
-        print(f"Fetching Semantic Scholar token from: {SEMANTIC_SCHOLAR_TOKEN_URL}")
-        print(f"Semantic Scholar Client ID: {SEMANTIC_SCHOLAR_CLIENT_ID}")
         
         response = requests.post(
             SEMANTIC_SCHOLAR_TOKEN_URL,
@@ -625,8 +622,6 @@ def fetch_semantic_scholar_access_token():
             headers={'Content-Type': 'application/x-www-form-urlencoded'},
             timeout=30
         )
-        
-        print(f"Semantic Scholar token response status: {response.status_code}")
         
         if response.status_code != 200:
             raise Exception(f"Semantic Scholar token request failed: {response.status_code} - {response.text}")
@@ -647,18 +642,13 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
     """Run clean Semantic Scholar search with rate limiting (1 request per second)."""
     try:
         # Rate limiting: Semantic Scholar allows 1 request per second
-        print("⏱️ Applying rate limit (1 request per second)...")
-        time.sleep(1.1)  # Wait 1.1 seconds to be safe
+        time.sleep(1.5)  # Slightly more conservative for refinement scenarios  
         
         access_token = fetch_semantic_scholar_access_token()
         mcp_client = MCPClient(lambda: create_streamable_http_transport(SEMANTIC_SCHOLAR_GATEWAY_URL, access_token))
         
         with mcp_client:
-            print("🔍 DEBUG: Getting tools list from MCP client...")
             tools = get_full_tools_list(mcp_client)
-            print(f"🔍 DEBUG: Raw tools response: {tools}")
-            print(f"🔍 DEBUG: Number of tools found: {len(tools) if tools else 0}")
-            
             if tools:
                 print(f"✅ DEBUG: Available Semantic Scholar tools: {[tool.tool_name for tool in tools]}")
                 for i, tool in enumerate(tools):
@@ -677,13 +667,6 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
                 # Use Semantic Scholar tool if found, otherwise use first tool
                 tool_name = semantic_scholar_tool.tool_name if semantic_scholar_tool else tools[0].tool_name
                 
-                if semantic_scholar_tool:
-                    print(f"✅ DEBUG: Found specific Semantic Scholar tool: {tool_name}")
-                else:
-                    print(f"⚠️ DEBUG: No specific Semantic Scholar tool found, using first available: {tool_name}")
-                
-                print(f"🎯 DEBUG: Final tool selection: {tool_name}")
-                
                 # Build clean arguments - only query, limit, and essential fields
                 arguments = {
                     "query": search_query,
@@ -701,8 +684,6 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
                 )
                 return result
             else:
-                print("❌ DEBUG: No Semantic Scholar tools available - Gateway may not be configured properly")
-                print("❌ DEBUG: Check if your Semantic Scholar Gateway has the OpenAPI spec loaded")
                 return None
                 
     except Exception as e:
@@ -710,12 +691,10 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
         return None
 
 # Keep the old function for backward compatibility if needed elsewhere
-def run_semantic_scholar_search(search_query: str, limit: int = 25, publication_types: str = None, 
-                               fields_of_study: str = None, year_range: str = None):
-    """Legacy function - use run_semantic_scholar_search_clean instead."""
-    return run_semantic_scholar_search_clean(search_query, limit)
-
-
+# def run_semantic_scholar_search(search_query: str, limit: int = 25, publication_types: str = None, 
+#                                fields_of_study: str = None, year_range: str = None):
+#     """Legacy function - use run_semantic_scholar_search_clean instead."""
+#     return run_semantic_scholar_search_clean(search_query, limit)
 
 @tool
 def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -743,49 +722,49 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         # Create LLM prompt for query generation
         query_generation_prompt = f"""You are a scholarly article search expert. Analyze this invention and generate optimal Semantic Scholar search queries.
 
-INVENTION CONTEXT:
-Title: {title}
-Technology Description: {tech_description}
-Applications: {tech_applications}
-Keywords: {keywords_string}
+        INVENTION CONTEXT:
+        Title: {title}
+        Technology Description: {tech_description}
+        Applications: {tech_applications}
+        Keywords: {keywords_string}
 
-SEMANTIC SCHOLAR QUERY SYNTAX:
-- Plain-text search: "pancreaticobiliary stent" (space-separated terms)
-- Multiple terms: "stent deployment mechanism" (all terms searched together)
-- Single keywords: "polyethylene" or "biliary"
-- Multi-word phrases: "threaded stent" or "spiral deployment"
+        SEMANTIC SCHOLAR QUERY SYNTAX:
+        - Plain-text search: "pancreaticobiliary stent" (space-separated terms)
+        - Multiple terms: "stent deployment mechanism" (all terms searched together)
+        - Single keywords: "polyethylene" or "biliary"
+        - Multi-word phrases: "threaded stent" or "spiral deployment"
 
-TASK: Generate 3-5 strategic search queries that will find relevant academic papers for patent novelty assessment.
+        TASK: Generate 3-5 strategic search queries that will find relevant academic papers for patent novelty assessment.
 
-Consider:
-1. Single high-impact keywords vs multi-word combinations
-2. Technical device terms vs medical application terms
-3. Broad searches vs specific mechanism searches
-4. Problem-focused vs solution-focused queries
+        Consider:
+        1. Single high-impact keywords vs multi-word combinations
+        2. Technical device terms vs medical application terms
+        3. Broad searches vs specific mechanism searches
+        4. Problem-focused vs solution-focused queries
 
-RESPOND IN THIS EXACT JSON FORMAT:
-[
-    {{
-        "query": "pancreaticobiliary stent",
-        "rationale": "Direct search for the main medical device type",
-        "expected_precision": "high",
-        "search_focus": "device_specific"
-    }},
-    {{
-        "query": "biliary stricture treatment",
-        "rationale": "Search for the medical problem being addressed",
-        "expected_precision": "medium", 
-        "search_focus": "application_domain"
-    }},
-    {{
-        "query": "threaded stent deployment",
-        "rationale": "Focus on the specific deployment mechanism",
-        "expected_precision": "high",
-        "search_focus": "technical_mechanism"
-    }}
-]
+        RESPOND IN THIS EXACT JSON FORMAT:
+        [
+            {{
+                "query": "pancreaticobiliary stent",
+                "rationale": "Direct search for the main medical device type",
+                "expected_precision": "high",
+                "search_focus": "device_specific"
+            }},
+            {{
+                "query": "biliary stricture treatment",
+                "rationale": "Search for the medical problem being addressed",
+                "expected_precision": "medium", 
+                "search_focus": "application_domain"
+            }},
+            {{
+                "query": "threaded stent deployment",
+                "rationale": "Focus on the specific deployment mechanism",
+                "expected_precision": "high",
+                "search_focus": "technical_mechanism"
+            }}
+        ]
 
-Generate 3-5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
+        Generate 3-5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
 
         # Generate search queries (LLM + fallback)
         search_queries = []
@@ -815,7 +794,7 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
             response_body = json.loads(response['body'].read())
             llm_response = response_body['content'][0]['text']
             
-            print(f"🤖 LLM Response: {llm_response[:200]}...")
+            print(f"LLM Response: {llm_response[:200]}...")
             
             # Try to parse JSON from LLM response
             try:
@@ -825,21 +804,21 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
                 if json_start != -1 and json_end != -1:
                     json_str = llm_response[json_start:json_end]
                     search_queries = json.loads(json_str)
-                    print(f"✅ Successfully parsed {len(search_queries)} queries from LLM")
+                    print(f"Successfully parsed {len(search_queries)} queries from LLM")
                 else:
-                    print("❌ Could not find JSON in LLM response")
+                    print("Could not find JSON in LLM response")
                     # Fall back to keyword-based approach
             except json.JSONDecodeError as je:
-                print(f"❌ Failed to parse LLM JSON response: {je}")
+                print(f"Failed to parse LLM JSON response: {je}")
                 # Fall back to keyword-based approach
                 
         except Exception as e:
-            print(f"❌ LLM call failed: {e}")
+            print(f"LLM call failed: {e}")
             # Fall back to keyword-based approach
         
         # Fallback: Generate queries from keywords if LLM failed
         if not search_queries:
-            print("🔄 Using fallback keyword-based query generation...")
+            print("Using fallback keyword-based query generation...")
             keyword_list = [k.strip() for k in keywords_string.split(',') if k.strip()]
             
             # Query 1: Primary device/technology terms
@@ -873,22 +852,22 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
                 })
         
         if not search_queries:
-            print("❌ No search queries generated")
+            print("No search queries generated")
             return []
         
-        print(f"🎯 Generated {len(search_queries)} strategic search queries")
+        print(f"Generated {len(search_queries)} strategic search queries")
         for i, query in enumerate(search_queries, 1):
             print(f"  {i}. '{query['query']}' - {query['rationale']}")
         
         # PHASE 2: Execute adaptive search with refinement
-        print("🔍 Phase 2: Executing adaptive searches...")
+        print("Phase 2: Executing adaptive searches...")
         
         all_relevant_papers = []
         refinement_attempts = 0
-        max_refinements = 3  # Reduced due to rate limiting
+        max_refinements = 2  # Balanced for accuracy vs execution time
         
         for query_info in search_queries:
-            print(f"🔍 Executing search: '{query_info['query']}'")
+            print(f"Executing search: '{query_info['query']}'")
             
             # Execute initial search with rate limiting
             result = run_semantic_scholar_search_clean(
@@ -906,10 +885,66 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
                         articles = data.get("data", [])
                         total_results = data.get("total", 0)
                         
-                        print(f"📊 Query '{query_info['query']}': Found {len(articles)} papers (total: {total_results})")
+                        print(f"Query '{query_info['query']}': Found {len(articles)} papers (total: {total_results})")
                         
-                        # Simple quality assessment (no refinement for now due to rate limiting)
-                        current_articles = articles
+                        # Quality assessment with refinement enabled
+                        quality_assessment = assess_search_result_quality(articles, total_results, query_info, keywords_data)
+                        print(f"Quality assessment: {quality_assessment['reason']}")
+
+                        if quality_assessment['action'] == 'refine' and refinement_attempts < max_refinements:
+                            print(f"Refining query (attempt {refinement_attempts + 1}/{max_refinements})")
+                            
+                            # Generate refined query
+                            refined_query = generate_refined_query(query_info, quality_assessment, keywords_data)
+                            print(f"Original query: '{query_info['query']}'")
+                            print(f"Refined query: '{refined_query}'")
+                            
+                            # Execute refined search with rate limiting
+                            refined_result = run_semantic_scholar_search_clean(
+                                search_query=refined_query,
+                                limit=20
+                            )
+                            
+                            if refined_result and isinstance(refined_result, dict) and 'content' in refined_result:
+                                refined_content = refined_result['content']
+                                if isinstance(refined_content, list) and len(refined_content) > 0:
+                                    refined_text_content = refined_content[0].get('text', '') if isinstance(refined_content[0], dict) else str(refined_content[0])
+                                    
+                                    try:
+                                        refined_data = json.loads(refined_text_content)
+                                        refined_articles = refined_data.get("data", [])
+                                        refined_total = refined_data.get("total", 0)
+                                        
+                                        print(f"Refined query '{refined_query}': Found {len(refined_articles)} papers (total: {refined_total})")
+                                        
+                                        # Use refined results if they're better
+                                        if len(refined_articles) > len(articles) or refined_total < total_results:
+                                            current_articles = refined_articles
+                                            query_info['query'] = refined_query  # Update for tracking
+                                            print("✅ Using refined results")
+                                        else:
+                                            current_articles = articles
+                                            print("⚠️ Keeping original results (refinement didn't improve)")
+                                            
+                                        refinement_attempts += 1
+                                        
+                                    except json.JSONDecodeError:
+                                        print("❌ Failed to parse refined search results, using original")
+                                        current_articles = articles
+                                else:
+                                    print("❌ No content in refined results, using original")
+                                    current_articles = articles
+                            else:
+                                print("❌ Refined search failed, using original results")
+                                current_articles = articles
+                        else:
+                            current_articles = articles
+                            if quality_assessment['action'] == 'refine':
+                                print(f"⚠️ Max refinements ({max_refinements}) reached, proceeding with current results")
+                        
+                        # Track refinement statistics
+                        if refinement_attempts > 0:
+                            print(f"📊 Refinement summary for '{query_info['query']}': {refinement_attempts} attempts made")
                         
                         # Evaluate each paper for relevance using LLM
                         for article in current_articles:
@@ -943,18 +978,18 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
                             # Keep only papers that LLM determines are relevant
                             if relevance_assessment['decision'] == 'KEEP':
                                 all_relevant_papers.append(processed_article)
-                                print(f"  ✅ KEPT: {processed_article['title'][:60]}...")
-                                print(f"     Reason: {relevance_assessment['reasoning'][:100]}...")
+                                print(f"KEPT: {processed_article['title'][:60]}...")
+                                print(f"Reason: {relevance_assessment['reasoning'][:100]}...")
                             else:
-                                print(f"  ❌ DISCARDED: {processed_article['title'][:60]}...")
-                                print(f"     Reason: {relevance_assessment['reasoning'][:100]}...")
+                                print(f"DISCARDED: {processed_article['title'][:60]}...")
+                                print(f"Reason: {relevance_assessment['reasoning'][:100]}...")
                                 
                     except json.JSONDecodeError as je:
-                        print(f"❌ JSON decode error for query '{query_info['query']}': {je}")
+                        print(f"JSON decode error for query '{query_info['query']}': {je}")
                 else:
-                    print(f"❌ No content in result for query '{query_info['query']}'")
+                    print(f"No content in result for query '{query_info['query']}'")
             else:
-                print(f"❌ No result for query '{query_info['query']}'")
+                print(f"No result for query '{query_info['query']}'")
         
         # Remove duplicates and select top 6 papers
         unique_papers = {}
@@ -966,10 +1001,10 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
         # Sort by citation count and relevance, take top 6
         final_papers = sorted(unique_papers.values(), key=lambda x: x['citation_count'], reverse=True)[:6]
         
-        print(f"🎯 Final selection: {len(final_papers)} highly relevant papers for patent novelty assessment")
+        print(f"Final selection: {len(final_papers)} highly relevant papers for patent novelty assessment")
         for i, paper in enumerate(final_papers, 1):
-            print(f"  {i}. {paper['title'][:70]}... (Citations: {paper['citation_count']})")
-            print(f"     Impact: {paper['novelty_impact_assessment']}")
+            print(f"{i}. {paper['title'][:70]}... (Citations: {paper['citation_count']})")
+            print(f"Impact: {paper['novelty_impact_assessment']}")
             print()
         
         return final_papers
@@ -979,8 +1014,6 @@ Generate 3-5 queries that cover different aspects of the invention for comprehen
         import traceback
         traceback.print_exc()
         return []
-
-
 
 def extract_semantic_scholar_authors(authors_list: List[Dict]) -> str:
     """Extract author names from Semantic Scholar author list."""
@@ -1164,36 +1197,36 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         # Make LLM call for relevance evaluation - MUST WORK
         evaluation_prompt = f"""You are a patent novelty assessment expert. Evaluate if this research paper is relevant for assessing the novelty of the given invention.
 
-INVENTION TO ASSESS:
-Title: {invention_title}
-Technical Description: {tech_description}
-Applications: {tech_applications}
-Key Technologies: {keywords}
+        INVENTION TO ASSESS:
+        Title: {invention_title}
+        Technical Description: {tech_description}
+        Applications: {tech_applications}
+        Key Technologies: {keywords}
 
-RESEARCH PAPER TO EVALUATE:
-Title: {paper_title}
-Abstract: {paper_abstract}
-Authors: {paper_authors}
-Venue: {paper_venue}
-Year: {paper_year}
-Fields: {', '.join(fields_of_study) if fields_of_study else 'Not specified'}
+        RESEARCH PAPER TO EVALUATE:
+        Title: {paper_title}
+        Abstract: {paper_abstract}
+        Authors: {paper_authors}
+        Venue: {paper_venue}
+        Year: {paper_year}
+        Fields: {', '.join(fields_of_study) if fields_of_study else 'Not specified'}
 
-ANALYSIS TASK:
-Determine if this paper could impact the novelty assessment of the invention by analyzing:
-1. TECHNICAL OVERLAP: Does the paper describe similar technologies, methods, or mechanisms?
-2. PROBLEM DOMAIN: Does it address the same or related problems?
-3. APPLICATION SIMILARITY: Does it target similar use cases or applications?
-4. PRIOR ART POTENTIAL: Could this work be considered prior art that affects novelty?
+        ANALYSIS TASK:
+        Determine if this paper could impact the novelty assessment of the invention by analyzing:
+        1. TECHNICAL OVERLAP: Does the paper describe similar technologies, methods, or mechanisms?
+        2. PROBLEM DOMAIN: Does it address the same or related problems?
+        3. APPLICATION SIMILARITY: Does it target similar use cases or applications?
+        4. PRIOR ART POTENTIAL: Could this work be considered prior art that affects novelty?
 
-RESPOND IN THIS EXACT JSON FORMAT:
-{{
-    "decision": "KEEP" or "DISCARD",
-    "reasoning": "Detailed 2-3 sentence explanation of why this paper is/isn't relevant for novelty assessment",
-    "technical_overlaps": ["list", "of", "specific", "technical", "overlaps"],
-    "novelty_impact": "Brief assessment of how this paper could affect the invention's novelty claims"
-}}
+        RESPOND IN THIS EXACT JSON FORMAT:
+        {{
+            "decision": "KEEP" or "DISCARD",
+            "reasoning": "Detailed 2-3 sentence explanation of why this paper is/isn't relevant for novelty assessment",
+            "technical_overlaps": ["list", "of", "specific", "technical", "overlaps"],
+            "novelty_impact": "Brief assessment of how this paper could affect the invention's novelty claims"
+        }}
 
-Be precise and focus specifically on patent novelty implications."""
+        Be precise and focus specifically on patent novelty implications."""
 
         # Make the LLM call with retry logic
         max_retries = 3
@@ -1239,7 +1272,7 @@ Be precise and focus specifically on patent novelty implications."""
                             'novelty_impact': llm_evaluation.get('novelty_impact', 'Impact assessment completed')
                         }
                     else:
-                        print(f"❌ LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
+                        print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
                         if attempt == max_retries - 1:
                             return {
                                 'decision': 'DISCARD',
@@ -1248,7 +1281,7 @@ Be precise and focus specifically on patent novelty implications."""
                                 'novelty_impact': 'Unable to assess due to LLM validation error'
                             }
                 else:
-                    print(f"❌ Could not find JSON in LLM response (attempt {attempt + 1}/{max_retries})")
+                    print(f"Could not find JSON in LLM response (attempt {attempt + 1}/{max_retries})")
                     if attempt == max_retries - 1:
                         return {
                             'decision': 'DISCARD',
@@ -1258,7 +1291,7 @@ Be precise and focus specifically on patent novelty implications."""
                         }
                         
             except json.JSONDecodeError as je:
-                print(f"❌ JSON parsing error (attempt {attempt + 1}/{max_retries}): {je}")
+                print(f"JSON parsing error (attempt {attempt + 1}/{max_retries}): {je}")
                 if attempt == max_retries - 1:
                     return {
                         'decision': 'DISCARD',
@@ -1268,7 +1301,7 @@ Be precise and focus specifically on patent novelty implications."""
                     }
                     
             except Exception as e:
-                print(f"❌ LLM call error (attempt {attempt + 1}/{max_retries}): {e}")
+                print(f"LLM call error (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt == max_retries - 1:
                     return {
                         'decision': 'DISCARD',
@@ -1290,162 +1323,64 @@ Be precise and focus specifically on patent novelty implications."""
             'novelty_impact': 'Unable to assess due to evaluation error'
         }
 
+
 @tool
-def analyze_abstract_relevance(invention_context: Dict, paper_data: Dict) -> Dict[str, Any]:
-    """Use LLM to analyze semantic relevance between invention and paper abstract for patent novelty assessment."""
+def calculate_llm_confidence_score(article_data: Dict[str, Any]) -> float:
+    """Calculate relevance score based on LLM decision confidence and analysis quality."""
     try:
-        # Extract invention context
-        invention_title = invention_context.get('title', 'Unknown Invention')
-        tech_description = invention_context.get('technology_description', '')
-        tech_applications = invention_context.get('technology_applications', '')
-        keywords = invention_context.get('keywords', '')
+        decision = article_data.get('llm_decision', 'DISCARD')
+        reasoning = article_data.get('llm_reasoning', '')
+        technical_overlaps = article_data.get('technical_overlaps', [])
+        novelty_impact = article_data.get('novelty_impact_assessment', '')
         
-        # Extract paper information
-        paper_title = paper_data.get('title', 'Unknown Paper')
-        paper_abstract = paper_data.get('abstract', '')
-        paper_authors = paper_data.get('authors', '')
-        paper_venue = paper_data.get('venue', '')
-        paper_year = paper_data.get('published_date', '')
-        fields_of_study = paper_data.get('fields_of_study', [])
-        
-        # Skip papers without abstracts
-        if not paper_abstract or len(paper_abstract.strip()) < 50:
-            return {
-                'relevance_score': 0,
-                'decision': 'DISCARD',
-                'reasoning': 'Paper lacks sufficient abstract content for analysis',
-                'key_overlaps': [],
-                'novelty_impact': 'None - insufficient content'
-            }
-        
-        # Construct comprehensive LLM analysis prompt
-        analysis_prompt = f"""You are a patent novelty assessment expert. Analyze if this research paper is relevant for evaluating the novelty of the given invention.
-
-INVENTION TO ASSESS:
-Title: {invention_title}
-Technical Description: {tech_description}
-Applications: {tech_applications}
-Key Technologies: {keywords}
-
-RESEARCH PAPER TO EVALUATE:
-Title: {paper_title}
-Abstract: {paper_abstract}
-Authors: {paper_authors}
-Venue: {paper_venue}
-Year: {paper_year}
-Fields: {', '.join(fields_of_study) if fields_of_study else 'Not specified'}
-
-ANALYSIS TASK:
-Determine if this paper could impact the novelty assessment of the invention by analyzing:
-
-1. TECHNICAL OVERLAP: Does the paper describe similar technologies, methods, or mechanisms?
-2. PROBLEM DOMAIN: Does it address the same or related problems?
-3. APPLICATION SIMILARITY: Does it target similar use cases or applications?
-4. PRIOR ART POTENTIAL: Could this work be considered prior art that affects novelty?
-5. IMPLEMENTATION APPROACH: Are there overlapping technical approaches or solutions?
-
-SCORING CRITERIA:
-- Score 9-10: Direct technical overlap, same problem domain, clear prior art relevance
-- Score 7-8: Significant technical similarity, related problem space, potential prior art
-- Score 5-6: Some technical overlap, adjacent problem domain, limited relevance
-- Score 3-4: Minimal overlap, different focus, unlikely to affect novelty
-- Score 1-2: No meaningful overlap, different domain, irrelevant for novelty
-
-REQUIRED OUTPUT FORMAT:
-RELEVANCE_SCORE: [1-10]
-DECISION: [KEEP or DISCARD]
-REASONING: [Detailed 2-3 sentence explanation of why this paper is/isn't relevant for novelty assessment]
-KEY_OVERLAPS: [List specific technical overlaps, methods, or concepts that match the invention]
-NOVELTY_IMPACT: [Brief assessment of how this paper could affect the invention's novelty claims]
-
-Be precise and focus specifically on patent novelty implications, not general research relevance."""
-
-        # For now, we'll implement a sophisticated keyword-based analysis
-        # In production, this would call Claude via Bedrock
-        
-        # Analyze technical overlap
-        invention_terms = set(keywords.lower().split(', ') + tech_description.lower().split() + invention_title.lower().split())
-        paper_terms = set(paper_abstract.lower().split() + paper_title.lower().split())
-        
-        # Filter terms by length only (no common word filtering)
-        invention_terms = {term for term in invention_terms if len(term) > 3}
-        paper_terms = {term for term in paper_terms if len(term) > 3}
-        
-        # Calculate overlaps
-        overlapping_terms = invention_terms.intersection(paper_terms)
-        overlap_ratio = len(overlapping_terms) / len(invention_terms) if invention_terms else 0
-        
-        # Enhanced scoring logic
-        base_score = min(overlap_ratio * 10, 6)  # Base score from term overlap
-        
-        # Bonus scoring factors
-        title_overlap = len(set(invention_title.lower().split()).intersection(set(paper_title.lower().split())))
-        if title_overlap >= 2:
-            base_score += 2
-        elif title_overlap >= 1:
-            base_score += 1
-        
-        # Field relevance bonus
-        relevant_fields = {'Engineering', 'Computer Science', 'Medicine', 'Materials Science', 'Physics', 'Chemistry'}
-        if any(field in relevant_fields for field in fields_of_study):
-            base_score += 1
-        
-        # Recent publication bonus
-        try:
-            if paper_year and len(paper_year) >= 4:
-                year = int(paper_year[:4])
-                if year >= 2020:
-                    base_score += 0.5
-        except:
-            pass
-        
-        # Abstract quality bonus
-        if len(paper_abstract) > 200:
-            base_score += 0.5
-        
-        final_score = min(round(base_score), 10)
-        
-        # Decision logic
-        decision = "KEEP" if final_score >= 7 else "DISCARD"
-        
-        # Generate reasoning
-        if final_score >= 8:
-            reasoning = f"High technical overlap detected with {len(overlapping_terms)} matching terms. Paper addresses similar technical domain and could represent significant prior art for novelty assessment."
-        elif final_score >= 6:
-            reasoning = f"Moderate technical similarity found with {len(overlapping_terms)} overlapping concepts. Paper may provide relevant context for novelty evaluation."
+        # Base score from decision
+        if decision == 'KEEP':
+            base_score = 0.7  # Start with 0.7 for KEEP decisions
         else:
-            reasoning = f"Limited technical overlap ({len(overlapping_terms)} matching terms). Paper appears to address different technical focus and unlikely to impact novelty assessment."
+            base_score = 0.2  # Start with 0.2 for DISCARD decisions
         
-        # Key overlaps
-        key_overlaps = list(overlapping_terms)[:5] if overlapping_terms else []
+        # Confidence indicators in reasoning text
+        high_confidence_terms = ['significant', 'clear', 'direct', 'strong', 'substantial', 'definitive', 'obvious']
+        medium_confidence_terms = ['moderate', 'some', 'potential', 'possible', 'likely', 'relevant']
+        low_confidence_terms = ['minimal', 'limited', 'unlikely', 'weak', 'marginal', 'insufficient']
         
-        # Novelty impact assessment
-        if final_score >= 8:
-            novelty_impact = "Potential prior art - requires detailed technical comparison"
-        elif final_score >= 6:
-            novelty_impact = "Contextual relevance - may inform novelty boundaries"
+        reasoning_lower = reasoning.lower()
+        
+        # Adjust score based on confidence language
+        if any(term in reasoning_lower for term in high_confidence_terms):
+            confidence_bonus = 0.15
+        elif any(term in reasoning_lower for term in medium_confidence_terms):
+            confidence_bonus = 0.05
+        elif any(term in reasoning_lower for term in low_confidence_terms):
+            confidence_bonus = -0.1
         else:
-            novelty_impact = "Minimal impact - different technical focus"
+            confidence_bonus = 0.0
         
-        return {
-            'relevance_score': final_score,
-            'decision': decision,
-            'reasoning': reasoning,
-            'key_overlaps': key_overlaps,
-            'novelty_impact': novelty_impact
-        }
+        # Technical overlaps bonus (more overlaps = higher confidence)
+        overlap_count = len(technical_overlaps) if isinstance(technical_overlaps, list) else 0
+        overlap_bonus = min(overlap_count * 0.05, 0.15)  # Max 0.15 bonus for overlaps
+        
+        # Novelty impact assessment bonus
+        novelty_impact_lower = novelty_impact.lower()
+        if 'prior art' in novelty_impact_lower or 'significant' in novelty_impact_lower:
+            impact_bonus = 0.1
+        elif 'contextual' in novelty_impact_lower or 'relevant' in novelty_impact_lower:
+            impact_bonus = 0.05
+        else:
+            impact_bonus = 0.0
+        
+        # Calculate final score
+        final_score = base_score + confidence_bonus + overlap_bonus + impact_bonus
+        
+        # Ensure score stays within reasonable bounds
+        final_score = max(0.1, min(1.0, final_score))
+        
+        return round(final_score, 3)
         
     except Exception as e:
-        print(f"Error in LLM abstract analysis: {str(e)}")
-        return {
-            'relevance_score': 0,
-            'decision': 'DISCARD',
-            'reasoning': f'Analysis failed due to error: {str(e)}',
-            'key_overlaps': [],
-            'novelty_impact': 'Unable to assess'
-        }
-
-
+        print(f"Error calculating LLM confidence score: {e}")
+        # Fallback to simple decision-based score
+        return 0.8 if article_data.get('llm_decision') == 'KEEP' else 0.2
 
 @tool
 def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, Any]) -> str:
@@ -1487,8 +1422,8 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'key_technical_overlaps': ', '.join(article_data.get('technical_overlaps', [])) if article_data.get('technical_overlaps') else '',
             'novelty_impact_assessment': article_data.get('novelty_impact_assessment', ''),
             
-            # Legacy compatibility - set relevance score based on decision
-            'relevance_score': Decimal('0.8') if article_data.get('llm_decision') == 'KEEP' else Decimal('0.2'),
+            # Calculate relevance score based on LLM confidence and analysis quality
+            'relevance_score': Decimal(str(calculate_llm_confidence_score(article_data))),
             'matching_keywords': article_data.get('search_query_used', ''),
             'rank_position': 1,
             'total_results_found': 1
@@ -1499,8 +1434,6 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         
     except Exception as e:
         return f"Error storing Semantic Scholar article {article_data.get('paperId', 'unknown')}: {str(e)}"
-
-
 
 # =============================================================================
 # AGENT DEFINITIONS
@@ -1792,7 +1725,7 @@ async def handle_scholarly_search(payload):
     2. Use search_semantic_scholar_articles_strategic with the FULL invention context
     3. The strategic search will automatically:
        - Execute 4-5 intelligent search strategies
-       - Apply LLM analysis to each paper's abstract using analyze_abstract_relevance
+       - Apply LLM analysis to each paper's abstract for semantic relevance
        - Keep only papers with LLM score ≥ 7 and decision = "KEEP"
        - Return top 8 semantically relevant papers with detailed LLM reasoning
 
