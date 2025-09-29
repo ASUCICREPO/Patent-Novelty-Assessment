@@ -49,7 +49,7 @@ if not GATEWAY_URL:
 if missing_vars:
     print(f"WARNING: Missing USPTO environment variables: {', '.join(missing_vars)}. USPTO search will fail.")
 
-# Validate Semantic Scholar Gateway environment variables
+# Validate Semantic Scholar Gateway environment variables - FAIL FAST
 semantic_scholar_missing_vars = []
 if not SEMANTIC_SCHOLAR_CLIENT_ID:
     semantic_scholar_missing_vars.append('SEMANTIC_SCHOLAR_CLIENT_ID')
@@ -61,7 +61,7 @@ if not SEMANTIC_SCHOLAR_GATEWAY_URL:
     semantic_scholar_missing_vars.append('SEMANTIC_SCHOLAR_GATEWAY_URL')
 
 if semantic_scholar_missing_vars:
-    print(f"WARNING: Missing Semantic Scholar environment variables: {', '.join(semantic_scholar_missing_vars)}. Semantic Scholar search will fail.")
+    raise Exception(f"CRITICAL: Missing required Semantic Scholar environment variables: {', '.join(semantic_scholar_missing_vars)}. Cannot start orchestrator without these variables.")
 
 # =============================================================================
 # KEYWORD GENERATOR TOOLS
@@ -610,18 +610,14 @@ def store_patent_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str
 # SEMANTIC SCHOLAR SEARCH TOOLS
 # =============================================================================
 
-def fetch_semantic_scholar_access_token():
-    """Get OAuth access token for Semantic Scholar Gateway."""
+def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
+    """Run clean Semantic Scholar search with rate limiting (1 request per second)."""
     try:
-        if not all([SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL]):
-            raise Exception("Missing required environment variables: SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL")
+        # Rate limiting: Semantic Scholar allows 1 request per second
+        time.sleep(1.5)  # Slightly more conservative for refinement scenarios  
         
-        response = requests.post(
-            SEMANTIC_SCHOLAR_TOKEN_URL,
-            data=f"grant_type=client_credentials&client_id={SEMANTIC_SCHOLAR_CLIENT_ID}&client_secret={SEMANTIC_SCHOLAR_CLIENT_SECRET}",
-            headers={'Content-Type': 'application/x-www-form-urlencoded'},
-            timeout=30
-        )
+        # Get OAuth access token for Semantic Scholar Gateway
+        response = requests.post( SEMANTIC_SCHOLAR_TOKEN_URL, data=f"grant_type=client_credentials&client_id={SEMANTIC_SCHOLAR_CLIENT_ID}&client_secret={SEMANTIC_SCHOLAR_CLIENT_SECRET}", headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=30 )
         
         if response.status_code != 200:
             raise Exception(f"Semantic Scholar token request failed: {response.status_code} - {response.text}")
@@ -631,19 +627,6 @@ def fetch_semantic_scholar_access_token():
         
         if not access_token:
             raise Exception(f"No access token in Semantic Scholar response: {token_data}")
-        return access_token
-        
-    except Exception as e:
-        print(f"Error fetching Semantic Scholar access token: {e}")
-        raise
-
-def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
-    """Run clean Semantic Scholar search with rate limiting (1 request per second)."""
-    try:
-        # Rate limiting: Semantic Scholar allows 1 request per second
-        time.sleep(1.5)  # Slightly more conservative for refinement scenarios  
-        
-        access_token = fetch_semantic_scholar_access_token()
         mcp_client = MCPClient(lambda: create_streamable_http_transport(SEMANTIC_SCHOLAR_GATEWAY_URL, access_token))
         
         with mcp_client:
@@ -663,7 +646,7 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
                         semantic_scholar_tool = tool
                         break
                 
-                # Use Semantic Scholar tool if found, otherwise use first tool
+                # Use Semantic Scholar tool 
                 tool_name = semantic_scholar_tool.tool_name if semantic_scholar_tool else tools[0].tool_name
                 
                 # Build clean arguments - only query, limit, and essential fields
@@ -672,9 +655,7 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
                     "limit": limit,
                     "fields": "title,abstract,authors,venue,year,citationCount,url,fieldsOfStudy,publicationTypes,openAccessPdf,referenceCount"
                 }
-                
                 print(f"Clean search arguments: {arguments}")
-                
                 # Call tool
                 result = mcp_client.call_tool_sync(
                     name=tool_name,
@@ -696,12 +677,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         if not SEMANTIC_SCHOLAR_GATEWAY_URL:
             print("SEMANTIC_SCHOLAR_GATEWAY_URL not configured")
             return []
-        
-        print("Starting intelligent scholarly article search...")
-        
-        # PHASE 1: Generate search queries using LLM
-        print("Phase 1: Generating search queries using LLM...")
-        
+
         # Extract invention context
         title = keywords_data.get('title', '')
         tech_description = keywords_data.get('technology_description', '')
@@ -723,9 +699,11 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
 
         SEMANTIC SCHOLAR QUERY SYNTAX:
         - Plain-text search: "pancreaticobiliary stent" (space-separated terms)
-        - Multiple terms: "stent deployment mechanism" (all terms searched together)
+        - Multi-word phrases: "stent deployment mechanism" (all terms searched together)
         - Single keywords: "polyethylene" or "biliary"
-        - Multi-word phrases: "threaded stent" or "spiral deployment"
+        - Technical terms: "threaded stent" or "spiral deployment"
+        - Avoid hyphens: use "machine learning" not "machine-learning" (hyphens yield no matches)
+        - Note: No special operators (AND, OR, NOT, wildcards) are supported - use plain text only
 
         TASK: Generate 3-5 strategic search queries that will find relevant academic papers for patent novelty assessment.
 
@@ -737,26 +715,19 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
 
         RESPOND IN THIS EXACT JSON FORMAT:
         [
-            {{
+            {
                 "query": "pancreaticobiliary stent",
-                "rationale": "Direct search for the main medical device type",
-                "expected_precision": "high",
-                "search_focus": "device_specific"
-            }},
-            {{
+                "rationale": "Direct search for the main medical device type"
+            },
+            {
                 "query": "biliary stricture treatment",
-                "rationale": "Search for the medical problem being addressed",
-                "expected_precision": "medium", 
-                "search_focus": "application_domain"
-            }},
-            {{
+                "rationale": "Search for the medical problem being addressed"
+            },
+            {
                 "query": "threaded stent deployment",
-                "rationale": "Focus on the specific deployment mechanism",
-                "expected_precision": "high",
-                "search_focus": "technical_mechanism"
-            }}
+                "rationale": "Focus on the specific deployment mechanism"
+            }
         ]
-
         Generate 3-5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
 
         # Generate search queries (LLM + fallback)
@@ -764,7 +735,6 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         
         try:
             bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
-            
             # Prepare the request for Claude
             request_body = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -819,9 +789,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             if primary_terms:
                 search_queries.append({
                     "query": primary_terms[0],
-                    "rationale": f"Direct search for primary technology: {primary_terms[0]}",
-                    "expected_precision": "high",
-                    "search_focus": "device_specific"
+                    "rationale": f"Direct search for primary technology: {primary_terms[0]}"
                 })
             
             # Query 2: Medical/application domain
@@ -829,9 +797,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             if medical_terms:
                 search_queries.append({
                     "query": medical_terms[0],
-                    "rationale": f"Search for medical application domain: {medical_terms[0]}",
-                    "expected_precision": "medium",
-                    "search_focus": "application_domain"
+                    "rationale": f"Search for medical application domain: {medical_terms[0]}"
                 })
             
             # Query 3: First two keywords combined
@@ -839,9 +805,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                 combined_query = f"{keyword_list[0]} {keyword_list[1]}"
                 search_queries.append({
                     "query": combined_query,
-                    "rationale": f"Combined search for broader context: {combined_query}",
-                    "expected_precision": "medium",
-                    "search_focus": "combined_approach"
+                    "rationale": f"Combined search for broader context: {combined_query}"
                 })
         
         if not search_queries:
@@ -954,7 +918,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                                 'fields_of_study': article.get('fieldsOfStudy', []),
                                 'publication_types': article.get('publicationTypes', []),
                                 'open_access_pdf': extract_open_access_pdf(article.get('openAccessPdf')),
-                                'search_strategy_used': query_info.get('search_focus', 'unknown'),
+
                                 'search_query_used': query_info['query'],
                                 'matching_keywords': query_info['query']
                             }
@@ -1341,7 +1305,7 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'article_type': ', '.join(article_data.get('publication_types', [])) if article_data.get('publication_types') else 'Unknown',
             'fields_of_study': ', '.join(article_data.get('fields_of_study', [])) if article_data.get('fields_of_study') else '',
             'open_access_pdf_url': article_data.get('open_access_pdf', ''),
-            'search_strategy_used': article_data.get('search_strategy_used', ''),
+
             'search_query_used': article_data.get('search_query_used', ''),
             'abstract': article_data.get('abstract', ''),
             
