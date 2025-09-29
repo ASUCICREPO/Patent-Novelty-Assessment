@@ -631,7 +631,6 @@ def fetch_semantic_scholar_access_token():
         
         if not access_token:
             raise Exception(f"No access token in Semantic Scholar response: {token_data}")
-        
         return access_token
         
     except Exception as e:
@@ -650,11 +649,11 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
         with mcp_client:
             tools = get_full_tools_list(mcp_client)
             if tools:
-                print(f"✅ DEBUG: Available Semantic Scholar tools: {[tool.tool_name for tool in tools]}")
+                print(f"DEBUG: Available Semantic Scholar tools: {[tool.tool_name for tool in tools]}")
                 for i, tool in enumerate(tools):
                     print(f"  Tool {i+1}: {tool.tool_name} - {getattr(tool, 'description', 'No description')}")
             else:
-                print("❌ DEBUG: No tools found from MCP client")
+                print("DEBUG: No tools found from MCP client")
             
             # Find the Semantic Scholar search tool
             if tools:
@@ -695,13 +694,13 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
     """Execute intelligent LLM-driven scholarly article search for patent novelty assessment."""
     try:
         if not SEMANTIC_SCHOLAR_GATEWAY_URL:
-            print("❌ SEMANTIC_SCHOLAR_GATEWAY_URL not configured")
+            print("SEMANTIC_SCHOLAR_GATEWAY_URL not configured")
             return []
         
-        print("🚀 Starting intelligent scholarly article search...")
+        print("Starting intelligent scholarly article search...")
         
         # PHASE 1: Generate search queries using LLM
-        print("🤖 Phase 1: Generating search queries using LLM...")
+        print("Phase 1: Generating search queries using LLM...")
         
         # Extract invention context
         title = keywords_data.get('title', '')
@@ -710,7 +709,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         keywords_string = keywords_data.get('keywords', '')
         
         if not keywords_string:
-            print("❌ No keywords provided for search query generation")
+            print("No keywords provided for search query generation")
             return []
         
         # Create LLM prompt for query generation
@@ -915,30 +914,30 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                                         if len(refined_articles) > len(articles) or refined_total < total_results:
                                             current_articles = refined_articles
                                             query_info['query'] = refined_query  # Update for tracking
-                                            print("✅ Using refined results")
+                                            print("Using refined results")
                                         else:
                                             current_articles = articles
-                                            print("⚠️ Keeping original results (refinement didn't improve)")
+                                            print("Keeping original results (refinement didn't improve)")
                                             
                                         refinement_attempts += 1
                                         
                                     except json.JSONDecodeError:
-                                        print("❌ Failed to parse refined search results, using original")
+                                        print("Failed to parse refined search results, using original")
                                         current_articles = articles
                                 else:
-                                    print("❌ No content in refined results, using original")
+                                    print("No content in refined results, using original")
                                     current_articles = articles
                             else:
-                                print("❌ Refined search failed, using original results")
+                                print("Refined search failed, using original results")
                                 current_articles = articles
                         else:
                             current_articles = articles
                             if quality_assessment['action'] == 'refine':
-                                print(f"⚠️ Max refinements ({max_refinements}) reached, proceeding with current results")
+                                print(f"Max refinements ({max_refinements}) reached, proceeding with current results")
                         
                         # Track refinement statistics
                         if refinement_attempts > 0:
-                            print(f"📊 Refinement summary for '{query_info['query']}': {refinement_attempts} attempts made")
+                            print(f"Refinement summary for '{query_info['query']}': {refinement_attempts} attempts made")
                         
                         # Evaluate each paper for relevance using LLM
                         for article in current_articles:
@@ -1317,16 +1316,13 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
             'novelty_impact': 'Unable to assess due to evaluation error'
         }
 
-
 @tool
 def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, Any]) -> str:
     """Store LLM-analyzed Semantic Scholar article in DynamoDB with enhanced metadata."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(ARTICLES_TABLE)
-        
         timestamp = datetime.utcnow().isoformat()
-        
         # Extract data from article_data dict
         paper_id = article_data.get('paperId', 'unknown')
         article_title = article_data.get('title', 'Unknown Title')
@@ -1342,14 +1338,11 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'search_timestamp': timestamp,
             'article_url': article_data.get('url', ''),
             'citation_count': article_data.get('citation_count', 0),
-            'publisher': 'Semantic Scholar',
             'article_type': ', '.join(article_data.get('publication_types', [])) if article_data.get('publication_types') else 'Unknown',
             'fields_of_study': ', '.join(article_data.get('fields_of_study', [])) if article_data.get('fields_of_study') else '',
             'open_access_pdf_url': article_data.get('open_access_pdf', ''),
             'search_strategy_used': article_data.get('search_strategy_used', ''),
             'search_query_used': article_data.get('search_query_used', ''),
-            
-            # Paper Content (NEW - includes abstract)
             'abstract': article_data.get('abstract', ''),
             
             # Updated LLM Analysis Results (using new structure)
@@ -1361,8 +1354,6 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             # Legacy compatibility - set relevance score based on decision
             'relevance_score': Decimal('0.8') if article_data.get('llm_decision') == 'KEEP' else Decimal('0.2'),
             'matching_keywords': article_data.get('search_query_used', ''),
-            'rank_position': 1,
-            'total_results_found': 1
         }
         
         table.put_item(Item=item)
