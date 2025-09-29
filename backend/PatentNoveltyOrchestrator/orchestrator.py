@@ -690,12 +690,6 @@ def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
         print(f"Error in clean Semantic Scholar search: {e}")
         return None
 
-# Keep the old function for backward compatibility if needed elsewhere
-# def run_semantic_scholar_search(search_query: str, limit: int = 25, publication_types: str = None, 
-#                                fields_of_study: str = None, year_range: str = None):
-#     """Legacy function - use run_semantic_scholar_search_clean instead."""
-#     return run_semantic_scholar_search_clean(search_query, limit)
-
 @tool
 def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Execute intelligent LLM-driven scholarly article search for patent novelty assessment."""
