@@ -613,10 +613,7 @@ def store_patent_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str
 def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
     """Run clean Semantic Scholar search with rate limiting (1 request per second)."""
     try:
-        # Rate limiting: Semantic Scholar allows 1 request per second
         time.sleep(1.5)  # Slightly more conservative for refinement scenarios  
-        
-        # Get OAuth access token for Semantic Scholar Gateway
         response = requests.post( SEMANTIC_SCHOLAR_TOKEN_URL, data=f"grant_type=client_credentials&client_id={SEMANTIC_SCHOLAR_CLIENT_ID}&client_secret={SEMANTIC_SCHOLAR_CLIENT_SECRET}", headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=30 )
         
         if response.status_code != 200:
@@ -705,7 +702,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         - Avoid hyphens: use "machine learning" not "machine-learning" (hyphens yield no matches)
         - Note: No special operators (AND, OR, NOT, wildcards) are supported - use plain text only
 
-        TASK: Generate 3-5 strategic search queries that will find relevant academic papers for patent novelty assessment.
+        TASK: Generate 5 strategic search queries that will find relevant academic papers for patent novelty assessment.
 
         Consider:
         1. Single high-impact keywords vs multi-word combinations
@@ -715,18 +712,18 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
 
         RESPOND IN THIS EXACT JSON FORMAT:
         [
-            {
+            {{
                 "query": "pancreaticobiliary stent",
                 "rationale": "Direct search for the main medical device type"
-            },
-            {
+            }},
+            {{
                 "query": "biliary stricture treatment",
                 "rationale": "Search for the medical problem being addressed"
-            },
-            {
+            }},
+            {{
                 "query": "threaded stent deployment",
                 "rationale": "Focus on the specific deployment mechanism"
-            }
+            }}
         ]
         Generate 3-5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
 
@@ -756,10 +753,9 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             # Parse the response
             response_body = json.loads(response['body'].read())
             llm_response = response_body['content'][0]['text']
-            
             print(f"LLM Response: {llm_response[:200]}...")
             
-            # Try to parse JSON from LLM response
+            # Parse JSON from LLM response
             try:
                 # Extract JSON from the response (it might have extra text)
                 json_start = llm_response.find('[')
@@ -770,43 +766,51 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                     print(f"Successfully parsed {len(search_queries)} queries from LLM")
                 else:
                     print("Could not find JSON in LLM response")
-                    # Fall back to keyword-based approach
+
             except json.JSONDecodeError as je:
                 print(f"Failed to parse LLM JSON response: {je}")
-                # Fall back to keyword-based approach
                 
         except Exception as e:
             print(f"LLM call failed: {e}")
-            # Fall back to keyword-based approach
         
         # Fallback: Generate queries from keywords if LLM failed
         if not search_queries:
             print("Using fallback keyword-based query generation...")
             keyword_list = [k.strip() for k in keywords_string.split(',') if k.strip()]
+            num_keywords = len(keyword_list)
             
-            # Query 1: Primary device/technology terms
-            primary_terms = [kw for kw in keyword_list if any(tech_word in kw.lower() for tech_word in ['stent', 'device', 'system', 'apparatus', 'mechanism'])]
-            if primary_terms:
-                search_queries.append({
-                    "query": primary_terms[0],
-                    "rationale": f"Direct search for primary technology: {primary_terms[0]}"
-                })
+            # Individual searches (adaptive count)
+            if num_keywords <= 5:
+                for kw in keyword_list:
+                    search_queries.append({"query": kw, "rationale": f"Direct search for: {kw}"})
+            elif num_keywords <= 10:
+                for kw in keyword_list[:5]:
+                    search_queries.append({"query": kw, "rationale": f"Direct search for: {kw}"})
+            else:
+                for kw in keyword_list[:6]:
+                    search_queries.append({"query": kw, "rationale": f"Direct search for: {kw}"})
             
-            # Query 2: Medical/application domain
-            medical_terms = [kw for kw in keyword_list if any(med_word in kw.lower() for med_word in ['biliary', 'pancreatic', 'medical', 'clinical', 'treatment', 'therapy'])]
-            if medical_terms:
+            # Smart combinations
+            if num_keywords >= 2:
                 search_queries.append({
-                    "query": medical_terms[0],
-                    "rationale": f"Search for medical application domain: {medical_terms[0]}"
+                    "query": f"{keyword_list[0]} {keyword_list[1]}",
+                    "rationale": f"Combined search: {keyword_list[0]} {keyword_list[1]}"
                 })
+                
+                if num_keywords >= 3:
+                    search_queries.append({
+                        "query": f"{keyword_list[1]} {keyword_list[2]}",
+                        "rationale": f"Combined search: {keyword_list[1]} {keyword_list[2]}"
+                    })
+                
+                if num_keywords > 10:
+                    search_queries.append({
+                        "query": f"{keyword_list[3]} {keyword_list[7] if len(keyword_list) > 7 else keyword_list[-1]}",
+                        "rationale": f"Diverse combination search"
+                    })
             
-            # Query 3: First two keywords combined
-            if len(keyword_list) >= 2:
-                combined_query = f"{keyword_list[0]} {keyword_list[1]}"
-                search_queries.append({
-                    "query": combined_query,
-                    "rationale": f"Combined search for broader context: {combined_query}"
-                })
+            # Limit to 8 queries max
+            search_queries = search_queries[:8]
         
         if not search_queries:
             print("No search queries generated")
@@ -818,12 +822,11 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         
         # PHASE 2: Execute adaptive search with refinement
         print("Phase 2: Executing adaptive searches...")
-        
         all_relevant_papers = []
-        refinement_attempts = 0
-        max_refinements = 2  # Balanced for accuracy vs execution time
         
         for query_info in search_queries:
+            query_refinement_attempts = 0
+            max_query_refinements = 3  # Per query limit
             print(f"Executing search: '{query_info['query']}'")
             
             # Execute initial search with rate limiting
@@ -848,60 +851,65 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                         quality_assessment = assess_search_result_quality(articles, total_results, query_info, keywords_data)
                         print(f"Quality assessment: {quality_assessment['reason']}")
 
-                        if quality_assessment['action'] == 'refine' and refinement_attempts < max_refinements:
-                            print(f"Refining query (attempt {refinement_attempts + 1}/{max_refinements})")
+                        if quality_assessment['action'] == 'refine' and query_refinement_attempts < max_query_refinements:
+                            print(f"Refining query (attempt {query_refinement_attempts + 1}/{max_query_refinements})")
                             
                             # Generate refined query
                             refined_query = generate_refined_query(query_info, quality_assessment, keywords_data)
                             print(f"Original query: '{query_info['query']}'")
-                            print(f"Refined query: '{refined_query}'")
                             
-                            # Execute refined search with rate limiting
-                            refined_result = run_semantic_scholar_search_clean(
-                                search_query=refined_query,
-                                limit=20
-                            )
-                            
-                            if refined_result and isinstance(refined_result, dict) and 'content' in refined_result:
-                                refined_content = refined_result['content']
-                                if isinstance(refined_content, list) and len(refined_content) > 0:
-                                    refined_text_content = refined_content[0].get('text', '') if isinstance(refined_content[0], dict) else str(refined_content[0])
-                                    
-                                    try:
-                                        refined_data = json.loads(refined_text_content)
-                                        refined_articles = refined_data.get("data", [])
-                                        refined_total = refined_data.get("total", 0)
+                            # Check if refinement failed
+                            if refined_query == "REFINEMENT_FAILED":
+                                print("LLM refinement failed, proceeding with original results")
+                                current_articles = articles
+                                query_refinement_attempts += 1  # Count as attempt
+                            else:
+                                print(f"Refined query: '{refined_query}'")
+                                refined_result = run_semantic_scholar_search_clean(
+                                    search_query=refined_query,
+                                    limit=20
+                                )
+                                
+                                if refined_result and isinstance(refined_result, dict) and 'content' in refined_result:
+                                    refined_content = refined_result['content']
+                                    if isinstance(refined_content, list) and len(refined_content) > 0:
+                                        refined_text_content = refined_content[0].get('text', '') if isinstance(refined_content[0], dict) else str(refined_content[0])
                                         
-                                        print(f"Refined query '{refined_query}': Found {len(refined_articles)} papers (total: {refined_total})")
-                                        
-                                        # Use refined results if they're better
-                                        if len(refined_articles) > len(articles) or refined_total < total_results:
-                                            current_articles = refined_articles
-                                            query_info['query'] = refined_query  # Update for tracking
-                                            print("Using refined results")
-                                        else:
-                                            current_articles = articles
-                                            print("Keeping original results (refinement didn't improve)")
+                                        try:
+                                            refined_data = json.loads(refined_text_content)
+                                            refined_articles = refined_data.get("data", [])
+                                            refined_total = refined_data.get("total", 0)
                                             
-                                        refinement_attempts += 1
-                                        
-                                    except json.JSONDecodeError:
-                                        print("Failed to parse refined search results, using original")
+                                            print(f"Refined query '{refined_query}': Found {len(refined_articles)} papers (total: {refined_total})")
+                                            
+                                            # Use refined results if they're better
+                                            if len(refined_articles) > len(articles) or refined_total < total_results:
+                                                current_articles = refined_articles
+                                                query_info['query'] = refined_query  # Update for tracking
+                                                print("Using refined results")
+                                            else:
+                                                current_articles = articles
+                                                print("Keeping original results (refinement didn't improve)")
+                                                
+                                            query_refinement_attempts += 1
+                                            
+                                        except json.JSONDecodeError:
+                                            print("Failed to parse refined search results, using original")
+                                            current_articles = articles
+                                    else:
+                                        print("No content in refined results, using original")
                                         current_articles = articles
                                 else:
-                                    print("No content in refined results, using original")
+                                    print("Refined search failed, using original results")
                                     current_articles = articles
-                            else:
-                                print("Refined search failed, using original results")
-                                current_articles = articles
                         else:
                             current_articles = articles
                             if quality_assessment['action'] == 'refine':
-                                print(f"Max refinements ({max_refinements}) reached, proceeding with current results")
+                                print(f"Max refinements ({max_query_refinements}) reached, proceeding with current results")
                         
                         # Track refinement statistics
-                        if refinement_attempts > 0:
-                            print(f"Refinement summary for '{query_info['query']}': {refinement_attempts} attempts made")
+                        if query_refinement_attempts > 0:
+                            print(f"Refinement summary for '{query_info['query']}': {query_refinement_attempts} attempts made")
                         
                         # Evaluate each paper for relevance using LLM
                         for article in current_articles:
@@ -918,7 +926,6 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                                 'fields_of_study': article.get('fieldsOfStudy', []),
                                 'publication_types': article.get('publicationTypes', []),
                                 'open_access_pdf': extract_open_access_pdf(article.get('openAccessPdf')),
-
                                 'search_query_used': query_info['query'],
                                 'matching_keywords': query_info['query']
                             }
@@ -963,7 +970,6 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             print(f"{i}. {paper['title'][:70]}... (Citations: {paper['citation_count']})")
             print(f"Impact: {paper['novelty_impact_assessment']}")
             print()
-        
         return final_papers
         
     except Exception as e:
@@ -1055,75 +1061,54 @@ def assess_search_result_quality(articles: List[Dict], total_results: int, query
         }
 
 def generate_refined_query(original_query_info: Dict, quality_assessment: Dict, keywords_data: Dict) -> str:
-    """Generate a refined search query based on quality assessment."""
+    """Use LLM to intelligently refine search query based on quality issues."""
     try:
+        # Extract context
         original_query = original_query_info['query']
-        reason = quality_assessment['reason']
+        problem_reason = quality_assessment['reason']
+        invention_title = keywords_data.get('title', '')
         keywords_string = keywords_data.get('keywords', '')
-        keyword_list = [k.strip() for k in keywords_string.split(',') if k.strip()]
         
-        if 'too specific' in reason.lower() or 'no results' in reason.lower():
-            # Make query broader - use fewer terms or more general terms
-            query_words = original_query.split()
-            if len(query_words) > 1:
-                # Use only the first word
-                refined_query = query_words[0]
-            else:
-                # Try a different keyword from the list
-                current_keyword = original_query.strip()
-                try:
-                    current_index = keyword_list.index(current_keyword)
-                    if current_index + 1 < len(keyword_list):
-                        refined_query = keyword_list[current_index + 1]
-                    else:
-                        refined_query = keyword_list[0] if keyword_list else original_query
-                except ValueError:
-                    refined_query = keyword_list[0] if keyword_list else original_query
-                    
-        elif 'too broad' in reason.lower() or 'too many' in reason.lower():
-            # Make query more specific - add more terms or use more specific terms
-            query_words = original_query.split()
-            if len(query_words) == 1 and len(keyword_list) > 1:
-                # Add another keyword
-                current_keyword = query_words[0]
-                try:
-                    current_index = keyword_list.index(current_keyword)
-                    if current_index + 1 < len(keyword_list):
-                        refined_query = f"{current_keyword} {keyword_list[current_index + 1]}"
-                    else:
-                        refined_query = f"{current_keyword} {keyword_list[0]}"
-                except ValueError:
-                    refined_query = f"{current_keyword} {keyword_list[0]}" if keyword_list else original_query
-            else:
-                refined_query = original_query  # Keep as is if already multi-word
-                
-        elif 'lack abstracts' in reason.lower():
-            # Try different terms that might yield higher quality papers
-            # Look for more academic/technical terms
-            academic_terms = [kw for kw in keyword_list if any(academic_word in kw.lower() for academic_word in ['analysis', 'study', 'research', 'method', 'technique', 'approach'])]
-            if academic_terms:
-                refined_query = academic_terms[0]
-            else:
-                refined_query = original_query
-                
-        else:
-            # Default: try a different keyword
-            if keyword_list:
-                current_keyword = original_query.split()[0]
-                try:
-                    current_index = keyword_list.index(current_keyword)
-                    next_index = (current_index + 1) % len(keyword_list)
-                    refined_query = keyword_list[next_index]
-                except ValueError:
-                    refined_query = keyword_list[0]
-            else:
-                refined_query = original_query
-        
+        # Create LLM refinement prompt
+        refinement_prompt = f"""You are a scholarly article search expert. The previous search query had issues and needs refinement.
+
+        INVENTION CONTEXT:
+        Title: {invention_title}
+        Available Keywords: {keywords_string}
+
+        PREVIOUS QUERY PROBLEM:
+        Original Query: "{original_query}"
+        Issue: {problem_reason}
+
+        TASK: Generate ONE improved search query that fixes this specific issue.
+
+        REFINEMENT STRATEGIES:
+        - If "no results" or "too specific": Make broader, use fewer/different terms
+        - If "too many results" or "too broad": Make more specific, add constraining terms  
+        - If "few results": Try alternative keywords or synonyms
+        - If "lack abstracts": Use more academic/research-focused terms
+
+        RESPOND WITH ONLY THE NEW QUERY (no explanation):"""
+
+        # Call Claude to generate refined query
+        bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": refinement_prompt}]
+        }
+        response = bedrock_client.invoke_model(
+            modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            body=json.dumps(request_body)
+        )
+        response_body = json.loads(response['body'].read())
+        refined_query = response_body['content'][0]['text'].strip()
+        refined_query = refined_query.strip('"').strip("'")
         return refined_query
         
     except Exception as e:
-        print(f"Error generating refined query: {e}")
-        return original_query_info['query']
+        print(f"Error generating LLM-refined query: {e}")
+        return "REFINEMENT_FAILED"  # Special marker
 
 def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_context: Dict) -> Dict[str, str]:
     """Internal LLM evaluation function (not a tool)"""
@@ -1190,7 +1175,6 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         for attempt in range(max_retries):
             try:
                 bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
-                
                 # Prepare the request for Claude
                 request_body = {
                     "anthropic_version": "bedrock-2023-05-31",
@@ -1202,7 +1186,6 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                         }
                     ]
                 }
-                
                 # Make the LLM call
                 response = bedrock_client.invoke_model(
                     modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
@@ -1287,10 +1270,9 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(ARTICLES_TABLE)
         timestamp = datetime.utcnow().isoformat()
-        # Extract data from article_data dict
         paper_id = article_data.get('paperId', 'unknown')
         article_title = article_data.get('title', 'Unknown Title')
-        
+
         # Use paperId as the sort key
         item = {
             'pdf_filename': pdf_filename,
@@ -1305,7 +1287,6 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'article_type': ', '.join(article_data.get('publication_types', [])) if article_data.get('publication_types') else 'Unknown',
             'fields_of_study': ', '.join(article_data.get('fields_of_study', [])) if article_data.get('fields_of_study') else '',
             'open_access_pdf_url': article_data.get('open_access_pdf', ''),
-
             'search_query_used': article_data.get('search_query_used', ''),
             'abstract': article_data.get('abstract', ''),
             
@@ -1319,7 +1300,6 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'relevance_score': Decimal('0.8') if article_data.get('llm_decision') == 'KEEP' else Decimal('0.2'),
             'matching_keywords': article_data.get('search_query_used', ''),
         }
-        
         table.put_item(Item=item)
         return f"Successfully stored LLM-analyzed article {paper_id}: {article_title} (Decision: {article_data.get('llm_decision', 'UNKNOWN')})"
         
