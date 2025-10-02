@@ -1600,11 +1600,17 @@ async def handle_keyword_generation(payload):
         async for event in keyword_generator.stream_async(enhanced_prompt):
             if "data" in event:
                 full_response += event["data"]
+            elif "output" in event:
+                # Handle output events from Strands agent
+                full_response += str(event["output"])
             elif "current_tool_use" in event and event["current_tool_use"].get("name"):
                 yield {"tool_name": event["current_tool_use"]["name"], "agent": "keyword_generator"}
             elif "error" in event:
                 yield {"error": event["error"]}
                 return
+            elif "content" in event:
+                # Handle content events
+                full_response += str(event["content"])
         
         # Yield the complete response once streaming is done
         if full_response.strip():
@@ -1613,6 +1619,10 @@ async def handle_keyword_generation(payload):
             yield {"error": "No response generated from keyword generator agent"}
                 
     except Exception as e:
+        print(f"Keyword generation error: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
         yield {"error": f"Error in keyword generation: {str(e)}"}
 
 async def handle_patentview_search(payload):
@@ -1650,6 +1660,9 @@ async def handle_patentview_search(payload):
         async for event in patentview_search_agent.stream_async(enhanced_prompt):
             if "data" in event:
                 full_response += event["data"]
+            elif "output" in event:
+                # Handle output events from Strands agent
+                full_response += str(event["output"])
             elif "current_tool_use" in event and event["current_tool_use"].get("name"):
                 tool_name = event["current_tool_use"]["name"]
                 yield {"tool_name": tool_name, "agent": "patentview_search"}
@@ -1658,6 +1671,9 @@ async def handle_patentview_search(payload):
             elif "error" in event:
                 yield {"error": event["error"]}
                 return
+            elif "content" in event:
+                # Handle content events
+                full_response += str(event["content"])
         
         if full_response.strip():
             yield {"response": full_response, "search_metadata": search_metadata, "agent": "patentview_search"}
@@ -1665,6 +1681,10 @@ async def handle_patentview_search(payload):
             yield {"error": "No response generated from PatentView search agent"}
                 
     except Exception as e:
+        print(f"PatentView search error: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
         yield {"error": f"Error in PatentView search: {str(e)}"}
 
 async def handle_scholarly_search(payload):
