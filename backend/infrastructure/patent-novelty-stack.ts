@@ -252,8 +252,8 @@ export class PatentNoveltyStack extends cdk.Stack {
 
     // Instructions for Agent Runtime Environment Variables
     new cdk.CfnOutput(this, 'AgentRuntimeEnvironmentVariables', {
-      value: 'Set these environment variables in Agent Core console: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL, GATEWAY_URL, SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL, SEMANTIC_SCHOLAR_GATEWAY_URL',
-      description: 'Required environment variables for Agent Runtime Gateway configuration (USPTO and Semantic Scholar)',
+      value: 'Set these environment variables in Agent Core console: PATENTVIEW_CLIENT_ID, PATENTVIEW_CLIENT_SECRET, PATENTVIEW_TOKEN_URL, PATENTVIEW_GATEWAY_URL, SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL, SEMANTIC_SCHOLAR_GATEWAY_URL',
+      description: 'Required environment variables for Agent Runtime Gateway configuration (PatentView OAuth and Semantic Scholar)',
     });
   }
 }

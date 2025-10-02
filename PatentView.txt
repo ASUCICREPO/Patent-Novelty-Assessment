@@ -1,0 +1,690 @@
+
+
+PatentSearch API Reference
+Introduction
+The PatentsView PatentSearch API is intended to inspire the exploration and enhanced understanding of US intellectual property (IP) and innovation systems. The database driving the API is regularly updated and integrates the best available tools for inventor disambiguation and data quality control. We hope researchers and developers alike will explore the API to discover people and companies and to visualize trends and patterns across the US innovation landscape.
+
+tip
+Throughout this document, whenever the {} syntax is used, users are expected to replace it with valid values.
+
+Authentication
+API Keys
+The PatentSearch API uses API Keys to authenticate requests but there are no specific authorization enforced. i.e. if you have an API Key you can access all publicly available endpoints.
+
+All API requests must include the header X-Api-Key: {your_key}
+
+info
+Currently, the API Keys do not expire but this may change in the future. If this changes, we will update the documentation here as well as communicate changes with the users via the patentsview website and the mailing list.
+
+tip
+If users previously used a browser to run API queries, due to the API key enforcement users will not be able use the same workflow. Alternatively either a standalone applications (such as Postman) or browser extension (such as RESTED in Firefox/Chrome) can be used to send one-off queries.
+
+Usage Limits
+Each API Key is allowed 45 requests/minute. If you exceed this limit, your API requests will fail. See HTTP Response Code for more details
+
+Request an API Key
+You can obtain an API key by submitting a request via the PatentsView Help Center. Each user is allowed only one API Key. If you lose your API key, please request a new one with same email address and name.
+
+warning
+Please do not request/use multiple keys at the same time. If you do, your access may be revoked.
+
+API Request
+Structure of Request
+An API request is made of 4 components:
+
+API Key (Discussed above)
+The requested endpoint (See Endpoints Dictionary)
+Request method
+Request parameters
+Request Method
+All PatentSearch API endpoints support two methods: GET and POST. Both GET and POST use/require the same set of parameters.
+
+info
+The PatentsView PatentSearch API endpoints don't allow users to submit data to our databases. The POST method is another mechanism for posting query parameters, not for adding new records.
+
+Request Parameters
+There are 4 parameters that can be provided in a request. Each of the components is fully specified in the API Query Language section. Briefly:
+
+Query String(q) - used to filter data
+Field list (f) - used to specify fields to return
+Sorting (s) - used to specify ordering
+Options (o) - used to specify additional options and pagination
+Defaults
+Each API endpoint is configured with appropriate defaults for the f, s and o parameters. When a user does not include one or more these parameters, the defaults will be used. The q parameter is without defaults and is mandatory.
+
+By default, the API will return 100 records. This can be increased up to 1,000. See Options (o) section.
+The default for the s parameter the "ID" field of that particular endpoint in ascending order. E.g. patent_id is the default sort field for /patent endpoint. The full list of default sort fields can be found in the Endpoints Dictionary below.
+API Response
+HTTP Response Codes
+Response Code	Description	Potential Resolution
+200	Request Successfully Completed	
+400	Request Invalid	Review X-Status-Reason and X-Status-Reason-Code response headers for more details
+403	Forbidden	Verify that your API key is correctly entered and provided in your request headers with the key X-Api-Key
+404	Resource not found	Verify the endpoint URL is correct. If using "GET" resource locator, verify the supplied ID is valid
+429	Too many requests	Your application has exceeded the usage limits. Use Retry-After response header to identify wait duration before making the next request
+500	Server Error	This is typically an error on our servers. Check the Service Status page and/or submit a support request
+Response Structure
+Every API response will have the following structure:
+
+error: a boolean flag indicating if the request succeeded or failed
+count: total number of records returned in this response
+total_hits: total number of records that matched the current query
+...: The final and the main data component on the response will be based on the endpoint used. (See individual Endpoints for their respective response keys)
+{
+  "error": "boolean",
+  "count": "integer",
+  "total_hits": "integer",
+  ...
+}
+
+API Query Language
+Query String (q)
+Query String Format
+The query string is always a single JSON object: {}, with properties and contained objects that determine the criteria for the query.
+
+tip
+Note: To aid in understanding the structure of the queries below and while creating your own, it is helpful to use JSON validators and visual parsers, like http://www.jsoneditoronline.org/ and http://jsonlint.com/.
+
+Syntax
+q={criterion}
+criterion
+    pair
+    "_eq" : {simple_pair}
+    "_neq" : {simple_pair}
+    "_gt" : {simple_pair}
+    "_gte" : {simple_pair}
+    "_lt" : {simple_pair}
+    "_lte" : {simple_pair}
+    "_begins" : {simple_pair}
+    "_contains" : {simple_pair}
+    "_text_all" : {simple_pair}
+    "_text_any" : {simple_pair}
+    "_text_phrase" : {simple_pair}
+    "_not" : {criterion}
+    "_and" : [{criterion}, ...]
+    "_or" : [{criterion}, ...]
+pair
+    simple_pair
+    "field" : [value, ...]
+simple_pair
+    "field" : value
+
+tip
+When working with text data fields, wherever possible, we recommend using _text* operators over the _contains and _begins operator. The text operators treat these fields as full text data and hence are more performant. The "full text" fields are identified in the API Endpoint specification with the value "text" for the data type.
+
+Single Criterion (Equals operator)
+The basic criterion, which checks for equality, has the format: {<field>:<value>}, where <field> is the name of a database field and <value> is the value the field will be compared to for equality (Each API Endpoint section contains a list of the data fields that can be selected for inclusion in output datasets)
+
+info
+For example, this query string will return the patent with the patent number of 7861317:
+
+https://search.patentsview.org/api/v1/patent/?q={"patent_id":"7861317"}
+
+Comparison Operators
+Comparison operators can be used to compare a field to a value using comparators other than equality. The available comparison operators are:
+
+Integer, float, date, and string:
+_eq — equal to
+_neq — not equal to
+_gt — greater than
+_gte — greater than or equal to
+_lt — less than
+_lte — less than or equal to
+String:
+_begins — the string begins with the value string
+_contains — the string contains the value string
+Full text:
+_text_all — the text contains all the words in the value string
+_text_any — the text contains any of the words in the value string
+_text_phrase — the text contains the exact phrase of the value string
+To specify a comparison operator for a criterion, nest the element containing the criterion inside an element that uses the comparison operator.
+
+info
+For example, this query string will return all patents that have a grant date on or after January 9, 2007:
+
+https://search.patentsview.org/api/v1/patent/?q={"_gte":{"patent_date":"2007-01-09"}}
+
+tip
+The query string q={"_eq":{"patent_date":"2007-01-09"}} is functionally equivalent to q={"patent_date":"2007-01-09"}
+
+Negation
+Negation does the opposite of the specified comparison. To specify the negation operator for a criterion, nest the element containing the criterion inside an element that uses the negation operator: _not.
+
+info
+For example, this query string will return all patents that are not design patents:
+
+https://search.patentsview.org/api/v1/patent/?q={"_not":{"patent_type":"design"}}
+
+Value Arrays
+If the value of a criterion is an array, then the query will accept a match of any one of the array values.
+
+info
+For example, this query will return all patents that have "Whitney" or "Hopper" as an inventor:
+
+https://search.patentsview.org/api/v1/patent/?q={"inventors.inventor_name_last":["Whitney","Hopper"]}
+
+
+Join (Conjunction) Operators
+Multiple criteria can be added to a query using a join operator (_and, _or) and putting the criteria in an array using square brackets ("[" and "]").
+
+info
+The following has multiple criteria, and will return patents that have "Whitney" as an inventor and a grant date of October 6, 1981:
+
+https://search.patentsview.org/api/v1/patent/?q={"_and":[{"inventors.inventor_name_last":"Whitney"},{"patent_date":"1981-10-06"}]}
+
+
+
+Complex Combinations
+These elements, criteria, arrays, and operators can be combined to define robust queries. A few examples:
+
+info
+Patents with a grant date in 2007:
+
+https://search.patentsview.org/api/v1/patent/?q={"_and":[{"_gte":{"patent_date":"2007-01-01"}},{"_lte":{"patent_date":"2007-12-31"}}]}
+
+
+info
+Patents with an inventor with the last name of "Whitney" or "Hopper" and not a design patent and with a grant date in 2007:
+
+https://search.patentsview.org/api/v1/patent/?q={"_and":[{"inventors.inventor_name_last":["Whitney","Hopper"]},{"_not":{"patent_type":"design"}},{"_gte":{"patent_date":"2007-01-01"}},{"_lte":{"patent_date":"2007-12-31"}}]}
+
+
+info
+Patents with an inventor with the last name of "Whitney" or "Hopper" or with a title that contains "cotton" or "gin" or "COBOL":
+
+https://search.patentsview.org/api/v1/patent/?q={"_or":[{"inventors.inventor_name_last":["Whitney","Hopper"]},{"_text_any":{"patent_title":"COBOL cotton gin"}}]}
+
+
+info
+Patents with an inventor with the last name of "Whitener" and with "cotton gin" in the title, or with an inventor with the last name of "Heath" and with "COBOL" in the title:
+
+https://search.patentsview.org/api/v1/patent/?q={"_or":[{"_and":[{"inventors.inventor_name_last":"Whitener"},{"_text_phrase":{"patent_title":"cotton gin"}}]},{"_and":[{"inventors.inventor_name_last":"Heath"},{"_text_all":{"patent_title":"COBOL"}}]}]}
+
+
+Formats
+Dates are expected to be in ISO 8601 date format: YYYY-MM-DD.
+Nested fields follow the format <field>.<nested_field>
+
+Field List (f)
+Field List Format
+The field list parameter is a JSON array of the names of the fields to be returned by the query. If not provided, the API will return a default set of fields. Each API Endpoint section contains a list of the data fields that can be selected for inclusion in output datasets.
+
+info
+The following example would return the patent numbers, inventor names, and date patent was granted that meet the query criteria:
+
+f=["patent_id","inventors.inventor_name_last","patent_date"]
+
+tip
+Note that Nested fields have the format {entity}.{field_name}. In the endpoint specification below, these fields are shown in a containers within the parent endpoint.
+
+Sorting (s)
+Sort Parameter Format
+The sort parameter is a JSON formatted array of objects that specifies the sort order for the returned results. If empty or not provided, the default sort order will be ascending by the endpoint's primary field or fields. These default sort fields are specified in the Endpoints Section below. Each object in the array should be a pair, with the pair's key being one of the endpoint fields, and the value is either asc or desc, to indicate ascending or descending sort, respectively.
+
+info
+Examples:
+
+s=[{"patent_num_times_cited_by_us_patents":"desc"}]: Primary sort is by patent_num_times_cited_by_us_patents in descending order, so that patents with the most citations by other US patents will be first, and those with the fewest citations by other US patents will be last.
+s=[{"patent_date":"desc"},{"patent_id":"asc"}]: Primary sort is by patent_date in descending order, secondarily by patent_id in ascending order.
+s=[{"citation_sequence":"desc"}]: Primary sort is by citation_sequence in ascending order, so that citations are returned in the ordered they were cited.
+s=[{"citation_date":"desc"},{"patent_id":"asc"}]: Primary sort is by citation_date in descending order, secondarily by patent_id in ascending order.
+Options (o)
+The options parameter is a JSON formatted object of options to modify the query results. All options keywords are optional. Available options are:
+
+Search Options
+exclude_withdrawn: The exclude_withdrawn option is only used by the Patent endpoint and determines whether information for withdrawn patents will be excluded from the results. It defaults to true. If the query includes the condition {"withdrawn": true}, this option will be ignored. This option is ignored by all other endpoints.
+pad_patent_id: The pad_patent_id option is used in endpoints that include patent_id as a valid field. It determines whether the API will pad the patent_id field to a standard length of 8 characters by left-appending 0s to the numeric portion of the ID. It defaults to false. This transformation applies both to how patent_id is presented in the response as well as how it is interpreted by the query, sort order, and pagination options.
+info
+As an example, with pad_patent_id set to true, the patent_ids "7245826" and "PP3990" will be treated and displayed as "07245826" and "PP003990", respectively. The padded form used when pad_patent_id is set to true provides a more natural and intuitive sorting and filtering behavior for patents that have different numbers of nonzero digits. For example, with pad_patent_id set to true, a range query or sort based on patent_id will treat patent "D0999999" as before/lower than patent "D1000000" instead of treating patent "D1000000" as before/lower than patent "D999999". The un-padded form used when pad_patent_id is set to false or omitted matches the patent_id as displayed in other PatentsView data products such as the bulk data download tables.
+
+Pagnation Options
+size: The size option specifies the number of results per page; it defaults to 100 and has a maximum of 1,000. Values greater than 1,000 will be treated as 1,000.
+after: The after option implements Cursor Pagination. If included, the value should be a valid value (or list of values) from the field(s) specified in the sort option. To get continuous pages of results, users will need to supply the value(s) from the last record in the previous query to the subsequent query. The number and order of values provided should match the number and order of fields used in the Sort parameter.
+info
+As an example, if the Sort parameter is s=[{"patent_id":"asc"}], the Option parameter for your first query might look like o={"size":100}. This would return the first 100 records sorted by patent id in ascending order. The Option parameter for the second query might look like o={"size":100, "after":"11191202"} where "11191202" is the last patent_id value from the previous query. This would return the next 100 records. If the Sort parameter were s=[{"patent_id":"asc"},{"claim_sequence":"desc"}], the second query would have an Option parameter that would look like 0={"size":100, "after":["12050006",2]}, where "12050006" is the patent_id from the last record of the previous query, and 2 is the claim_sequence value from the last record of the previous query. This would return the next 100 records; in this case, the next record would be the one where patent_id = "12050006" and claim_sequence = 1.
+
+Endpoint Dictionary
+Below is a list of publically available endpoints along with a list of fields corresponding to each endpoint. Each of these endpoints can be queried using the API Query Language. The fields available for each endpoint can also be found on the Swagger Page under the corresponding endpoint and schema dropdown items.
+
+tip
+Some endpoints support the ability to use the GET method to get resources by ID i.e. instead of supplying field query, users can lookup a resource by ID. The individual endpoints that support this will have an additional GET specification with the id required show in {}.
+
+Granted Patent Endpoints
+Patent
+GET / POST /api/v1/patent/response key: patents
+Field Name	Description	Data Type
+patent_id	Patent number.	string
+patent_title	Title of patent.	text
+patent_date	Date when patent was granted.	date
+patent_year	Year when patent was granted.	integer
+patent_type	Category of patent. e.g. "utility", "design", etc.	string
+withdrawn	Whether a patent has been withdrawn or not.	boolean
+patent_abstract	The abstract text of the patent.	text
+wipo_kind	WIPO document kind codes (http://www.uspto.gov/learning-and-resources/support-centers/electronic-business-center/kind-codes-included-uspto-patent).	string
+gov_interest_statement	Text of declaration of government interest.	text
+patent_detail_desc_length	The Length of the description text in characters.	integer
+patent_earliest_application_date	The earliest filing date among all applications from which the patent claims priority.	date
+patent_num_us_patents_cited	Number of U.S. patents referenced (cited) by this patent.	integer
+patent_num_us_applications_cited	Number of U.S. patent applications referenced (cited) by this patent.	integer
+patent_num_foreign_documents_cited	Count of foreign patent documents cited by this patent.	integer
+patent_num_total_documents_cited	Total number of documents cited by the patent, including U.S. and foreign patent references and possibly non-patent literature.	integer
+patent_num_times_cited_by_us_patents	Number of times subsequent U.S. patents have cited this patent.	integer
+patent_processing_days	Total days of prosecution from earliest application filing date to the official date of grant.	integer
+patent_term_extension	An extension to the grant term period in days.	integer
+patent_cpc_current_group_average_patent_processing_days	Average number of days (from earliest application filing to grant) for patents that share the same current CPC group.	integer
+patent_uspc_current_mainclass_average_patent_processing_days	Average number of days (from earliest application filing to grant) for patents that share the same current USPC main class.	integer
+Nested Fields
+applicants
+Field Name	Description	Data Type
+applicant_name_first	First name, if applicant is an individual.	text
+applicant_name_last	Last name, if applicant is an individual.	text
+applicant_organization	Organization name if applicant is an organization.	text
+applicant_sequence	Order of the applicants on the patent application, beginning with zero; values for this field begin at 1.	integer
+applicant_type	Type of applicant (applicant or applicant-inventor).	string
+location_id	Unique location ID.	string
+applicant_designation	Designation of the applicant.	string
+application
+assignees
+Field Name	Description	Data Type
+assignee	An API request URL for additional details of this assignee.	string
+assignee_id	Unique identifier for the assignee.	string
+assignee_type	Classification of assignee (1 - Unassigned, 2 - US Company or Corporation, 3 - Foreign Company or Corporation, 4 - US Individual, 5 - Foreign Individual, 6 - US Federal Government, 7 - Foreign Government, 8 - US County Government, 9 - US State Government. Note: A "1" appearing before any of these codes signifies part interest.	string
+assignee_individual_name_first	First name, if assignee is an individual.	text
+assignee_individual_name_last	Last name, if assignee is an individual.	text
+assignee_organization	Organization name if assignee is an organization.	text
+assignee_city	City where the assignee is located.	text
+assignee_state	State where the assignee is located.	text
+assignee_country	Country where the assignee is located.	text
+assignee_location_id	Identifier referencing the assignee’s location record.	string
+assignee_sequence	Order in which assignee appears in patent file; values for this field begin at 0.	integer
+attorneys
+botanic
+cpc_at_issue
+cpc_current
+examiners
+figures
+foreign_priority
+gov_interest_contract_award_numbers
+gov_interest_organizations
+granted_pregrant_crosswalk
+inventors
+Field Name	Description	Data Type
+inventor	An API request URL for additional details of this inventor.	string
+inventor_id	Unique identifier for the inventor in the database.	string
+inventor_name_first	Inventor’s given (first) name, if an individual.	text
+inventor_name_last	Inventor’s given (last) name, if an individual.	text
+inventor_gender_code	A code representing the most likely gender of the inventor, based on the individual's name and country of residence. (F = female, M = male, U = no gender attributed)	string
+inventor_city	City where the inventor resides or is located.	text
+inventor_state	State where the inventor resides or is located.	text
+inventor_country	Country where the inventor resides or is located.	text
+inventor_location_id	Identifier referencing the inventor’s location record.	string
+inventor_sequence	Order in which inventor appears in patent file; values for this field begin at 0.	integer
+ipcr
+pct_data
+us_related_documents
+us_term_of_grant
+uspc_at_issue
+wipo
+default sort: [{"patent_id":"asc"}]
+
+US Patent Citations
+GET / POST /api/v1/patent/us_patent_citation/response key: us_patent_citations
+US Application Citations
+GET / POST /api/v1/patent/us_application_citation/response key: us_application_citations
+Foreign Citations
+GET / POST /api/v1/patent/foreign_citation/response key: foreign_citations
+Other Reference
+GET / POST /api/v1/patent/other_reference/response key: other_references
+Related Application Text (Patent)
+GET / POST /api/v1/patent/rel_app_text/response key: rel_app_texts
+Pre-grant Publication Endpoints
+Publication
+GET / POST /api/v1/publication/response key: publications
+Related Application Text (Publication)
+GET / POST /api/v1/publication/rel_app_text/response key: rel_app_texts
+Common Endpoints
+The endpoints in this section relate to both granted patent and pregrant publications. These function as lookup endpoints for entities disambiguated by PatentsView disambiguation algorithm.
+
+Assignee
+GET / POST /api/v1/assignee/response key: assignees
+Attorney
+GET / POST /api/v1/patent/attorney/response key: attorneys
+Inventor
+GET / POST /api/v1/inventor/response key: inventors
+Location
+GET / POST /api/v1/location/response key: locations
+Classification Details
+CPC Class/Subclass/Group
+GET / POST /api/v1/cpc_class/response key: cpc_classes
+GET / POST /api/v1/cpc_subclass/response key: cpc_subclasses
+GET / POST /api/v1/cpc_group/response key: cpc_groups
+
+IPC
+GET / POST /api/v1/ipc/response key: ipcr
+USPC Mainclass/Subclass
+GET / POST /api/v1/uspc_mainclass/response key: uspc_mainclasses
+GET / POST /api/v1/uspc_subclass/response key: uspc_subclasses
+WIPO
+GET / POST /api/v1/wipo/response key: wipo
+Patent Text Endpoints
+Brief Summary Text
+GET / POST /api/v1/g_brf_sum_text/ response key: g_brf_sum_texts
+Claim
+GET / POST /api/v1/g_claim/ response key: g_claims
+Detail Description Text
+GET / POST /api/v1/g_detail_desc_text/ response key: g_detail_desc_texts
+Drawing Description Text
+GET / POST /api/v1/g_draw_desc_text/ response key: g_draw_desc_texts
+Publication Text Endpoints
+Brief Summary Text
+GET / POST /api/v1/pg_brf_sum_text/ response key: pg_brf_sum_texts
+Claim
+GET / POST /api/v1/pg_claim/ response key: pg_claims
+Detail Description Text
+GET / POST /api/v1/pg_detail_desc_text/ response key: pg_detail_desc_texts
+Drawing Description Text
+GET / POST /api/v1/pg_draw_desc_text/ response key: pg_draw_desc_texts
+Previous
+PatentSearch API Reference
+
+
+Swagger:
+Patent
+
+
+GET
+/api/v1/patent/
+
+Parameters
+Try it out
+Name	Description
+f
+string
+(query)
+Default value : ["patent_id", "patent_title", "patent_date"]
+
+["patent_id", "patent_title", "patent_date"]
+o
+string
+(query)
+Default value : { "size": 100, "pad_patent_id": false, "exclude_withdrawn": true }
+
+{ "size": 100, "pad_patent_id": false, "exclude_withdrawn": true }
+q *
+string
+(query)
+q
+s
+string
+(query)
+Default value : [{"patent_id": "asc" }]
+
+[{"patent_id": "asc" }]
+Responses
+Code	Description	Links
+200	
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "error": false,
+  "count": 100,
+  "total_hits": 10000,
+  "patents": [
+    {
+      "applicants": [
+        {
+          "applicant_designation": "keyword",
+          "applicant_name_first": "text",
+          "applicant_name_last": "text",
+          "applicant_organization": "text",
+          "applicant_sequence": 1,
+          "applicant_type": "keyword",
+          "location_id": "keyword"
+        }
+      ],
+      "application": [
+        {
+          "application_id": "keyword",
+          "application_type": "keyword",
+          "filing_date": "1976-01-06",
+          "filing_type": "keyword",
+          "rule_47_flag": true,
+          "series_code": "keyword"
+        }
+      ],
+      "assignees": [
+        {
+          "assignee": "keyword",
+          "assignee_type": "keyword",
+          "assignee_individual_name_first": "text",
+          "assignee_individual_name_last": "text",
+          "assignee_organization": "text",
+          "assignee_city": "text",
+          "assignee_state": "text",
+          "assignee_country": "text",
+          "assignee_sequence": 1
+        }
+      ],
+      "attorneys": [
+        {
+          "attorney_id": "keyword",
+          "attorney_name_first": "text",
+          "attorney_name_last": "text",
+          "attorney_organization": "text",
+          "attorney_sequence": 1
+        }
+      ],
+      "botanic": [
+        {
+          "latin_name": "keyword",
+          "variety": "keyword"
+        }
+      ],
+      "cpc_at_issue": [
+        {
+          "cpc_class": "keyword",
+          "cpc_class_id": "keyword",
+          "cpc_group": "keyword",
+          "cpc_group_id": "keyword",
+          "cpc_section": "keyword",
+          "cpc_sequence": 1,
+          "cpc_subclass": "keyword",
+          "cpc_subclass_id": "keyword",
+          "cpc_type": "keyword"
+        }
+      ],
+      "cpc_current": [
+        {
+          "cpc_class": "keyword",
+          "cpc_class_id": "keyword",
+          "cpc_group": "keyword",
+          "cpc_group_id": "keyword",
+          "cpc_section": "keyword",
+          "cpc_sequence": 1,
+          "cpc_subclass": "keyword",
+          "cpc_subclass_id": "keyword",
+          "cpc_type": "keyword"
+        }
+      ],
+      "examiners": [
+        {
+          "art_group": "keyword",
+          "examiner_first_name": "text",
+          "examiner_id": "keyword",
+          "examiner_last_name": "text",
+          "examiner_role": "keyword"
+        }
+      ],
+      "figures": [
+        {
+          "num_figures": 1,
+          "num_sheets": 1
+        }
+      ],
+      "foreign_priority": [
+        {
+          "filing_date": "1976-01-06",
+          "foreign_application_id": "keyword",
+          "foreign_country_filed": "keyword",
+          "priority_claim_kind": "keyword",
+          "priority_claim_sequence": 1
+        }
+      ],
+      "gov_interest_contract_award_numbers": [
+        {
+          "award_number": "keyword"
+        }
+      ],
+      "gov_interest_organizations": [
+        {
+          "fedagency_name": "text",
+          "level_one": "text",
+          "level_three": "text",
+          "level_two": "text"
+        }
+      ],
+      "gov_interest_statement": "text",
+      "granted_pregrant_crosswalk": [
+        {
+          "application_number": "keyword",
+          "document_number": "keyword"
+        }
+      ],
+      "inventors": [
+        {
+          "inventor": "keyword",
+          "inventor_name_first": "text",
+          "inventor_name_last": "text",
+          "inventor_city": "text",
+          "inventor_state": "text",
+          "inventor_country": "text",
+          "inventor_sequence": 1
+        }
+      ],
+      "ipcr": [
+        {
+          "ipc_action_date": "1976-01-06",
+          "ipc_class": "keyword",
+          "ipc_classification_data_source": "keyword",
+          "ipc_classification_value": "keyword",
+          "ipc_id": "keyword",
+          "ipc_main_group": "keyword",
+          "ipc_section": "keyword",
+          "ipc_sequence": 1,
+          "ipc_subclass": "keyword",
+          "ipc_subgroup": "keyword",
+          "ipc_symbol_position": "keyword"
+        }
+      ],
+      "patent_abstract": "text",
+      "patent_cpc_current_group_average_patent_processing_days": 1,
+      "patent_date": "1976-01-06",
+      "patent_detail_desc_length": 1,
+      "patent_earliest_application_date": "1976-01-06",
+      "patent_id": "keyword",
+      "patent_num_foreign_documents_cited": 1,
+      "patent_num_times_cited_by_us_patents": 1,
+      "patent_num_total_documents_cited": 1,
+      "patent_num_us_applications_cited": 1,
+      "patent_num_us_patents_cited": 1,
+      "patent_processing_days": 1,
+      "patent_term_extension": 1,
+      "patent_title": "text",
+      "patent_type": "keyword",
+      "patent_uspc_current_mainclass_average_patent_processing_days": 1,
+      "patent_year": 1,
+      "pct_data": [
+        {
+          "application_kind": "keyword",
+          "pct_102_date": "1976-01-06",
+          "pct_371_date": "1976-01-06",
+          "pct_doc_number": "keyword",
+          "pct_doc_type": "keyword",
+          "published_filed_date": "1976-01-06"
+        }
+      ],
+      "us_related_documents": [
+        {
+          "published_country": "keyword",
+          "related_doc_kind": "keyword",
+          "related_doc_number": "keyword",
+          "related_doc_published_date": "1976-01-06",
+          "related_doc_sequence": 1,
+          "related_doc_status": "keyword",
+          "related_doc_type": "keyword",
+          "wipo_kind": "keyword"
+        }
+      ],
+      "us_term_of_grant": [
+        {
+          "disclaimer_date": "1976-01-06",
+          "term_disclaimer": "keyword",
+          "term_extension": "keyword",
+          "term_grant": "keyword"
+        }
+      ],
+      "uspc_at_issue": [
+        {
+          "uspc_mainclass": "keyword",
+          "uspc_mainclass_id": "keyword",
+          "uspc_sequence": 1,
+          "uspc_subclass": "keyword",
+          "uspc_subclass_id": "keyword"
+        }
+      ],
+      "wipo": [
+        {
+          "wipo_field": "keyword",
+          "wipo_field_id": "keyword",
+          "wipo_sequence": 1
+        }
+      ],
+      "withdrawn": false,
+      "wipo_kind": "keyword"
+    }
+  ]
+}
+
+
+Request Invalid
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "error": true
+}
+Headers:
+Name	Description	Type
+X-Status-Reason	
+Description of invalid query
+
+string
+X-Status-Reason-Code	
+Request Error Code
+
+string
+No links
+429	
+Too many requests
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": "string"
+}
+Headers:
+Name	Description	Type
+Retry-After	
+Number of seconds to wait before sending next request
+
+integer

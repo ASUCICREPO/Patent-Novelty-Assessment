@@ -8,9 +8,9 @@ A serverless pipeline that automatically processes PDF files uploaded to S3 usin
 - **Lambda Function (PDF Processor)**: Triggered by S3 events to invoke BDA processing
 - **Lambda Function (Agent Trigger)**: Triggered when BDA completes to invoke Agent Core
 - **Bedrock Data Automation**: Extracts text and images from PDFs
-- **Patent Novelty Orchestrator**: Multi-agent system that handles keyword generation, USPTO patent search, and scholarly article search
+- **Patent Novelty Orchestrator**: Multi-agent system that handles keyword generation, PatentView patent search, and scholarly article search
 - **DynamoDB Tables**: Store keywords, patent results, and scholarly article results
-- **API Gateways**: USPTO and Semantic Scholar gateways for patent and article searches
+- **API Gateways**: PatentView and Semantic Scholar gateways for patent and article searches
 - **CDK**: Infrastructure as Code for deployment
 
 ## Project Structure
@@ -60,7 +60,7 @@ This script will:
 2. Create new Agent Runtime using the Patent Orchestrator Docker image URI from CDK output
 3. Use the Patent Orchestrator IAM Role ARN from CDK output
 4. Configure the following environment variables in Agent Core:
-   - `GATEWAY_CLIENT_ID`, `GATEWAY_CLIENT_SECRET`, `GATEWAY_TOKEN_URL`, `GATEWAY_URL` (for USPTO)
+   - `PATENTVIEW_CLIENT_ID`, `PATENTVIEW_CLIENT_SECRET`, `PATENTVIEW_TOKEN_URL`, `PATENTVIEW_GATEWAY_URL` (for PatentView OAuth)
    - `SEMANTIC_SCHOLAR_CLIENT_ID`, `SEMANTIC_SCHOLAR_CLIENT_SECRET`, `SEMANTIC_SCHOLAR_TOKEN_URL`, `SEMANTIC_SCHOLAR_GATEWAY_URL` (for Semantic Scholar)
 5. Update the `AGENT_RUNTIME_ARN` in the CDK stack with the created runtime ARN
 6. Redeploy: `npx cdk deploy`
@@ -73,14 +73,14 @@ This script will:
 4. The agent trigger Lambda function automatically detects the BDA completion
 5. Patent Novelty Orchestrator is invoked to:
    - Generate patent search keywords from the document
-   - Search USPTO patents for prior art
+   - Search PatentView patents for prior art
    - Search scholarly articles for academic context
 6. Results are stored in DynamoDB tables and logged
 
 ## Automated Pipeline Flow
 
 ```
-PDF Upload → BDA Processing → result.json → Agent Trigger → Orchestrator → [Keywords + USPTO Search + Scholarly Search]
+PDF Upload → BDA Processing → result.json → Agent Trigger → Orchestrator → [Keywords + PatentView Search + Scholarly Search]
 ```
 
 ## Multi-Agent Orchestrator
@@ -88,12 +88,12 @@ PDF Upload → BDA Processing → result.json → Agent Trigger → Orchestrator
 The system uses a single orchestrator that manages three specialized agents:
 
 1. **Keyword Generator Agent**: Extracts patent search keywords from BDA results
-2. **USPTO Search Agent**: Searches patents using extracted keywords via USPTO Gateway
+2. **PatentView Search Agent**: Searches patents using extracted keywords via PatentView Gateway
 3. **Scholarly Article Agent**: Searches academic literature via Semantic Scholar Gateway
 
 Each agent can be invoked independently by specifying the appropriate action:
 - `action: "generate_keywords"` - Keyword generation
-- `action: "search_patents"` - USPTO patent search  
+- `action: "search_patents"` - PatentView patent search  
 - `action: "search_articles"` - Scholarly article search
 
 ## Monitoring
@@ -122,7 +122,7 @@ npx cdk destroy
 - `KEYWORDS_TABLE_NAME`: DynamoDB table for patent keywords
 - `RESULTS_TABLE_NAME`: DynamoDB table for USPTO patent results
 - `ARTICLES_TABLE_NAME`: DynamoDB table for scholarly article results
-- `GATEWAY_CLIENT_ID`, `GATEWAY_CLIENT_SECRET`, `GATEWAY_TOKEN_URL`, `GATEWAY_URL`: USPTO Gateway configuration
+- `PATENTVIEW_CLIENT_ID`, `PATENTVIEW_CLIENT_SECRET`, `PATENTVIEW_TOKEN_URL`, `PATENTVIEW_GATEWAY_URL`: PatentView Gateway OAuth configuration
 - `SEMANTIC_SCHOLAR_CLIENT_ID`, `SEMANTIC_SCHOLAR_CLIENT_SECRET`, `SEMANTIC_SCHOLAR_TOKEN_URL`, `SEMANTIC_SCHOLAR_GATEWAY_URL`: Semantic Scholar Gateway configuration
 
 ## Scholarly Article Search Service
@@ -151,9 +151,9 @@ Stores patent analysis results from keyword generation:
 - `keywords`: Comma-separated patent search keywords
 
 ### Patent Results Table  
-Stores USPTO patent search results:
+Stores PatentView patent search results:
 - `pdf_filename` (partition key): Name of the processed PDF
-- `patent_number` (sort key): USPTO patent number
+- `patent_number` (sort key): PatentView patent number
 - `patent_title`, `patent_inventors`, `patent_assignee`: Patent metadata
 - `relevance_score`: Calculated relevance to original invention
 - `search_strategy_used`: Keywords used for this search

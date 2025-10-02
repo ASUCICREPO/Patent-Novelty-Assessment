@@ -23,11 +23,11 @@ KEYWORDS_TABLE = os.getenv('KEYWORDS_TABLE_NAME')
 RESULTS_TABLE = os.getenv('RESULTS_TABLE_NAME')
 ARTICLES_TABLE = os.getenv('ARTICLES_TABLE_NAME')
 
-# Gateway Configuration for USPTO Search
-CLIENT_ID = os.environ.get('GATEWAY_CLIENT_ID')
-CLIENT_SECRET = os.environ.get('GATEWAY_CLIENT_SECRET')
-TOKEN_URL = os.environ.get('GATEWAY_TOKEN_URL')
-GATEWAY_URL = os.environ.get('GATEWAY_URL')
+# Gateway Configuration for PatentView Search
+PATENTVIEW_CLIENT_ID = os.environ.get('PATENTVIEW_CLIENT_ID')
+PATENTVIEW_CLIENT_SECRET = os.environ.get('PATENTVIEW_CLIENT_SECRET')
+PATENTVIEW_TOKEN_URL = os.environ.get('PATENTVIEW_TOKEN_URL')
+PATENTVIEW_GATEWAY_URL = os.environ.get('PATENTVIEW_GATEWAY_URL')
 
 # Gateway Configuration for Semantic Scholar Search
 SEMANTIC_SCHOLAR_CLIENT_ID = os.environ.get('SEMANTIC_SCHOLAR_CLIENT_ID')
@@ -35,19 +35,19 @@ SEMANTIC_SCHOLAR_CLIENT_SECRET = os.environ.get('SEMANTIC_SCHOLAR_CLIENT_SECRET'
 SEMANTIC_SCHOLAR_TOKEN_URL = os.environ.get('SEMANTIC_SCHOLAR_TOKEN_URL')
 SEMANTIC_SCHOLAR_GATEWAY_URL = os.environ.get('SEMANTIC_SCHOLAR_GATEWAY_URL')
 
-# Validate Gateway environment variables
-missing_vars = []
-if not CLIENT_ID:
-    missing_vars.append('GATEWAY_CLIENT_ID')
-if not CLIENT_SECRET:
-    missing_vars.append('GATEWAY_CLIENT_SECRET')
-if not TOKEN_URL:
-    missing_vars.append('GATEWAY_TOKEN_URL')
-if not GATEWAY_URL:
-    missing_vars.append('GATEWAY_URL')
+# Validate PatentView Gateway environment variables
+patentview_missing_vars = []
+if not PATENTVIEW_CLIENT_ID:
+    patentview_missing_vars.append('PATENTVIEW_CLIENT_ID')
+if not PATENTVIEW_CLIENT_SECRET:
+    patentview_missing_vars.append('PATENTVIEW_CLIENT_SECRET')
+if not PATENTVIEW_TOKEN_URL:
+    patentview_missing_vars.append('PATENTVIEW_TOKEN_URL')
+if not PATENTVIEW_GATEWAY_URL:
+    patentview_missing_vars.append('PATENTVIEW_GATEWAY_URL')
 
-if missing_vars:
-    print(f"WARNING: Missing USPTO environment variables: {', '.join(missing_vars)}. USPTO search will fail.")
+if patentview_missing_vars:
+    print(f"WARNING: Missing PatentView environment variables: {', '.join(patentview_missing_vars)}. PatentView search will fail.")
 
 # Validate Semantic Scholar Gateway environment variables - FAIL FAST
 semantic_scholar_missing_vars = []
@@ -149,42 +149,43 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
 # USPTO SEARCH TOOLS
 # =============================================================================
 
-def fetch_access_token():
-    """Get OAuth access token for USPTO Gateway."""
+def fetch_patentview_access_token():
+    """Get OAuth access token for PatentView Gateway."""
     try:
-        if not all([CLIENT_ID, CLIENT_SECRET, TOKEN_URL]):
-            raise Exception("Missing required environment variables: GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, GATEWAY_TOKEN_URL")
+        if not all([PATENTVIEW_CLIENT_ID, PATENTVIEW_CLIENT_SECRET, PATENTVIEW_TOKEN_URL]):
+            raise Exception("Missing required PatentView environment variables: PATENTVIEW_CLIENT_ID, PATENTVIEW_CLIENT_SECRET, PATENTVIEW_TOKEN_URL")
             
-        print(f"Fetching USPTO token from: {TOKEN_URL}")
-        print(f"USPTO Client ID: {CLIENT_ID}")
+        print(f"Fetching PatentView token from: {PATENTVIEW_TOKEN_URL}")
+        print(f"PatentView Client ID: {PATENTVIEW_CLIENT_ID}")
         
         response = requests.post(
-            TOKEN_URL,
-            data=f"grant_type=client_credentials&client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}",
+            PATENTVIEW_TOKEN_URL,
+            data=f"grant_type=client_credentials&client_id={PATENTVIEW_CLIENT_ID}&client_secret={PATENTVIEW_CLIENT_SECRET}",
             headers={'Content-Type': 'application/x-www-form-urlencoded'},
             timeout=30
         )
         
-        print(f"USPTO token response status: {response.status_code}")
+        print(f"PatentView token response status: {response.status_code}")
         
         if response.status_code != 200:
-            raise Exception(f"USPTO token request failed: {response.status_code} - {response.text}")
+            raise Exception(f"PatentView token request failed: {response.status_code} - {response.text}")
         
         token_data = response.json()
         access_token = token_data.get('access_token')
         
         if not access_token:
-            raise Exception(f"No access token in USPTO response: {token_data}")
+            raise Exception(f"No access token in PatentView response: {token_data}")
         
         return access_token
         
     except Exception as e:
-        print(f"Error fetching USPTO access token: {e}")
+        print(f"Error fetching PatentView access token: {e}")
         raise
 
 
 
 def create_streamable_http_transport(mcp_url: str, access_token: str):
+    """Create streamable HTTP transport for MCP client with OAuth Bearer token."""
     return streamablehttp_client(mcp_url, headers={"Authorization": f"Bearer {access_token}"})
 
 def get_full_tools_list(client):
@@ -233,165 +234,244 @@ def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
         return {"error": f"Error reading patent analysis: {str(e)}"}
 
 @tool
-def search_uspto_patents(search_query: str, limit: int = 25) -> List[Dict[str, Any]]:
-    """Search USPTO patents via Gateway using Strands MCP client."""
+def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """Search PatentView patents via Gateway using Strands MCP client."""
     try:
-        # Get access token
-        access_token = fetch_access_token()
-        print(f"Got access token: {access_token[:20]}...")
+        # Get OAuth access token for PatentView Gateway
+        access_token = fetch_patentview_access_token()
+        print(f"Got PatentView access token: {access_token[:20]}...")
         
-        # Create MCP client using your working pattern
-        mcp_client = MCPClient(lambda: create_streamable_http_transport(GATEWAY_URL, access_token))
+        # Create MCP client for PatentView Gateway
+        mcp_client = MCPClient(lambda: create_streamable_http_transport(PATENTVIEW_GATEWAY_URL, access_token))
         
         with mcp_client:
             # Get tools with pagination
             tools = get_full_tools_list(mcp_client)
-            print(f"Available tools: {[tool.tool_name for tool in tools] if tools else 'None'}")
+            print(f"Available PatentView tools: {[tool.tool_name for tool in tools] if tools else 'None'}")
             
             if not tools:
                 return []
             
-            # Find USPTO search tool
+            # Find PatentView search tool
             search_tool = None
             for tool in tools:
-                if 'searchPatentsSimple' in tool.tool_name:
+                if 'searchPatentsPatentView' in tool.tool_name or 'patent-view___searchPatentsPatentView' in tool.tool_name:
                     search_tool = tool
                     break
             
             if not search_tool:
-                print("No USPTO search tool found")
+                print("No PatentView search tool found")
                 return []
             
-            print(f"Using tool: {search_tool.tool_name}")
+            print(f"Using PatentView tool: {search_tool.tool_name}")
             
-            # Call the tool with correct signature
+            # Build PatentView query based on your curl example
+            # Split search_query into keywords for better matching
+            keywords = [kw.strip() for kw in search_query.split(',') if kw.strip()]
+            
+            # Create PatentView JSON query - search in both title and abstract
+            if len(keywords) == 1:
+                # Single keyword search
+                keyword = keywords[0]
+                patentview_query = {
+                    "_or": [
+                        {"_text_any": {"patent_title": keyword}},
+                        {"_text_any": {"patent_abstract": keyword}}
+                    ]
+                }
+            else:
+                # Multiple keywords - create comprehensive search
+                title_queries = []
+                abstract_queries = []
+                
+                for keyword in keywords[:5]:  # Limit to first 5 keywords to avoid overly complex queries
+                    title_queries.append({"_text_any": {"patent_title": keyword}})
+                    abstract_queries.append({"_text_any": {"patent_abstract": keyword}})
+                
+                patentview_query = {
+                    "_or": [
+                        {"_or": title_queries},
+                        {"_or": abstract_queries}
+                    ]
+                }
+            
+            # Convert query to JSON string
+            query_json = json.dumps(patentview_query)
+            
+            # Define fields to return (matching your curl example + additional useful fields)
+            fields_json = json.dumps([
+                "patent_id", "patent_title", "patent_date", "patent_abstract", "patent_type",
+                "patent_num_times_cited_by_us_patents",
+                "inventors.inventor_name_first", "inventors.inventor_name_last",
+                "assignees.assignee_organization", "assignees.assignee_individual_name_first", "assignees.assignee_individual_name_last"
+            ])
+            
+            # Sort by citation count (most cited first)
+            sort_json = json.dumps([{"patent_num_times_cited_by_us_patents": "desc"}])
+            
+            # Options with size limit
+            options_json = json.dumps({"size": min(limit, 1000)})  # PatentView max is 1000
+            
+            print(f"PatentView query: {query_json}")
+            
+            # Call the tool with PatentView parameters
             result = mcp_client.call_tool_sync(
                 name=search_tool.tool_name,
-                arguments={"q": search_query, "limit": limit},
-                tool_use_id=f"search-{hash(search_query)}"
+                arguments={
+                    "q": query_json,
+                    "f": fields_json,
+                    "s": sort_json,
+                    "o": options_json
+                },
+                tool_use_id=f"patentview-search-{hash(search_query)}"
             )
             
-            print(f"Tool call result type: {type(result)}")
+            print(f"PatentView tool call result type: {type(result)}")
             
             if result and isinstance(result, dict) and 'content' in result:
                 content = result['content']
                 if isinstance(content, list) and len(content) > 0:
                     text_content = content[0].get('text', '') if isinstance(content[0], dict) else str(content[0])
-                    print(f"Content preview: {text_content[:200]}...")
+                    print(f"PatentView content preview: {text_content[:200]}...")
                     
                     try:
                         data = json.loads(text_content)
-                        patents = data.get("patentFileWrapperDataBag", [])
                         
-                        if patents:
-                            print(f"✅ Found {len(patents)} real USPTO patents!")
+                        # Check for PatentView response structure
+                        if data.get('error') == False and 'patents' in data:
+                            patents = data.get('patents', [])
+                            total_hits = data.get('total_hits', 0)
                             
-                            # Pre-process patents to extract relevant novelty assessment data
+                            print(f"✅ Found {len(patents)} PatentView patents (total hits: {total_hits})!")
+                            
+                            # Process PatentView patents to match our expected structure
                             processed_patents = []
                             for patent in patents:
-                                app_meta = patent.get('applicationMetaData', {})
-                                
-                                # Extract publication date from array (first element)
-                                pub_date_bag = app_meta.get('publicationDateBag', [])
-                                publication_date = pub_date_bag[0] if pub_date_bag else app_meta.get('earliestPublicationDate', '')
-                                
-                                # Extract inventor names properly
-                                inventor_bag = app_meta.get('inventorBag', [])
+                                # Extract inventor names
+                                inventors = patent.get('inventors', [])
                                 inventor_names = []
-                                for inventor in inventor_bag:
-                                    # Try inventorNameText first, then construct from firstName/lastName
-                                    name = inventor.get('inventorNameText', '')
-                                    if not name:
-                                        first = inventor.get('firstName', '')
-                                        last = inventor.get('lastName', '')
-                                        if first or last:
-                                            name = f"{first} {last}".strip()
-                                    if name:
+                                for inventor in inventors:
+                                    first = inventor.get('inventor_name_first', '')
+                                    last = inventor.get('inventor_name_last', '')
+                                    if first or last:
+                                        name = f"{first} {last}".strip()
                                         inventor_names.append(name)
                                 
-                                # Extract essential patent data for novelty assessment
+                                # Extract assignee information
+                                assignees = patent.get('assignees', [])
+                                assignee_names = []
+                                for assignee in assignees:
+                                    org = assignee.get('assignee_organization', '')
+                                    if org:
+                                        assignee_names.append(org)
+                                    else:
+                                        first = assignee.get('assignee_individual_name_first', '')
+                                        last = assignee.get('assignee_individual_name_last', '')
+                                        if first or last:
+                                            name = f"{first} {last}".strip()
+                                            assignee_names.append(name)
+                                
+                                # Map PatentView data to our expected structure
                                 processed_patent = {
                                     # Core Identity
-                                    'applicationNumberText': patent.get('applicationNumberText', 'unknown'),
-                                    'patentNumber': app_meta.get('patentNumber', ''),
-                                    'inventionTitle': app_meta.get('inventionTitle', ''),
+                                    'patent_id': patent.get('patent_id', ''),
+                                    'patent_number': patent.get('patent_id', ''),  # PatentView uses patent_id
+                                    'patent_title': patent.get('patent_title', ''),
+                                    'patent_abstract': patent.get('patent_abstract', ''),
                                     
-                                    # Legal Status & Dates
-                                    'applicationStatusDescriptionText': app_meta.get('applicationStatusDescriptionText', ''),
-                                    'filingDate': app_meta.get('filingDate', ''),
-                                    'grantDate': app_meta.get('grantDate', ''),
-                                    'publicationDate': publication_date,
+                                    # Dates
+                                    'patent_date': patent.get('patent_date', ''),
+                                    'grant_date': patent.get('patent_date', ''),  # Same as patent_date in PatentView
                                     
-                                    # Publication Info
-                                    'earliestPublicationNumber': app_meta.get('earliestPublicationNumber', ''),
+                                    # Patent Info
+                                    'patent_type': patent.get('patent_type', ''),
+                                    'citation_count': patent.get('patent_num_times_cited_by_us_patents', 0),
                                     
-                                    # Inventor Data (processed)
-                                    'inventorNames': inventor_names,
-                                    
-                                    # Parent Patent Info
-                                    'parentContinuityBag': app_meta.get('parentContinuityBag', []),
+                                    # People & Organizations
+                                    'inventor_names': inventor_names,
+                                    'assignee_names': assignee_names,
                                     
                                     # Search metadata
                                     'search_query_used': search_query,
                                     'relevance_score': 0.8,  # Default relevance score
-                                    'matching_keywords': search_query
+                                    'matching_keywords': search_query,
+                                    'data_source': 'PatentView'
                                 }
                                 processed_patents.append(processed_patent)
                             
                             return processed_patents
                         else:
-                            print(f"⚠️ No patents found in response")
+                            error_msg = data.get('error', 'Unknown error')
+                            print(f"⚠️ PatentView API error: {error_msg}")
                             return []
                             
                     except json.JSONDecodeError as je:
                         print(f"JSON decode error: {je}")
                         return []
                 else:
-                    print("No valid content in result")
+                    print("No valid content in PatentView result")
                     return []
             else:
-                print(f"No content in result: {result}")
+                print(f"No content in PatentView result: {result}")
                 return []
                 
     except Exception as e:
-        print(f"Error searching USPTO: {e}")
+        print(f"Error searching PatentView: {e}")
         import traceback
         traceback.print_exc()
         return []
 
 @tool
-def get_patent_documents(application_number: str) -> Dict[str, Any]:
-    """Get patent documents (SPEC, ABST, CLM) for a specific application number."""
+def get_patentview_patent_details(patent_id: str) -> Dict[str, Any]:
+    """Get additional patent details from PatentView for a specific patent ID."""
     try:
-        # Get access token (reuse existing function)
-        access_token = fetch_access_token()
-        print(f"Getting documents for application: {application_number}")
+        print(f"Getting PatentView details for patent: {patent_id}")
         
-        # Create MCP client using existing pattern
-        mcp_client = MCPClient(lambda: create_streamable_http_transport(GATEWAY_URL, access_token))
+        # Get OAuth access token for PatentView Gateway
+        access_token = fetch_patentview_access_token()
+        
+        # Create MCP client for PatentView Gateway
+        mcp_client = MCPClient(lambda: create_streamable_http_transport(PATENTVIEW_GATEWAY_URL, access_token))
         
         with mcp_client:
             # Get tools with pagination
             tools = get_full_tools_list(mcp_client)
             
-            # Find document retrieval tool
-            doc_tool = None
+            # Find PatentView search tool (we'll use it to get specific patent details)
+            search_tool = None
             for tool in tools:
-                if 'getPatentDocuments' in tool.tool_name:
-                    doc_tool = tool
+                if 'searchPatentsPatentView' in tool.tool_name or 'patent-view___searchPatentsPatentView' in tool.tool_name:
+                    search_tool = tool
                     break
             
-            if not doc_tool:
-                print("No document retrieval tool found")
-                return {"error": "Document retrieval tool not available"}
+            if not search_tool:
+                print("No PatentView search tool found for details")
+                return {"error": "PatentView search tool not available"}
             
-            print(f"Using document tool: {doc_tool.tool_name}")
+            print(f"Using PatentView tool for details: {search_tool.tool_name}")
             
-            # Call the document retrieval tool
+            # Create query to get specific patent by ID
+            patentview_query = json.dumps({"patent_id": patent_id})
+            
+            # Get comprehensive fields for detailed view
+            fields_json = json.dumps([
+                "patent_id", "patent_title", "patent_date", "patent_abstract", "patent_type",
+                "patent_num_times_cited_by_us_patents", "patent_num_us_patents_cited",
+                "patent_processing_days", "patent_earliest_application_date",
+                "inventors.inventor_name_first", "inventors.inventor_name_last",
+                "assignees.assignee_organization", "assignees.assignee_individual_name_first", "assignees.assignee_individual_name_last",
+                "cpc_current.cpc_section", "cpc_current.cpc_class", "cpc_current.cpc_subclass", "cpc_current.cpc_group"
+            ])
+            
+            # Call the tool to get patent details
             result = mcp_client.call_tool_sync(
-                name=doc_tool.tool_name,
-                arguments={"applicationNumber": application_number},
-                tool_use_id=f"docs-{hash(application_number)}"
+                name=search_tool.tool_name,
+                arguments={
+                    "q": patentview_query,
+                    "f": fields_json,
+                    "o": json.dumps({"size": 1})
+                },
+                tool_use_id=f"patentview-details-{hash(patent_id)}"
             )
             
             if result and isinstance(result, dict) and 'content' in result:
@@ -401,94 +481,79 @@ def get_patent_documents(application_number: str) -> Dict[str, Any]:
                     
                     try:
                         data = json.loads(text_content)
-                        document_bag = data.get("documentBag", [])
                         
-                        # Find target documents (SPEC, ABST, CLM)
-                        target_docs = {'SPEC': None, 'ABST': None, 'CLM': None}
-                        
-                        for doc in document_bag:
-                            doc_code = doc.get('documentCode', '')
-                            official_date = doc.get('officialDate', '')
+                        if data.get('error') == False and 'patents' in data:
+                            patents = data.get('patents', [])
                             
-                            # Check if this is a target document
-                            if doc_code in target_docs:
-                                # Keep the most recent version (latest official date)
-                                if target_docs[doc_code] is None or official_date > target_docs[doc_code].get('officialDate', ''):
-                                    target_docs[doc_code] = doc
-                        
-                        # Extract download URLs for each target document
-                        document_urls = {}
-                        for doc_type, doc_data in target_docs.items():
-                            if doc_data:
-                                download_options = doc_data.get('downloadOptionBag', [])
-                                # Prefer PDF format
-                                pdf_url = None
-                                for option in download_options:
-                                    if option.get('mimeTypeIdentifier') == 'PDF':
-                                        pdf_url = option.get('downloadUrl')
-                                        break
+                            if patents:
+                                patent = patents[0]  # Should be only one patent
                                 
-                                if pdf_url:
-                                    document_urls[doc_type.lower()] = {
-                                        'url': pdf_url,
-                                        'pages': option.get('pageTotalQuantity', 0),
-                                        'official_date': doc_data.get('officialDate', ''),
-                                        'document_id': doc_data.get('documentIdentifier', '')
-                                    }
-                                else:
-                                    document_urls[doc_type.lower()] = None
+                                # Extract CPC classifications
+                                cpc_classes = patent.get('cpc_current', [])
+                                cpc_info = []
+                                for cpc in cpc_classes[:5]:  # Limit to first 5
+                                    cpc_str = f"{cpc.get('cpc_section', '')}{cpc.get('cpc_class', '')}{cpc.get('cpc_subclass', '')}{cpc.get('cpc_group', '')}"
+                                    if cpc_str.strip():
+                                        cpc_info.append(cpc_str)
+                                
+                                print(f"✅ Found detailed PatentView data for {patent_id}")
+                                return {
+                                    "patent_id": patent_id,
+                                    "detailed_data": patent,
+                                    "cpc_classifications": cpc_info,
+                                    "processing_days": patent.get('patent_processing_days', 0),
+                                    "citations_made": patent.get('patent_num_us_patents_cited', 0),
+                                    "citations_received": patent.get('patent_num_times_cited_by_us_patents', 0),
+                                    "earliest_filing_date": patent.get('patent_earliest_application_date', ''),
+                                    "data_source": "PatentView"
+                                }
                             else:
-                                document_urls[doc_type.lower()] = None
-                        
-                        print(f"✅ Found documents for {application_number}: {list(document_urls.keys())}")
-                        return {
-                            "application_number": application_number,
-                            "documents": document_urls,
-                            "total_documents_found": len(document_bag)
-                        }
-                        
+                                return {"error": f"No patent found with ID {patent_id}"}
+                        else:
+                            return {"error": f"PatentView API error for patent {patent_id}"}
+                            
                     except json.JSONDecodeError as je:
-                        print(f"JSON decode error in document retrieval: {je}")
-                        return {"error": f"Failed to parse document response: {str(je)}"}
+                        print(f"JSON decode error in patent details: {je}")
+                        return {"error": f"Failed to parse patent details response: {str(je)}"}
                 else:
-                    print("No content in document result")
-                    return {"error": "No content in document response"}
+                    print("No content in patent details result")
+                    return {"error": "No content in patent details response"}
             else:
-                print(f"No content in document result: {result}")
-                return {"error": "No valid document response"}
+                print(f"No content in patent details result: {result}")
+                return {"error": "No valid patent details response"}
                 
     except Exception as e:
-        print(f"Error getting patent documents: {e}")
+        print(f"Error getting PatentView patent details: {e}")
         import traceback
         traceback.print_exc()
-        return {"error": f"Document retrieval failed: {str(e)}"}
+        return {"error": f"Patent details retrieval failed: {str(e)}"}
 
 @tool
-def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
-    """Calculate relevance score between patent and keywords."""
+def calculate_patentview_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
+    """Calculate relevance score between PatentView patent and keywords."""
     try:
         # Combine patent text fields for matching (prioritize title and abstract)
         patent_text_parts = []
         
         # Title is most important
-        title = patent_data.get('inventionTitle', '')
+        title = patent_data.get('patent_title', '')
         if title:
             patent_text_parts.append(title)
         
         # Abstract is very important for novelty assessment
-        abstract = patent_data.get('abstract', '')
+        abstract = patent_data.get('patent_abstract', '')
         if abstract:
             patent_text_parts.append(abstract)
         
-        # Claims are critical but may not be available in search results
-        claims = patent_data.get('claims', '')
-        if claims:
-            patent_text_parts.append(claims)
+        # Inventor names can be relevant
+        inventor_names = patent_data.get('inventor_names', [])
+        if inventor_names:
+            patent_text_parts.append(' '.join(inventor_names))
         
-        # Classification can also be relevant
-        cpc_classes = patent_data.get('cpcClassificationBag', [])
-        if cpc_classes:
-            patent_text_parts.append(' '.join(cpc_classes))
+        # Assignee names can be relevant
+        assignee_names = patent_data.get('assignee_names', [])
+        if assignee_names:
+            patent_text_parts.append(' '.join(assignee_names))
         
         patent_text = ' '.join(patent_text_parts).lower()
         
@@ -511,46 +576,57 @@ def calculate_relevance_score(patent_data: Dict, original_keywords: Dict) -> flo
         title_lower = title.lower()
         abstract_lower = abstract.lower()
         
-        # Title matches get highest bonus (30%)
+        # Title matches get highest bonus (40%)
         title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
         if title_matches > 0:
-            base_score += (title_matches / len(keyword_list)) * 0.3
+            base_score += (title_matches / len(keyword_list)) * 0.4
         
-        # Abstract matches get medium bonus (20%)
+        # Abstract matches get high bonus (30%)
         abstract_matches = sum(1 for keyword in keyword_list if keyword in abstract_lower)
         if abstract_matches > 0:
-            base_score += (abstract_matches / len(keyword_list)) * 0.2
+            base_score += (abstract_matches / len(keyword_list)) * 0.3
         
-        # Bonus for granted patents (more relevant for novelty)
-        status = patent_data.get('applicationStatusDescriptionText', '').lower()
-        if 'patented case' in status or 'granted' in status:
+        # Bonus for highly cited patents (more relevant for novelty)
+        citation_count = patent_data.get('citation_count', 0)
+        if citation_count > 50:
             base_score += 0.1
+        elif citation_count > 10:
+            base_score += 0.05
+        
+        # Bonus for utility patents (most relevant for novelty assessment)
+        patent_type = patent_data.get('patent_type', '').lower()
+        if patent_type == 'utility':
+            base_score += 0.05
         
         return round(min(base_score, 1.0), 3)  # Cap at 1.0
         
     except Exception as e:
-        print(f"Error calculating relevance score: {str(e)}")
+        print(f"Error calculating PatentView relevance score: {str(e)}")
         return 0.0
 
 @tool
-def store_patent_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str:
-    """Store comprehensive patent analysis result in DynamoDB."""
+def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str:
+    """Store comprehensive PatentView patent analysis result in DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(RESULTS_TABLE)
         
         timestamp = datetime.utcnow().isoformat()
         
-        # Use patent number as sort key, fallback to application number
-        sort_key = patent_data.get('patentNumber') or patent_data.get('applicationNumberText', 'unknown')
+        # Use patent_id as sort key
+        sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
         
         # Helper function to handle empty values
         def get_value_or_na(value):
             return value if value else "N/A"
         
         # Process inventor names
-        inventor_names = patent_data.get('inventorNames', [])
+        inventor_names = patent_data.get('inventor_names', [])
         inventors_str = '; '.join(inventor_names) if inventor_names else "N/A"
+        
+        # Process assignee names
+        assignee_names = patent_data.get('assignee_names', [])
+        assignees_str = '; '.join(assignee_names) if assignee_names else "N/A"
         
         item = {
             # Primary Keys
@@ -558,52 +634,58 @@ def store_patent_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str
             'patent_number': sort_key,
             
             # Core Identity
-            'patent_title': get_value_or_na(patent_data.get('inventionTitle', '')),
+            'patent_title': get_value_or_na(patent_data.get('patent_title', '')),
+            'patent_abstract': get_value_or_na(patent_data.get('patent_abstract', '')),
             
             # Legal Status & Dates (Critical for novelty)
-            'application_status': get_value_or_na(patent_data.get('applicationStatusDescriptionText', '')),
-            'filing_date': get_value_or_na(patent_data.get('filingDate', '')),
-            'publication_date': get_value_or_na(patent_data.get('publicationDate', '')),
+            'patent_type': get_value_or_na(patent_data.get('patent_type', '')),
+            'grant_date': get_value_or_na(patent_data.get('patent_date', '')),
+            'filing_date': get_value_or_na(patent_data.get('patent_date', '')),  # PatentView uses patent_date for grant date
+            'publication_date': get_value_or_na(patent_data.get('patent_date', '')),
             
             # Ownership
             'patent_inventors': inventors_str,
+            'patent_assignees': assignees_str,
             
-            # Secondary Info
-            'publication_number': get_value_or_na(patent_data.get('earliestPublicationNumber', '')),
-            'parent_patents': patent_data.get('parentContinuityBag', []) and len(patent_data.get('parentContinuityBag', [])) or 0,
+            # Citation Information (Important for novelty assessment)
+            'citation_count': patent_data.get('citation_count', 0),
+            'times_cited': patent_data.get('citation_count', 0),
             
             # Search Metadata
             'relevance_score': Decimal(str(patent_data.get('relevance_score', 0.0))),
             'search_strategy_used': get_value_or_na(patent_data.get('search_query_used', '')),
             'search_timestamp': timestamp,
             'matching_keywords': get_value_or_na(patent_data.get('matching_keywords', '')),
+            'data_source': get_value_or_na(patent_data.get('data_source', 'PatentView')),
             
-            # Document URLs (NEW)
-            'specification_url': get_value_or_na(patent_data.get('documents', {}).get('spec', {}).get('url', '') if patent_data.get('documents', {}).get('spec') else ''),
-            'abstract_url': get_value_or_na(patent_data.get('documents', {}).get('abst', {}).get('url', '') if patent_data.get('documents', {}).get('abst') else ''),
-            'claims_url': get_value_or_na(patent_data.get('documents', {}).get('clm', {}).get('url', '') if patent_data.get('documents', {}).get('clm') else ''),
-            
-            # Document Metadata (NEW)
-            'specification_pages': patent_data.get('documents', {}).get('spec', {}).get('pages', 0) if patent_data.get('documents', {}).get('spec') else 0,
-            'abstract_pages': patent_data.get('documents', {}).get('abst', {}).get('pages', 0) if patent_data.get('documents', {}).get('abst') else 0,
-            'claims_pages': patent_data.get('documents', {}).get('clm', {}).get('pages', 0) if patent_data.get('documents', {}).get('clm') else 0,
-            
-            # URLs for reference
-            'uspto_url': f"https://patents.uspto.gov/patent/{sort_key}",
+            # PatentView URLs for reference
+            'patentview_url': f"https://search.patentsview.org/api/v1/patent/?q={{\"patent_id\":\"{sort_key}\"}}",
+            'google_patents_url': f"https://patents.google.com/patent/US{sort_key}",
             
             # Processing metadata
-            'rank_position': 1
+            'rank_position': 1,
+            'application_status': 'Granted',  # PatentView only has granted patents
+            
+            # Legacy compatibility fields (set to N/A for PatentView)
+            'specification_url': 'N/A',
+            'abstract_url': 'N/A', 
+            'claims_url': 'N/A',
+            'specification_pages': 0,
+            'abstract_pages': 0,
+            'claims_pages': 0,
+            'parent_patents': 0,
+            'publication_number': get_value_or_na(sort_key)
         }
         
         # Put item in DynamoDB
         table.put_item(Item=item)
         
-        patent_title = patent_data.get('inventionTitle', 'Unknown Title')
-        return f"Successfully stored patent {sort_key}: {patent_title}"
+        patent_title = patent_data.get('patent_title', 'Unknown Title')
+        return f"Successfully stored PatentView patent {sort_key}: {patent_title}"
         
     except Exception as e:
-        sort_key = patent_data.get('patentNumber') or patent_data.get('applicationNumberText', 'unknown')
-        return f"Error storing patent {sort_key}: {str(e)}"
+        sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
+        return f"Error storing PatentView patent {sort_key}: {str(e)}"
 
 
 # =============================================================================
@@ -1363,56 +1445,68 @@ keyword_generator = Agent(
     After completing your analysis, ALWAYS use the store_keywords_in_dynamodb tool to save all four fields (title, technology_description, technology_applications, keywords)."""
 )
 
-# USPTO Search Agent
-uspto_search_agent = Agent(
+# PatentView Search Agent
+patentview_search_agent = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_keywords_from_dynamodb, search_uspto_patents, get_patent_documents, calculate_relevance_score, store_patent_analysis],
-    system_prompt="""You are a USPTO Patent Search Expert. Execute this workflow EXACTLY ONCE:
+    tools=[read_keywords_from_dynamodb, search_patentview_patents, get_patentview_patent_details, calculate_patentview_relevance_score, store_patentview_analysis],
+    system_prompt="""You are a PatentView Patent Search Expert. Execute this workflow EXACTLY ONCE:
 
     1. Read patent analysis data from DynamoDB using the PDF filename
-    2. Use the extracted keywords to execute 2-3 strategic USPTO searches
-    3. For each relevant patent found, get its documents (SPEC, ABST, CLM) using get_patent_documents
-    4. Merge patent data with document URLs before storing
-    5. Store comprehensive patent data including document URLs in DynamoDB
+    2. Use the extracted keywords to execute 2-3 strategic PatentView searches
+    3. For high-relevance patents, get additional details using get_patentview_patent_details
+    4. Calculate relevance scores for each patent found
+    5. Store comprehensive patent data with abstracts in DynamoDB
 
-    CRITICAL DATA MERGING PROCESS:
-    For each patent you want to store:
-    1. Take the patent data from search_uspto_patents results
-    2. Call get_patent_documents with the patent's applicationNumberText
-    3. Add the 'documents' field from get_patent_documents to the patent data
-    4. Call store_patent_analysis with the merged data structure
+    PATENTVIEW SEARCH PROCESS:
+    For each search strategy:
+    1. Take keywords from the patent analysis data
+    2. Call search_patentview_patents with strategic keyword combinations
+    3. For top patents (high citation count or strong relevance), call get_patentview_patent_details
+    4. Calculate relevance score using calculate_patentview_relevance_score
+    5. Store each patent using store_patentview_analysis
 
     EXAMPLE WORKFLOW:
     ```
-    # Get patent from search results
-    patent = search_results[0]  # e.g., has applicationNumberText, inventionTitle, etc.
+    # Get patents from PatentView search
+    patents = search_patentview_patents("machine learning, neural networks")
     
-    # Get documents for this patent
-    docs = get_patent_documents(patent['applicationNumberText'])
-    
-    # Merge the data
-    patent['documents'] = docs['documents']  # Add document URLs to patent data
-    
-    # Store the complete data
-    store_patent_analysis(pdf_filename, patent)
+    for patent in patents[:3]:  # Process top 3 patents
+        # Calculate relevance score
+        relevance = calculate_patentview_relevance_score(patent, keywords_data)
+        patent['relevance_score'] = relevance
+        
+        # Get additional details for highly relevant patents
+        if relevance > 0.6:
+            details = get_patentview_patent_details(patent['patent_id'])
+            patent.update(details.get('detailed_data', {}))
+        
+        # Store the patent data
+        store_patentview_analysis(pdf_filename, patent)
     ```
 
     SEARCH STRATEGIES:
-    Use the keywords from the patent analysis to create strategic searches:
+    Use the keywords from the patent analysis to create strategic PatentView searches:
     1. Core technical keywords (focus on mechanism/technology terms)
-    2. Application domain keywords (focus on use case/application terms)
+    2. Application domain keywords (focus on use case/application terms)  
     3. Combined keyword search (mix technical + application terms)
+
+    PATENTVIEW ADVANTAGES:
+    - Rich abstract data for better relevance assessment
+    - Citation counts for identifying impactful prior art
+    - Comprehensive inventor and assignee information
+    - Full-text search in titles and abstracts
+    - Only granted patents (stronger prior art)
 
     CRITICAL RULES:
     - Execute each tool call only once per search strategy
-    - For each patent found, ALWAYS call get_patent_documents to get document URLs
-    - ALWAYS merge patent data with document data before storing
-    - If a search fails, continue with the next strategy
+    - Calculate relevance scores for all patents found
+    - Get additional details for patents with relevance > 0.6
+    - Collect patents from all searches, then select ONLY the top 6 by relevance score
     - Maximum 3 search attempts total
-    - Always store results even if searches fail
-    - Do not retry failed searches
+    - Focus on patents with high citation counts and strong technical overlap
+    - MUST store exactly 6 patents maximum - no more, no less
 
-    Focus on patents that could impact novelty assessment - prioritize granted patents over applications."""
+    Focus on patents that could impact novelty assessment - PatentView provides only granted patents which are stronger prior art. Store only the 6 most relevant patents found across all search strategies."""
 )
 
 # Scholarly Article Search Agent (Semantic Scholar Only)
@@ -1521,9 +1615,9 @@ async def handle_keyword_generation(payload):
     except Exception as e:
         yield {"error": f"Error in keyword generation: {str(e)}"}
 
-async def handle_uspto_search(payload):
-    """Handle USPTO patent search requests."""
-    print("🔍 Orchestrator: Routing to USPTO Search Agent")
+async def handle_patentview_search(payload):
+    """Handle PatentView patent search requests."""
+    print("🔍 Orchestrator: Routing to PatentView Search Agent")
     
     if isinstance(payload, str):
         try:
@@ -1534,7 +1628,7 @@ async def handle_uspto_search(payload):
     pdf_filename = payload.get("pdf_filename")
     
     if not pdf_filename:
-        yield {"error": "Error: 'pdf_filename' is required for USPTO search."}
+        yield {"error": "Error: 'pdf_filename' is required for PatentView search."}
         return
     
     enhanced_prompt = f"""Search for patents similar to the invention in PDF: {pdf_filename}
@@ -1542,36 +1636,36 @@ async def handle_uspto_search(payload):
     INSTRUCTIONS:
     1. Read keywords from DynamoDB for this PDF
     2. Analyze the invention's technical aspects
-    3. Execute multiple strategic patent searches via Gateway
-    4. Score and rank results by relevance
-    5. Select top 5 most relevant patents
-    6. Store results with comprehensive metadata
+    3. Execute multiple strategic PatentView searches via Gateway
+    4. Score and rank results by relevance using PatentView data
+    5. Select top 6 most relevant patents
+    6. Store results with comprehensive metadata including abstracts
 
-    Focus on patents that could impact novelty assessment."""
+    Focus on granted patents that could impact novelty assessment using PatentView's rich database."""
     
     try:
         full_response = ""
         search_metadata = {"strategies_used": [], "total_results": 0}
         
-        async for event in uspto_search_agent.stream_async(enhanced_prompt):
+        async for event in patentview_search_agent.stream_async(enhanced_prompt):
             if "data" in event:
                 full_response += event["data"]
             elif "current_tool_use" in event and event["current_tool_use"].get("name"):
                 tool_name = event["current_tool_use"]["name"]
-                yield {"tool_name": tool_name, "agent": "uspto_search"}
-                if tool_name == "search_uspto_patents":
+                yield {"tool_name": tool_name, "agent": "patentview_search"}
+                if tool_name == "search_patentview_patents":
                     search_metadata["strategies_used"].append(tool_name)
             elif "error" in event:
                 yield {"error": event["error"]}
                 return
         
         if full_response.strip():
-            yield {"response": full_response, "search_metadata": search_metadata, "agent": "uspto_search"}
+            yield {"response": full_response, "search_metadata": search_metadata, "agent": "patentview_search"}
         else:
-            yield {"error": "No response generated from USPTO search agent"}
+            yield {"error": "No response generated from PatentView search agent"}
                 
     except Exception as e:
-        yield {"error": f"Error in USPTO search: {str(e)}"}
+        yield {"error": f"Error in PatentView search: {str(e)}"}
 
 async def handle_scholarly_search(payload):
     """Handle scholarly article search requests using Semantic Scholar."""
@@ -1668,7 +1762,7 @@ async def handle_orchestrator_request(payload):
         async for event in handle_keyword_generation(payload):
             yield event
     elif action == "search_patents":
-        async for event in handle_uspto_search(payload):
+        async for event in handle_patentview_search(payload):
             yield event
     elif action == "search_articles":
         async for event in handle_scholarly_search(payload):
