@@ -256,30 +256,41 @@ Technology Description: {tech_description}
 Applications: {tech_applications}
 Keywords: {keywords_string}
 
-PATENTVIEW QUERY SYNTAX:
-- Text search operators: _text_any, _text_all, _text_phrase
-- Field targeting: patent_title, patent_abstract
-- Logical operators: _and, _or, _not
-- Comparison operators: _gte, _lte for dates
-- Example: {{"_text_any": {{"patent_title": "machine learning"}}}}
+CRITICAL PATENTVIEW QUERY SYNTAX RULES:
+1. Text operators (_text_any, _text_all, _text_phrase) MUST use STRING values, NOT arrays
+   ✅ CORRECT: {{"_text_any": {{"patent_title": "machine learning neural network"}}}}
+   ❌ WRONG: {{"_text_any": {{"patent_title": ["machine", "learning"]}}}}
+
+2. For non-text operators, arrays ARE allowed:
+   ✅ CORRECT: {{"inventors.inventor_name_last": ["Smith", "Jones"]}}
+
+3. Available operators:
+   - Text search: _text_any, _text_all, _text_phrase (STRING values only!)
+   - Logical: _and, _or, _not
+   - Comparison: _eq, _neq, _gt, _gte, _lt, _lte
+   - Fields: patent_title, patent_abstract, patent_date, patent_type
+
+4. Examples of VALID queries:
+   - {{"_text_any": {{"patent_title": "biodegradable polymer"}}}}
+   - {{"_and": [{{"_text_any": {{"patent_abstract": "machine learning"}}}}, {{"_gte": {{"patent_date": "2015-01-01"}}}}]}}
+   - {{"_or": [{{"_text_phrase": {{"patent_title": "neural network"}}}}, {{"_text_any": {{"patent_abstract": "deep learning"}}}}]}}
 
 PATENT SEARCH STRATEGY:
-Generate 3-4 strategic PatentView queries that maximize prior art discovery:
-1. Core technology searches (mechanism, method, system)
-2. Application domain searches (industry, use case)
-3. Component/material searches (specific parts, materials)
-4. Combination searches (technology + application)
+Generate EXACTLY 3 strategic PatentView queries that maximize prior art discovery:
+1. Core technology search (most specific to invention)
+2. Application domain search (use case/industry)
+3. Broader technology search (related concepts)
 
 Focus on the most impactful searches. Quality over quantity.
 
-RESPOND IN THIS EXACT JSON FORMAT:
+RESPOND IN THIS EXACT JSON FORMAT (3 strategies only):
 [
     {{
         "query_json": {{"_text_any": {{"patent_title": "neural network medical"}}}},
         "strategy_type": "core_technology",
         "rationale": "Direct search for core AI medical technology",
         "expected_relevance": "high",
-        "search_scope": "broad"
+        "search_scope": "targeted"
     }},
     {{
         "query_json": {{"_or": [{{"_text_any": {{"patent_title": "diagnostic system"}}}}, {{"_text_any": {{"patent_abstract": "medical diagnosis"}}}}]}},
@@ -287,10 +298,17 @@ RESPOND IN THIS EXACT JSON FORMAT:
         "rationale": "Search for medical diagnostic applications",
         "expected_relevance": "medium",
         "search_scope": "medium"
+    }},
+    {{
+        "query_json": {{"_text_any": {{"patent_abstract": "artificial intelligence healthcare"}}}},
+        "strategy_type": "broader_technology",
+        "rationale": "Broader AI healthcare technology search",
+        "expected_relevance": "medium",
+        "search_scope": "broad"
     }}
 ]
 
-Generate 5-7 diverse strategies that cover different aspects of the invention for comprehensive prior art discovery."""
+Generate EXACTLY 3 diverse strategies. Remember: text operators use STRINGS, not arrays!"""
 
         try:
             # Make LLM call for strategy generation
@@ -383,39 +401,47 @@ def generate_fallback_patent_strategies(keywords_string: str) -> List[Dict[str, 
         print(f"Fallback strategy generation failed: {e}")
         return []
 
-def validate_patentview_query(query_json: Dict) -> bool:
-    """Validate PatentView query syntax."""
+def fix_patentview_query(query_json: Dict) -> None:
+    """
+    Fix common PatentView query syntax issues IN-PLACE.
+    
+    Key fix: Text operators (_text_any, _text_all, _text_phrase) require STRING values, not arrays.
+    Example: {"_text_any": {"patent_title": ["word1", "word2"]}} 
+          -> {"_text_any": {"patent_title": "word1 word2"}}
+    """
+    text_operators = ['_text_any', '_text_all', '_text_phrase']
+    
+    def fix_recursive(obj):
+        if isinstance(obj, dict):
+            for key, value in list(obj.items()):
+                if key in text_operators and isinstance(value, dict):
+                    # Fix text operator field values - convert arrays to strings
+                    for field, field_value in list(value.items()):
+                        if isinstance(field_value, list):
+                            # Convert array to space-separated string
+                            obj[key][field] = ' '.join(str(item) for item in field_value)
+                            print(f"🔧 Fixed {key}.{field}: array -> '{obj[key][field]}'")
+                elif isinstance(value, (dict, list)):
+                    fix_recursive(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, dict):
+                    fix_recursive(item)
+    
     try:
-        # Check if it's a valid dictionary
+        fix_recursive(query_json)
+    except Exception as e:
+        print(f"Query fix error: {e}")
+
+def validate_patentview_query(query_json: Dict) -> bool:
+    """Validate and fix PatentView query syntax."""
+    try:
         if not isinstance(query_json, dict):
             return False
         
-        # Check for valid operators
-        valid_operators = ['_text_any', '_text_all', '_text_phrase', '_and', '_or', '_not', '_eq', '_neq', '_gt', '_gte', '_lt', '_lte']
-        valid_fields = ['patent_title', 'patent_abstract', 'patent_date', 'patent_type', 'patent_id']
-        
-        def validate_recursive(obj):
-            if isinstance(obj, dict):
-                for key, value in obj.items():
-                    if key in valid_operators:
-                        if not validate_recursive(value):
-                            return False
-                    elif key in valid_fields:
-                        # Field values should be strings or lists
-                        if not isinstance(value, (str, list)):
-                            return False
-                    else:
-                        # Unknown key, might be valid but let's be permissive
-                        pass
-                return True
-            elif isinstance(obj, list):
-                return all(validate_recursive(item) for item in obj)
-            elif isinstance(obj, str):
-                return True
-            else:
-                return False
-        
-        return validate_recursive(query_json)
+        # Fix the query in-place before validation
+        fix_patentview_query(query_json)
+        return True
         
     except Exception as e:
         print(f"Query validation error: {e}")
@@ -1500,13 +1526,20 @@ RESPOND IN JSON FORMAT (2-4 strategies):
 def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str:
     """Store comprehensive PatentView patent analysis result with LLM evaluation in DynamoDB."""
     try:
+        # Use patent_id as sort key
+        sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
+        
+        # CRITICAL VALIDATION: Ensure patent has been evaluated by LLM
+        llm_evaluation = patent_data.get('llm_evaluation', {})
+        overall_relevance = llm_evaluation.get('overall_relevance_score', patent_data.get('relevance_score', 0.0))
+        
+        if overall_relevance == 0.0 and not llm_evaluation:
+            return f"❌ REJECTED: Patent {sort_key} has not been evaluated by LLM. relevance_score=0, no llm_evaluation data. Must evaluate before storing."
+        
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(RESULTS_TABLE)
         
         timestamp = datetime.utcnow().isoformat()
-        
-        # Use patent_id as sort key
-        sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
         
         # Helper function to handle empty values
         def get_value_or_na(value):
@@ -1521,8 +1554,6 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         assignees_str = '; '.join(assignee_names) if assignee_names else "N/A"
         
         # Extract LLM evaluation data
-        llm_evaluation = patent_data.get('llm_evaluation', {})
-        overall_relevance = llm_evaluation.get('overall_relevance_score', patent_data.get('relevance_score', 0.0))
         technical_overlap = llm_evaluation.get('technical_overlap_score', 0.0)
         novelty_threat = llm_evaluation.get('novelty_threat_level', 'unknown')
         specific_overlaps = llm_evaluation.get('specific_overlaps', [])
@@ -2447,9 +2478,10 @@ QUALITY STANDARDS:
 - Detailed examiner notes for each patent evaluation
 
 CRITICAL RULES:
-- Use LLM to generate 3-4 strategic search queries (optimized for speed)
-- Execute ALL generated strategies with adaptive refinement
+- Use LLM to generate EXACTLY 3 strategic search queries (optimized for speed)
+- Execute ALL 3 generated strategies with adaptive refinement
 - Each search automatically assesses quality and refines if needed (max 1 refinement per strategy)
+- If a search returns 0 results, try the next strategy - DO NOT keep retrying the same failed query
 - Remove duplicate patents before evaluation
 - Pre-filter to top 15 patents by citation count (most impactful prior art)
 - Use LLM to evaluate relevance for top 15 candidates only (reduces execution time)
@@ -2457,6 +2489,7 @@ CRITICAL RULES:
 - Prioritize patents with high novelty threat levels
 - Store complete LLM evaluation data (overlaps, differences, examiner notes)
 - MUST complete storage step - do not stop after evaluation
+- NEVER store patents without LLM evaluation - relevance_score must be > 0
 
 Execute with optimized LLM intelligence for speed and reliability:
 1. LLM for strategic query generation (3-4 queries)
