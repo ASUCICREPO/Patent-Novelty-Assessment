@@ -146,7 +146,7 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
         return error_msg
 
 # =============================================================================
-# USPTO SEARCH TOOLS
+# PatentView SEARCH TOOLS
 # =============================================================================
 
 def fetch_patentview_access_token():
@@ -270,25 +270,16 @@ def parse_keywords(keywords_string: str) -> List[Dict[str, Any]]:
 def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) -> Dict[str, Any]:
     """
     Search PatentView for patents matching a single keyword.
-    Uses _text_phrase for multi-word keywords, _text_any for single words.
+    Uses _text_any for both single words and multi-word keywords.
     Sorts by patent_date DESC (newest first).
     """
     try:
-        # Build query based on keyword type
-        if is_phrase:
-            # Multi-word: use _text_phrase for exact phrase matching
-            query_json = {
-                "_text_phrase": {
-                    "patent_abstract": keyword
-                }
+        # Build query - always use _text_any for broader results
+        query_json = {
+            "_text_any": {
+                "patent_abstract": keyword
             }
-        else:
-            # Single word: use _text_any
-            query_json = {
-                "_text_any": {
-                    "patent_abstract": keyword
-                }
-            }
+        }
         
         # Fix query syntax (convert arrays to strings if needed)
         fix_patentview_query(query_json)
@@ -532,7 +523,20 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
             # Build search parameters
             search_params = {
                 "q": json.dumps(query_json),
-                "f": json.dumps(["patent_id", "patent_title", "patent_abstract", "patent_date", "patent_type", "patent_num_times_cited_by_us_patents"]),
+                "f": json.dumps([
+                    "patent_id",
+                    "patent_title",
+                    "patent_abstract",
+                    "patent_date",
+                    "patent_num_times_cited_by_us_patents",  # Forward citations
+                    "patent_num_us_patents_cited",            # Backward citations
+                    "patent_num_foreign_documents_cited",     # Foreign citations
+                    "inventors.inventor_name_first",
+                    "inventors.inventor_name_last",
+                    "assignees.assignee_organization",
+                    "assignees.assignee_individual_name_first",
+                    "assignees.assignee_individual_name_last"
+                ]),
                 "o": json.dumps({"size": limit})
             }
             
@@ -638,10 +642,34 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         patent_id = patent_data.get('patent_id', 'unknown')
         patent_title = patent_data.get('patent_title', 'Unknown Title')
         patent_abstract = patent_data.get('patent_abstract', '')
-        grant_date = patent_data.get('grant_date', '')
-        assignee_names = patent_data.get('assignee_names', [])
-        citation_count = patent_data.get('citation_count', 0)
-        patent_type = patent_data.get('patent_type', '')
+        grant_date = patent_data.get('patent_date', '')
+        
+        # Extract inventor names
+        inventors = patent_data.get('inventors', [])
+        inventor_names = []
+        for inv in inventors[:3]:  # Show first 3 inventors
+            first = inv.get('inventor_name_first', '')
+            last = inv.get('inventor_name_last', '')
+            if first or last:
+                inventor_names.append(f"{first} {last}".strip())
+        
+        # Extract assignee names
+        assignees = patent_data.get('assignees', [])
+        assignee_names = []
+        for asg in assignees:
+            org = asg.get('assignee_organization', '')
+            if org:
+                assignee_names.append(org)
+            else:
+                first = asg.get('assignee_individual_name_first', '')
+                last = asg.get('assignee_individual_name_last', '')
+                if first or last:
+                    assignee_names.append(f"{first} {last}".strip())
+        
+        # Citation data
+        forward_citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
+        backward_citations = patent_data.get('patent_num_us_patents_cited', 0)
+        citation_count = patent_data.get('citation_count', forward_citations)
         
         # Extract invention context
         invention_title = invention_context.get('title', 'Unknown Invention')
@@ -672,8 +700,10 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         Title: {patent_title}
         Abstract: {patent_abstract}
         Grant Date: {grant_date}
+        Inventors: {', '.join(inventor_names) if inventor_names else 'Unknown'}
         Assignee: {', '.join(assignee_names) if assignee_names else 'Unknown'}
-        Citations: {citation_count}
+        Forward Citations (cited by others): {forward_citations}
+        Backward Citations (cites others): {backward_citations}
 
         PRIOR ART ANALYSIS:
         Evaluate this patent's relevance for novelty assessment:
@@ -860,12 +890,30 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         def get_value_or_na(value):
             return value if value else "N/A"
         
-        # Process inventor names
-        inventor_names = patent_data.get('inventor_names', [])
+        # Extract inventor names from nested structure
+        inventors = patent_data.get('inventors', [])
+        inventor_names = []
+        for inv in inventors:
+            first = inv.get('inventor_name_first', '')
+            last = inv.get('inventor_name_last', '')
+            if first or last:
+                full_name = f"{first} {last}".strip()
+                inventor_names.append(full_name)
         inventors_str = '; '.join(inventor_names) if inventor_names else "N/A"
         
-        # Process assignee names
-        assignee_names = patent_data.get('assignee_names', [])
+        # Extract assignee names from nested structure
+        assignees = patent_data.get('assignees', [])
+        assignee_names = []
+        for asg in assignees:
+            org = asg.get('assignee_organization', '')
+            if org:
+                assignee_names.append(org)
+            else:
+                first = asg.get('assignee_individual_name_first', '')
+                last = asg.get('assignee_individual_name_last', '')
+                if first or last:
+                    full_name = f"{first} {last}".strip()
+                    assignee_names.append(full_name)
         assignees_str = '; '.join(assignee_names) if assignee_names else "N/A"
         
         # Extract LLM evaluation data
@@ -891,7 +939,10 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             'patent_assignees': assignees_str,
             
             # Citation Information (Important for novelty assessment)
-            'citation_count': patent_data.get('citation_count', 0),
+            'forward_citations': patent_data.get('patent_num_times_cited_by_us_patents', 0),  # How many patents cite THIS one
+            'backward_citations': patent_data.get('patent_num_us_patents_cited', 0),  # How many patents THIS one cites
+            'foreign_citations': patent_data.get('patent_num_foreign_documents_cited', 0),  # Foreign documents cited
+            'citation_count': patent_data.get('citation_count', 0),  # Legacy field (same as forward_citations)
             
             # LLM-Powered Relevance Assessment
             'relevance_score': Decimal(str(overall_relevance)),
@@ -1684,68 +1735,68 @@ patentview_search_agent = Agent(
     tools=[read_keywords_from_dynamodb, search_all_keywords_and_prefilter, evaluate_patent_relevance_llm, store_patentview_analysis],
     system_prompt="""You are an AI Patent Search Expert conducting comprehensive prior art searches using direct keyword-based queries.
 
-MISSION: Conduct comprehensive prior art searches using direct keyword-based queries for maximum coverage and efficiency.
+    MISSION: Conduct comprehensive prior art searches using direct keyword-based queries for maximum coverage and efficiency.
 
-WORKFLOW - SIMPLIFIED 4-STEP PROCESS:
+    WORKFLOW - SIMPLIFIED 4-STEP PROCESS:
 
-1. READ KEYWORDS:
-   - Call: read_keywords_from_dynamodb(pdf_filename)
-   - Extract the keywords string from the result
+    1. READ KEYWORDS:
+    - Call: read_keywords_from_dynamodb(pdf_filename)
+    - Extract the keywords string from the result
 
-2. SEARCH ALL KEYWORDS (ONE TOOL CALL):
-   - Call: search_all_keywords_and_prefilter(keywords_string, top_n=50)
-   - This automatically:
-     * Parses all keywords (detects multi-word phrases)
-     * Searches each keyword (top 10 newest per keyword)
-     * Deduplicates by patent_id
-     * Pre-filters to top 50 by citation_count
-   - Returns: 50 patents ready for evaluation
+    2. SEARCH ALL KEYWORDS (ONE TOOL CALL):
+    - Call: search_all_keywords_and_prefilter(keywords_string, top_n=20)
+    - This automatically:
+        * Parses all keywords (detects multi-word phrases)
+        * Searches each keyword (top 10 newest per keyword)
+        * Deduplicates by patent_id
+        * Pre-filters to top 20 by citation_count
+    - Returns: 20 patents ready for evaluation
 
-3. EVALUATE EACH PATENT:
-   - For EACH of the 50 patents returned:
-   - Call: evaluate_patent_relevance_llm(patent, keywords_data)
-   - Attach the evaluation to the patent object
+    3. EVALUATE EACH PATENT:
+    - For EACH of the 20 patents returned:
+    - Call: evaluate_patent_relevance_llm(patent, keywords_data)
+    - Attach the evaluation to the patent object
 
-4. STORE TOP 8:
-   - Sort patents by relevance_score (descending)
-   - For the top 8 patents:
-   - Call: store_patentview_analysis(pdf_filename, patent)
+    4. STORE TOP 8:
+    - Sort patents by relevance_score (descending)
+    - For the top 8 patents:
+    - Call: store_patentview_analysis(pdf_filename, patent)
 
-EXAMPLE WORKFLOW:
-```python
-# Step 1: Get keywords
-keywords_data = read_keywords_from_dynamodb(pdf_filename)
-keywords_string = keywords_data['keywords']
+    EXAMPLE WORKFLOW:
+    ```python
+    # Step 1: Get keywords
+    keywords_data = read_keywords_from_dynamodb(pdf_filename)
+    keywords_string = keywords_data['keywords']
 
-# Step 2: Search all keywords in ONE call
-search_result = search_all_keywords_and_prefilter(keywords_string, top_n=50)
-top_50_patents = search_result['patents']
+    # Step 2: Search all keywords in ONE call
+    search_result = search_all_keywords_and_prefilter(keywords_string, top_n=20)
+    top_20_patents = search_result['patents']
 
-# Step 3: Evaluate each patent
-for patent in top_50_patents:
-    llm_eval = evaluate_patent_relevance_llm(patent, keywords_data)
-    patent['llm_evaluation'] = llm_eval
-    patent['relevance_score'] = llm_eval['overall_relevance_score']
+    # Step 3: Evaluate each patent
+    for patent in top_20_patents:
+        llm_eval = evaluate_patent_relevance_llm(patent, keywords_data)
+        patent['llm_evaluation'] = llm_eval
+        patent['relevance_score'] = llm_eval['overall_relevance_score']
 
-# Step 4: Store top 8
-top_8 = sorted(top_50_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
-for patent in top_8:
-    store_patentview_analysis(pdf_filename, patent)
-```
+    # Step 4: Store top 8
+    top_8 = sorted(top_20_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
+    for patent in top_8:
+        store_patentview_analysis(pdf_filename, patent)
+    ```
 
-QUALITY STANDARDS:
-- Direct keyword search ensures comprehensive coverage
-- Top 10 newest patents per keyword captures recent prior art
-- Pre-filtering by citations focuses on most impactful patents
-- LLM evaluation provides deep semantic relevance assessment
-- Top 8 storage ensures best prior art is preserved
+    QUALITY STANDARDS:
+    - Direct keyword search ensures comprehensive coverage
+    - Top 10 newest patents per keyword captures recent prior art
+    - Pre-filtering by citations focuses on most impactful patents
+    - LLM evaluation provides deep semantic relevance assessment
+    - Top 8 storage ensures best prior art is preserved
 
-CRITICAL RULES:
-- Use search_all_keywords_and_prefilter() for ALL keyword searching (ONE call)
-- This tool handles parsing, searching, deduplication, and pre-filtering automatically
-- Evaluate ALL 50 returned patents with evaluate_patent_relevance_llm()
-- Store EXACTLY top 8 most relevant patents (sorted by relevance_score)
-- NEVER store patents without LLM evaluation - relevance_score must be > 0"""
+    CRITICAL RULES:
+    - Use search_all_keywords_and_prefilter() for ALL keyword searching (ONE call)
+    - This tool handles parsing, searching, deduplication, and pre-filtering automatically
+    - Evaluate ALL 20 returned patents with evaluate_patent_relevance_llm()
+    - Store EXACTLY top 8 most relevant patents (sorted by relevance_score)
+    - NEVER store patents without LLM evaluation - relevance_score must be > 0"""
 )
 
 # Scholarly Article Search Agent (Semantic Scholar Only)
