@@ -878,7 +878,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         llm_evaluation = patent_data.get('llm_evaluation', {})
         overall_relevance = llm_evaluation.get('overall_relevance_score', patent_data.get('relevance_score', 0.0))
         
-        if overall_relevance == 0.0 and not llm_evaluation:
+        if overall_relevance == 0.000 and not llm_evaluation:
             return f"❌ REJECTED: Patent {sort_key} has not been evaluated by LLM. relevance_score=0, no llm_evaluation data. Must evaluate before storing."
         
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
@@ -1795,8 +1795,10 @@ patentview_search_agent = Agent(
     - Use search_all_keywords_and_prefilter() for ALL keyword searching (ONE call)
     - This tool handles parsing, searching, deduplication, and pre-filtering automatically
     - Evaluate ALL 20 returned patents with evaluate_patent_relevance_llm()
-    - Store EXACTLY top 8 most relevant patents (sorted by relevance_score)
-    - NEVER store patents without LLM evaluation - relevance_score must be > 0"""
+    - Store EXACTLY the top 8 highest-scoring patents (sorted by relevance_score descending)
+    - Store ALL 8 patents regardless of their absolute score values (even if scores are 0.2, 0.3, etc.)
+    - The top 8 patents by score are ALWAYS stored - no minimum score threshold
+    - NEVER store patents without LLM evaluation - but once evaluated, store top 8 regardless of score"""
 )
 
 # Scholarly Article Search Agent (Semantic Scholar Only)
@@ -1864,10 +1866,9 @@ async def handle_keyword_generation(payload):
     # Extract PDF filename from BDA file path
     pdf_filename = "unknown"
     if bda_file_path:
-        # Path format: temp/docParser/filename-timestamp/job-id/0/standard_output/0/result.json
         path_parts = bda_file_path.split('/')
         if len(path_parts) > 2:
-            filename_timestamp = path_parts[2]  # e.g., "ROI2022-test-2025-08-31T00-33-09-644Z"
+            filename_timestamp = path_parts[2] 
             # Extract just the filename part before the timestamp
             pdf_filename = filename_timestamp.split('-2025-')[0] if '-2025-' in filename_timestamp else filename_timestamp
     
