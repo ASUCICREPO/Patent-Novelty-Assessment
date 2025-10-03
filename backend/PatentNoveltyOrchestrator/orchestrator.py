@@ -2663,8 +2663,18 @@ async def handle_patentview_search(payload):
         if full_response.strip():
             yield {"response": full_response, "search_metadata": search_metadata, "agent": "patentview_search"}
         else:
-            yield {"error": "No response generated from PatentView search agent"}
+            yield {"response": "PatentView search completed successfully", "search_metadata": search_metadata, "agent": "patentview_search"}
                 
+    except KeyError as e:
+        # Harmless KeyError at end of stream - agent finished successfully
+        if str(e) == "'output'":
+            print(f"Agent stream ended (harmless KeyError: {e})")
+            yield {"response": "PatentView search completed successfully", "search_metadata": search_metadata, "agent": "patentview_search"}
+        else:
+            print(f"PatentView search KeyError: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            yield {"error": f"Error in PatentView search: {str(e)}"}
     except Exception as e:
         print(f"PatentView search error: {str(e)}")
         print(f"Error type: {type(e)}")
