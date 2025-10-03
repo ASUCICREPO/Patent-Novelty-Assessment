@@ -2367,22 +2367,23 @@ keyword_generator = Agent(
     - Include process terms ("deployment", "rotation", "threading")
     - Add application domain terms ("biliary", "pancreatic", "endoscopic")
     - Include synonyms and variations patent searchers would use
-    - Aim for 15-25 high-impact keywords that capture the invention's essence
+    - Aim for 12-15 high-impact keywords MAXIMUM - quality over quantity
+    - Each keyword must be highly relevant and likely to appear in prior art
 
     OUTPUT FORMAT (use this exact structure):
     # Patent Analysis
 
     ## Title
-    [Create a concise, professional title for the invention - 8-12 words max]
+    [Create a concise, professional title for the invention]
 
     ## Technology Description
-    [Write a brief 1-2 sentence technical description of what the invention IS - focus on the core technology/mechanism]
+    [Write a brief technical description of what the invention is in 100-150 words - focus on the core technology/mechanism]
 
     ## Technology Applications
-    [Write a brief 1-2 sentence description of what problems it solves and where it's used]
+    [Write a brief description of what problems it solves and where it's used in 100-150 words]
 
     ## Keywords
-    [List 15-25 comma-separated keywords and key phrases that capture the invention's essence - mix of single words and 2-3 word phrases]
+    [List 12-15 comma-separated keywords MAXIMUM that capture the invention's essence - mix of single words and 2-3 word phrases. Focus on the MOST important terms only.]
 
     QUALITY STANDARD: Your keywords should match the quality of professional patent searchers. Each keyword should be a term that could realistically appear in a competing patent or prior art document.
 
