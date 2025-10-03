@@ -440,9 +440,11 @@ def deduplicate_patents(all_patents: List[Dict[str, Any]]) -> List[Dict[str, Any
             if patent_id not in unique_patents:
                 # First occurrence - keep it
                 unique_patents[patent_id] = patent
-                # Initialize matched_keywords list if not exists
-                if 'matched_keywords' not in patent:
-                    patent['matched_keywords'] = [patent.get('matched_keyword', '')]
+                # Initialize matched_keywords list
+                matched_kw = patent.get('matched_keyword', '')
+                patent['matched_keywords'] = [matched_kw] if matched_kw else []
+                # Store as comma-separated string for DynamoDB
+                patent['matching_keywords'] = matched_kw
             else:
                 # Duplicate - add keyword to existing patent's list
                 existing = unique_patents[patent_id]
@@ -451,6 +453,8 @@ def deduplicate_patents(all_patents: List[Dict[str, Any]]) -> List[Dict[str, Any
                     if 'matched_keywords' not in existing:
                         existing['matched_keywords'] = []
                     existing['matched_keywords'].append(keyword)
+                    # Update comma-separated string
+                    existing['matching_keywords'] = ', '.join(existing['matched_keywords'])
         
         result = list(unique_patents.values())
         print(f"🔄 Deduplicated: {len(all_patents)} → {len(result)} unique patents")
@@ -650,13 +654,8 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
             print(f"Patent {patent_id} lacks sufficient abstract content")
             return {
                 'overall_relevance_score': 0.2,
-                'technical_overlap_score': 0.0,
-                'novelty_threat_level': 'none',
-                'specific_overlaps': [],
                 'key_differences': ['Insufficient patent abstract for analysis'],
-                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment',
-                'citation_recommendation': 'not_relevant',
-                'confidence_level': 'low'
+                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment'
             }
         
         # Create LLM prompt for patent relevance evaluation
@@ -675,7 +674,6 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         Grant Date: {grant_date}
         Assignee: {', '.join(assignee_names) if assignee_names else 'Unknown'}
         Citations: {citation_count}
-        Patent Type: {patent_type}
 
         PRIOR ART ANALYSIS:
         Evaluate this patent's relevance for novelty assessment:
@@ -701,13 +699,8 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         RESPOND IN THIS EXACT JSON FORMAT:
         {{
             "overall_relevance_score": 0.0-1.0,
-            "technical_overlap_score": 0.0-1.0,
-            "novelty_threat_level": "high|medium|low|none",
-            "specific_overlaps": ["list of overlapping features"],
             "key_differences": ["list of differentiating features"],
-            "examiner_notes": "detailed analysis for patent examiner",
-            "citation_recommendation": "primary_reference|secondary_reference|background_art|not_relevant",
-            "confidence_level": "high|medium|low"
+            "examiner_notes": "detailed analysis for patent examiner"
         }}
 
         Be precise and focus specifically on patent novelty implications."""
@@ -744,12 +737,10 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                     llm_evaluation = json.loads(json_str)
                     
                     # Validate required fields
-                    required_fields = ['overall_relevance_score', 'technical_overlap_score', 'novelty_threat_level', 
-                                     'specific_overlaps', 'key_differences', 'examiner_notes', 
-                                     'citation_recommendation', 'confidence_level']
+                    required_fields = ['overall_relevance_score', 'key_differences', 'examiner_notes']
                     
                     if all(field in llm_evaluation for field in required_fields):
-                        print(f"✅ LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}, Threat={llm_evaluation['novelty_threat_level']}")
+                        print(f"✅ LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}")
                         return llm_evaluation
                     else:
                         print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
@@ -803,26 +794,16 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
         if not keywords_string:
             return {
                 'overall_relevance_score': 0.0,
-                'technical_overlap_score': 0.0,
-                'novelty_threat_level': 'none',
-                'specific_overlaps': [],
                 'key_differences': [],
-                'examiner_notes': 'Fallback scoring - no keywords available',
-                'citation_recommendation': 'not_relevant',
-                'confidence_level': 'low'
+                'examiner_notes': 'Fallback scoring - no keywords available'
             }
         
         keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
         if not keyword_list:
             return {
                 'overall_relevance_score': 0.0,
-                'technical_overlap_score': 0.0,
-                'novelty_threat_level': 'none',
-                'specific_overlaps': [],
                 'key_differences': [],
-                'examiner_notes': 'Fallback scoring - no valid keywords',
-                'citation_recommendation': 'not_relevant',
-                'confidence_level': 'low'
+                'examiner_notes': 'Fallback scoring - no valid keywords'
             }
         
         # Count matches
@@ -842,38 +823,18 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
         
         final_score = round(min(base_score, 1.0), 3)
         
-        # Determine threat level
-        if final_score > 0.7:
-            threat_level = 'high'
-        elif final_score > 0.4:
-            threat_level = 'medium'
-        elif final_score > 0.2:
-            threat_level = 'low'
-        else:
-            threat_level = 'none'
-        
         return {
             'overall_relevance_score': final_score,
-            'technical_overlap_score': final_score * 0.8,
-            'novelty_threat_level': threat_level,
-            'specific_overlaps': [kw for kw in keyword_list if kw in patent_text],
             'key_differences': [],
-            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched',
-            'citation_recommendation': 'secondary_reference' if final_score > 0.5 else 'background_art',
-            'confidence_level': 'low'
+            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched'
         }
         
     except Exception as e:
         print(f"Fallback scoring error: {e}")
         return {
             'overall_relevance_score': 0.0,
-            'technical_overlap_score': 0.0,
-            'novelty_threat_level': 'none',
-            'specific_overlaps': [],
             'key_differences': [],
-            'examiner_notes': f'Fallback scoring failed: {str(e)}',
-            'citation_recommendation': 'not_relevant',
-            'confidence_level': 'low'
+            'examiner_notes': f'Fallback scoring failed: {str(e)}'
         }
 
 @tool
@@ -908,13 +869,8 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         assignees_str = '; '.join(assignee_names) if assignee_names else "N/A"
         
         # Extract LLM evaluation data
-        technical_overlap = llm_evaluation.get('technical_overlap_score', 0.0)
-        novelty_threat = llm_evaluation.get('novelty_threat_level', 'unknown')
-        specific_overlaps = llm_evaluation.get('specific_overlaps', [])
         key_differences = llm_evaluation.get('key_differences', [])
         examiner_notes = llm_evaluation.get('examiner_notes', '')
-        citation_recommendation = llm_evaluation.get('citation_recommendation', 'not_assessed')
-        confidence_level = llm_evaluation.get('confidence_level', 'unknown')
         
         item = {
             # Primary Keys
@@ -926,7 +882,6 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             'patent_abstract': get_value_or_na(patent_data.get('patent_abstract', '')),
             
             # Legal Status & Dates (Critical for novelty)
-            'patent_type': get_value_or_na(patent_data.get('patent_type', '')),
             'grant_date': get_value_or_na(patent_data.get('patent_date', '')),
             'filing_date': get_value_or_na(patent_data.get('patent_date', '')),
             'publication_date': get_value_or_na(patent_data.get('patent_date', '')),
@@ -937,41 +892,20 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             
             # Citation Information (Important for novelty assessment)
             'citation_count': patent_data.get('citation_count', 0),
-            'times_cited': patent_data.get('citation_count', 0),
             
             # LLM-Powered Relevance Assessment
             'relevance_score': Decimal(str(overall_relevance)),
-            'technical_overlap_score': Decimal(str(technical_overlap)),
-            'novelty_threat_level': novelty_threat,
-            'specific_overlaps': ', '.join(specific_overlaps) if specific_overlaps else 'None identified',
             'key_differences': ', '.join(key_differences) if key_differences else 'None identified',
             'llm_examiner_notes': examiner_notes,
-            'citation_recommendation': citation_recommendation,
-            'llm_confidence_level': confidence_level,
             
             # Search Metadata
-            'search_strategy_type': get_value_or_na(patent_data.get('search_strategy_type', '')),
-            'search_strategy_used': get_value_or_na(patent_data.get('search_query_used', '')),
             'search_timestamp': timestamp,
             'matching_keywords': get_value_or_na(patent_data.get('matching_keywords', '')),
-            'data_source': get_value_or_na(patent_data.get('data_source', 'PatentView')),
             
             # PatentView URLs for reference
-            'patentview_url': f"https://search.patentsview.org/api/v1/patent/?q={{\"patent_id\":\"{sort_key}\"}}",
             'google_patents_url': f"https://patents.google.com/patent/US{sort_key}",
             
-            # Processing metadata
-            'rank_position': 1,
-            'application_status': 'Granted',  # PatentView only has granted patents
-            
-            # Legacy compatibility fields (set to N/A for PatentView)
-            'specification_url': 'N/A',
-            'abstract_url': 'N/A', 
-            'claims_url': 'N/A',
-            'specification_pages': 0,
-            'abstract_pages': 0,
-            'claims_pages': 0,
-            'parent_patents': 0,
+            # Legacy compatibility fields
             'publication_number': get_value_or_na(sort_key)
         }
         
