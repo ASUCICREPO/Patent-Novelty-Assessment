@@ -964,7 +964,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         table.put_item(Item=item)
         
         patent_title = patent_data.get('patent_title', 'Unknown Title')
-        return f"Successfully stored PatentView patent {sort_key}: {patent_title} (Relevance: {overall_relevance}, Threat: {novelty_threat})"
+        return f"✅ Successfully stored PatentView patent {sort_key}: {patent_title} (Relevance: {overall_relevance})"
         
     except Exception as e:
         sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
@@ -1744,23 +1744,25 @@ patentview_search_agent = Agent(
     - Extract the keywords string from the result
 
     2. SEARCH ALL KEYWORDS (ONE TOOL CALL):
-    - Call: search_all_keywords_and_prefilter(keywords_string, top_n=20)
+    - Call: search_all_keywords_and_prefilter(keywords_string, top_n=10)
     - This automatically:
         * Parses all keywords (detects multi-word phrases)
         * Searches each keyword (top 10 newest per keyword)
         * Deduplicates by patent_id
-        * Pre-filters to top 20 by citation_count
-    - Returns: 20 patents ready for evaluation
+        * Pre-filters to top 10 by citation_count
+    - Returns: 10 patents ready for evaluation
 
     3. EVALUATE EACH PATENT:
-    - For EACH of the 20 patents returned:
+    - For EACH of the 10 patents returned:
     - Call: evaluate_patent_relevance_llm(patent, keywords_data)
     - Attach the evaluation to the patent object
+    - Track progress: "Evaluated X/10 patents"
 
-    4. STORE TOP 8:
+    4. STORE TOP 8 - EXECUTE IMMEDIATELY:
     - Sort patents by relevance_score (descending)
-    - For the top 8 patents:
-    - Call: store_patentview_analysis(pdf_filename, patent)
+    - IMMEDIATELY call store_patentview_analysis for EACH of the top 8 patents
+    - Do NOT just list them - ACTUALLY CALL THE TOOL 8 times
+    - Track progress: "Stored X/8 patents"
 
     EXAMPLE WORKFLOW:
     ```python
@@ -1769,20 +1771,39 @@ patentview_search_agent = Agent(
     keywords_string = keywords_data['keywords']
 
     # Step 2: Search all keywords in ONE call
-    search_result = search_all_keywords_and_prefilter(keywords_string, top_n=20)
-    top_20_patents = search_result['patents']
+    search_result = search_all_keywords_and_prefilter(keywords_string, top_n=10)
+    top_10_patents = search_result['patents']
 
-    # Step 3: Evaluate each patent
-    for patent in top_20_patents:
+    # Step 3: Evaluate each patent (MUST COMPLETE ALL 10)
+    evaluated_count = 0
+    for patent in top_10_patents:
         llm_eval = evaluate_patent_relevance_llm(patent, keywords_data)
         patent['llm_evaluation'] = llm_eval
         patent['relevance_score'] = llm_eval['overall_relevance_score']
+        evaluated_count += 1
+        print(f"Progress: Evaluated {evaluated_count}/10 patents")
 
-    # Step 4: Store top 8
-    top_8 = sorted(top_20_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
+    # Step 4: Store top 8 (MUST COMPLETE ALL 8)
+    top_8 = sorted(top_10_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
+    stored_count = 0
     for patent in top_8:
         store_patentview_analysis(pdf_filename, patent)
+        stored_count += 1
+        print(f"Progress: Stored {stored_count}/8 patents")
     ```
+
+    CRITICAL EXECUTION RULES - MUST FOLLOW:
+    ==========================================
+    1. You MUST evaluate ALL 10 patents returned - no exceptions, no early stopping
+    2. After ALL 10 evaluations are complete, you MUST proceed to Step 4
+    3. You MUST sort by relevance_score and select top 8 patents
+    4. DO NOT JUST LIST THE PATENTS - You MUST ACTUALLY CALL store_patentview_analysis() 8 TIMES
+    5. Call store_patentview_analysis(pdf_filename, patent) for EACH of the 8 patents individually
+    6. Do NOT stop until all 8 patents are stored in DynamoDB
+    7. If you encounter an error on one patent, continue with remaining patents
+    8. Print progress after each evaluation and storage operation
+    9. The workflow is NOT complete until you see "Stored 8/8 patents"
+    10. LISTING patents is NOT the same as STORING them - you MUST use the tool
 
     QUALITY STANDARDS:
     - Direct keyword search ensures comprehensive coverage
@@ -1791,14 +1812,23 @@ patentview_search_agent = Agent(
     - LLM evaluation provides deep semantic relevance assessment
     - Top 8 storage ensures best prior art is preserved
 
-    CRITICAL RULES:
+    STORAGE RULES:
     - Use search_all_keywords_and_prefilter() for ALL keyword searching (ONE call)
     - This tool handles parsing, searching, deduplication, and pre-filtering automatically
-    - Evaluate ALL 20 returned patents with evaluate_patent_relevance_llm()
+    - Evaluate ALL 10 returned patents with evaluate_patent_relevance_llm()
     - Store EXACTLY the top 8 highest-scoring patents (sorted by relevance_score descending)
     - Store ALL 8 patents regardless of their absolute score values (even if scores are 0.2, 0.3, etc.)
     - The top 8 patents by score are ALWAYS stored - no minimum score threshold
-    - NEVER store patents without LLM evaluation - but once evaluated, store top 8 regardless of score"""
+    - NEVER store patents without LLM evaluation - but once evaluated, store top 8 regardless of score
+    
+    FINAL REMINDER - ACTION REQUIRED:
+    ==================================
+    After you finish evaluating all 10 patents and sort them by score:
+    - DO NOT just describe what you will do
+    - DO NOT just list the patent numbers
+    - IMMEDIATELY call store_patentview_analysis() 8 times (once for each top patent)
+    - Each call should be: store_patentview_analysis(pdf_filename="ROI2023-005", patent_data={...})
+    - You are NOT done until you see 8 successful storage confirmations"""
 )
 
 # Scholarly Article Search Agent (Semantic Scholar Only)
