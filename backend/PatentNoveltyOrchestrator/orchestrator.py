@@ -234,12 +234,510 @@ def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
         return {"error": f"Error reading patent analysis: {str(e)}"}
 
 @tool
-def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[str, Any]]:
-    """Search PatentView patents via Gateway using Strands MCP client."""
+def generate_patent_search_strategies_llm(invention_context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Generate strategic PatentView search queries using LLM analysis of the invention."""
     try:
+        # Extract invention context
+        title = invention_context.get('title', '')
+        tech_description = invention_context.get('technology_description', '')
+        tech_applications = invention_context.get('technology_applications', '')
+        keywords_string = invention_context.get('keywords', '')
+        
+        if not keywords_string:
+            print("No keywords provided for search strategy generation")
+            return []
+        
+        # Create LLM prompt for patent search strategy generation
+        strategy_generation_prompt = f"""You are a patent search expert with deep knowledge of PatentView API syntax and patent prior art discovery.
+
+INVENTION CONTEXT:
+Title: {title}
+Technology Description: {tech_description}
+Applications: {tech_applications}
+Keywords: {keywords_string}
+
+PATENTVIEW QUERY SYNTAX:
+- Text search operators: _text_any, _text_all, _text_phrase
+- Field targeting: patent_title, patent_abstract
+- Logical operators: _and, _or, _not
+- Comparison operators: _gte, _lte for dates
+- Example: {{"_text_any": {{"patent_title": "machine learning"}}}}
+
+PATENT SEARCH STRATEGY:
+Generate 3-4 strategic PatentView queries that maximize prior art discovery:
+1. Core technology searches (mechanism, method, system)
+2. Application domain searches (industry, use case)
+3. Component/material searches (specific parts, materials)
+4. Combination searches (technology + application)
+
+Focus on the most impactful searches. Quality over quantity.
+
+RESPOND IN THIS EXACT JSON FORMAT:
+[
+    {{
+        "query_json": {{"_text_any": {{"patent_title": "neural network medical"}}}},
+        "strategy_type": "core_technology",
+        "rationale": "Direct search for core AI medical technology",
+        "expected_relevance": "high",
+        "search_scope": "broad"
+    }},
+    {{
+        "query_json": {{"_or": [{{"_text_any": {{"patent_title": "diagnostic system"}}}}, {{"_text_any": {{"patent_abstract": "medical diagnosis"}}}}]}},
+        "strategy_type": "application_domain",
+        "rationale": "Search for medical diagnostic applications",
+        "expected_relevance": "medium",
+        "search_scope": "medium"
+    }}
+]
+
+Generate 5-7 diverse strategies that cover different aspects of the invention for comprehensive prior art discovery."""
+
+        try:
+            # Make LLM call for strategy generation
+            bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+            request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 3000,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": strategy_generation_prompt
+                    }
+                ]
+            }
+            
+            response = bedrock_client.invoke_model(
+                modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                body=json.dumps(request_body)
+            )
+            
+            response_body = json.loads(response['body'].read())
+            llm_response = response_body['content'][0]['text']
+            print(f"LLM Strategy Response: {llm_response[:200]}...")
+            
+            # Parse JSON from LLM response
+            json_start = llm_response.find('[')
+            json_end = llm_response.rfind(']') + 1
+            if json_start != -1 and json_end != -1:
+                json_str = llm_response[json_start:json_end]
+                search_strategies = json.loads(json_str)
+                
+                # Validate each strategy has required fields
+                validated_strategies = []
+                for strategy in search_strategies:
+                    if all(key in strategy for key in ['query_json', 'strategy_type', 'rationale']):
+                        validated_strategies.append(strategy)
+                    else:
+                        print(f"Invalid strategy format: {strategy}")
+                
+                print(f"✅ Generated {len(validated_strategies)} patent search strategies")
+                return validated_strategies
+            else:
+                print("Could not find JSON in LLM strategy response")
+                return []
+                
+        except Exception as e:
+            print(f"LLM strategy generation failed: {e}")
+            # Fallback to simple static approach
+            return generate_fallback_patent_strategies(keywords_string)
+            
+    except Exception as e:
+        print(f"Error in patent search strategy generation: {e}")
+        return []
+
+def generate_fallback_patent_strategies(keywords_string: str) -> List[Dict[str, Any]]:
+    """Simple fallback strategy generation when LLM fails."""
+    try:
+        keyword_list = [k.strip() for k in keywords_string.split(',') if k.strip()]
+        if not keyword_list:
+            return []
+        
+        strategies = []
+        
+        # Core technology search
+        if len(keyword_list) >= 1:
+            strategies.append({
+                "query_json": {"_text_any": {"patent_title": keyword_list[0]}},
+                "strategy_type": "core_technology",
+                "rationale": f"Direct search for {keyword_list[0]}",
+                "expected_relevance": "high",
+                "search_scope": "broad"
+            })
+        
+        # Combined search
+        if len(keyword_list) >= 2:
+            strategies.append({
+                "query_json": {"_or": [
+                    {"_text_any": {"patent_title": f"{keyword_list[0]} {keyword_list[1]}"}},
+                    {"_text_any": {"patent_abstract": f"{keyword_list[0]} {keyword_list[1]}"}}
+                ]},
+                "strategy_type": "combination",
+                "rationale": f"Combined search for {keyword_list[0]} and {keyword_list[1]}",
+                "expected_relevance": "medium",
+                "search_scope": "medium"
+            })
+        
+        return strategies[:3]  # Limit fallback to 3 strategies
+        
+    except Exception as e:
+        print(f"Fallback strategy generation failed: {e}")
+        return []
+
+def validate_patentview_query(query_json: Dict) -> bool:
+    """Validate PatentView query syntax."""
+    try:
+        # Check if it's a valid dictionary
+        if not isinstance(query_json, dict):
+            return False
+        
+        # Check for valid operators
+        valid_operators = ['_text_any', '_text_all', '_text_phrase', '_and', '_or', '_not', '_eq', '_neq', '_gt', '_gte', '_lt', '_lte']
+        valid_fields = ['patent_title', 'patent_abstract', 'patent_date', 'patent_type', 'patent_id']
+        
+        def validate_recursive(obj):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    if key in valid_operators:
+                        if not validate_recursive(value):
+                            return False
+                    elif key in valid_fields:
+                        # Field values should be strings or lists
+                        if not isinstance(value, (str, list)):
+                            return False
+                    else:
+                        # Unknown key, might be valid but let's be permissive
+                        pass
+                return True
+            elif isinstance(obj, list):
+                return all(validate_recursive(item) for item in obj)
+            elif isinstance(obj, str):
+                return True
+            else:
+                return False
+        
+        return validate_recursive(query_json)
+        
+    except Exception as e:
+        print(f"Query validation error: {e}")
+        return False
+
+@tool
+def assess_patent_search_quality_llm(search_results: Dict[str, Any], search_strategy: Dict[str, Any], invention_context: Dict[str, Any]) -> Dict[str, Any]:
+    """Assess the quality of patent search results and determine if refinement is needed."""
+    try:
+        patents = search_results.get('patents', [])
+        total_hits = search_results.get('total_hits', 0)
+        strategy_type = search_strategy.get('strategy_type', 'unknown')
+        query_json = search_strategy.get('query_json', {})
+        
+        # Extract invention context
+        invention_title = invention_context.get('title', '')
+        keywords = invention_context.get('keywords', '')
+        
+        # Quick quality checks
+        if total_hits == 0:
+            return {
+                'quality_assessment': 'poor',
+                'issues_identified': ['No results found - query may be too specific or use uncommon terms'],
+                'refinement_action': 'broaden',
+                'refinement_rationale': 'Zero results indicate query is too restrictive',
+                'should_refine': True
+            }
+        
+        if total_hits > 5000:
+            return {
+                'quality_assessment': 'needs_refinement',
+                'issues_identified': ['Too many results - query is too broad'],
+                'refinement_action': 'narrow',
+                'refinement_rationale': 'Excessive results indicate query lacks specificity',
+                'should_refine': True
+            }
+        
+        if len(patents) < 3:
+            return {
+                'quality_assessment': 'needs_refinement',
+                'issues_identified': ['Very few results returned - try broader or alternative terms'],
+                'refinement_action': 'alternative_terms',
+                'refinement_rationale': 'Limited results suggest need for different terminology',
+                'should_refine': True
+            }
+        
+        # Calculate quality metrics
+        patents_with_abstracts = sum(1 for p in patents if p.get('patent_abstract') and len(p.get('patent_abstract', '')) > 50)
+        abstract_ratio = patents_with_abstracts / len(patents) if patents else 0
+        
+        avg_citation_count = sum(p.get('citation_count', 0) for p in patents) / len(patents) if patents else 0
+        
+        # Check patent type diversity
+        patent_types = set(p.get('patent_type', 'unknown') for p in patents)
+        
+        # LLM-based quality assessment for borderline cases (DISABLED for performance)
+        # Skip LLM quality assessment to reduce execution time
+        if False and 10 <= total_hits <= 5000 and len(patents) >= 3 and abstract_ratio > 0.5:
+            # Use LLM for deeper quality analysis
+            quality_prompt = f"""Analyze the quality of these patent search results for refinement decision.
+
+INVENTION CONTEXT:
+Title: {invention_title}
+Keywords: {keywords}
+
+SEARCH STRATEGY:
+Type: {strategy_type}
+Query: {query_json}
+
+RESULTS SUMMARY:
+- Total patents found: {total_hits}
+- Patents returned: {len(patents)}
+- Patents with abstracts: {patents_with_abstracts} ({abstract_ratio:.1%})
+- Average citation count: {avg_citation_count:.1f}
+- Patent types: {', '.join(patent_types)}
+
+SAMPLE PATENT TITLES (first 5):
+{chr(10).join(f"- {p.get('patent_title', 'Unknown')}" for p in patents[:5])}
+
+QUALITY ASSESSMENT TASK:
+Determine if these results are high-quality for prior art discovery or if query refinement would improve results.
+
+Consider:
+1. Result quantity (too few/many vs optimal range)
+2. Result relevance (do titles match invention domain?)
+3. Result diversity (multiple assignees, patent types)
+4. Citation quality (are these impactful patents?)
+5. Abstract availability (needed for relevance assessment)
+
+RESPOND IN JSON FORMAT:
+{{
+    "quality_assessment": "excellent|good|needs_refinement|poor",
+    "issues_identified": ["list of specific issues if any"],
+    "refinement_action": "none|broaden|narrow|alternative_terms|temporal_adjustment",
+    "refinement_rationale": "explanation of assessment",
+    "should_refine": true|false
+}}"""
+
+            try:
+                bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+                request_body = {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 800,
+                    "messages": [{"role": "user", "content": quality_prompt}]
+                }
+                
+                response = bedrock_client.invoke_model(
+                    modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    body=json.dumps(request_body)
+                )
+                
+                response_body = json.loads(response['body'].read())
+                llm_response = response_body['content'][0]['text']
+                
+                # Parse JSON
+                json_start = llm_response.find('{')
+                json_end = llm_response.rfind('}') + 1
+                if json_start != -1 and json_end != -1:
+                    json_str = llm_response[json_start:json_end]
+                    quality_assessment = json.loads(json_str)
+                    print(f"✅ LLM quality assessment for {strategy_type}: {quality_assessment['quality_assessment']}")
+                    return quality_assessment
+                    
+            except Exception as e:
+                print(f"LLM quality assessment failed: {e}")
+                # Fallback to rule-based assessment
+                pass
+        
+        # Default assessment for good results
+        return {
+            'quality_assessment': 'good',
+            'issues_identified': [],
+            'refinement_action': 'none',
+            'refinement_rationale': f'Results are within acceptable range ({total_hits} total, {len(patents)} returned)',
+            'should_refine': False
+        }
+        
+    except Exception as e:
+        print(f"Error assessing patent search quality: {e}")
+        return {
+            'quality_assessment': 'good',
+            'issues_identified': [],
+            'refinement_action': 'none',
+            'refinement_rationale': 'Assessment failed - proceeding with current results',
+            'should_refine': False
+        }
+
+@tool
+def refine_patent_query_llm(original_strategy: Dict[str, Any], quality_issues: Dict[str, Any], invention_context: Dict[str, Any]) -> Dict[str, Any]:
+    """Refine patent search query using LLM based on quality assessment."""
+    try:
+        original_query = original_strategy.get('query_json', {})
+        strategy_type = original_strategy.get('strategy_type', 'unknown')
+        refinement_action = quality_issues.get('refinement_action', 'none')
+        issues = quality_issues.get('issues_identified', [])
+        
+        # Extract invention context
+        invention_title = invention_context.get('title', '')
+        tech_description = invention_context.get('technology_description', '')
+        keywords = invention_context.get('keywords', '')
+        
+        refinement_prompt = f"""Refine this PatentView query to address the identified quality issues.
+
+INVENTION CONTEXT:
+Title: {invention_title}
+Technology: {tech_description}
+Keywords: {keywords}
+
+ORIGINAL SEARCH STRATEGY:
+Type: {strategy_type}
+Query: {json.dumps(original_query, indent=2)}
+
+QUALITY ISSUES:
+{chr(10).join(f"- {issue}" for issue in issues)}
+
+REFINEMENT ACTION NEEDED: {refinement_action}
+
+PATENTVIEW QUERY SYNTAX:
+- Text operators: _text_any, _text_all, _text_phrase
+- Fields: patent_title, patent_abstract
+- Logical: _and, _or, _not
+- Example: {{"_text_any": {{"patent_title": "machine learning"}}}}
+
+REFINEMENT STRATEGIES:
+- Broaden: Use _text_any instead of _text_all, fewer required terms, search in both title and abstract
+- Narrow: Add more specific terms, use _text_phrase for exact matches, focus on title only
+- Alternative terms: Use synonyms, technical variations, different terminology
+- Temporal: Add date filters for recent/historical patents
+
+Generate an improved PatentView JSON query that addresses the issues while maintaining search intent.
+
+RESPOND IN JSON FORMAT:
+{{
+    "query_json": {{"_text_any": {{"patent_title": "improved query"}}}},
+    "strategy_type": "{strategy_type}_refined",
+    "rationale": "explanation of refinement",
+    "expected_relevance": "high|medium|low",
+    "search_scope": "broad|medium|narrow"
+}}"""
+
+        try:
+            bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+            request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 1000,
+                "messages": [{"role": "user", "content": refinement_prompt}]
+            }
+            
+            response = bedrock_client.invoke_model(
+                modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                body=json.dumps(request_body)
+            )
+            
+            response_body = json.loads(response['body'].read())
+            llm_response = response_body['content'][0]['text']
+            
+            # Parse JSON
+            json_start = llm_response.find('{')
+            json_end = llm_response.rfind('}') + 1
+            if json_start != -1 and json_end != -1:
+                json_str = llm_response[json_start:json_end]
+                refined_strategy = json.loads(json_str)
+                
+                # Validate refined query
+                if validate_patentview_query(refined_strategy.get('query_json', {})):
+                    print(f"✅ Refined query for {strategy_type}: {refined_strategy['query_json']}")
+                    return refined_strategy
+                else:
+                    print(f"Refined query validation failed for {strategy_type}")
+                    return {"error": "Refined query validation failed"}
+                    
+        except Exception as e:
+            print(f"LLM query refinement failed: {e}")
+            return {"error": f"Query refinement failed: {str(e)}"}
+            
+    except Exception as e:
+        print(f"Error refining patent query: {e}")
+        return {"error": f"Refinement error: {str(e)}"}
+
+@tool
+def execute_adaptive_patent_search(search_strategy: Dict[str, Any], invention_context: Dict[str, Any], limit: int = 100, max_refinements: int = 1) -> Dict[str, Any]:
+    """Execute adaptive PatentView search with automatic quality assessment and refinement."""
+    try:
+        strategy_type = search_strategy.get('strategy_type', 'unknown')
+        print(f"🔍 Starting adaptive search for strategy: {strategy_type}")
+        
+        current_strategy = search_strategy
+        refinement_count = 0
+        best_result = None
+        
+        while refinement_count <= max_refinements:
+            # Execute search with current strategy
+            search_result = execute_strategic_patent_search(current_strategy, limit)
+            
+            if not search_result.get('success'):
+                print(f"Search failed for {strategy_type}: {search_result.get('error')}")
+                if best_result:
+                    return best_result
+                return search_result
+            
+            # Assess search quality
+            quality_assessment = assess_patent_search_quality_llm(search_result, current_strategy, invention_context)
+            
+            print(f"Quality assessment for {strategy_type} (attempt {refinement_count + 1}): {quality_assessment['quality_assessment']}")
+            
+            # Store current result as best if it's good enough
+            if quality_assessment['quality_assessment'] in ['excellent', 'good']:
+                search_result['quality_assessment'] = quality_assessment
+                search_result['refinement_count'] = refinement_count
+                return search_result
+            
+            # Keep best result so far
+            if not best_result or len(search_result.get('patents', [])) > len(best_result.get('patents', [])):
+                best_result = search_result
+                best_result['quality_assessment'] = quality_assessment
+                best_result['refinement_count'] = refinement_count
+            
+            # Check if refinement is needed and possible
+            if not quality_assessment.get('should_refine', False) or refinement_count >= max_refinements:
+                print(f"Stopping refinement for {strategy_type}: refinement_count={refinement_count}, should_refine={quality_assessment.get('should_refine')}")
+                return best_result
+            
+            # Refine query
+            print(f"Refining query for {strategy_type} (attempt {refinement_count + 1}/{max_refinements})")
+            refined_strategy = refine_patent_query_llm(current_strategy, quality_assessment, invention_context)
+            
+            if 'error' in refined_strategy:
+                print(f"Query refinement failed: {refined_strategy['error']}")
+                return best_result
+            
+            # Use refined strategy for next iteration
+            current_strategy = refined_strategy
+            refinement_count += 1
+            
+            # Add delay to respect rate limits
+            time.sleep(1)
+        
+        # Return best result after max refinements
+        print(f"Max refinements reached for {strategy_type}, returning best result")
+        return best_result
+        
+    except Exception as e:
+        print(f"Error in adaptive patent search: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Adaptive search failed: {str(e)}", "patents": [], "strategy": search_strategy}
+
+@tool
+def execute_strategic_patent_search(search_strategy: Dict[str, Any], limit: int = 100) -> Dict[str, Any]:
+    """Execute a single strategic PatentView search with the given strategy (internal use)."""
+    try:
+        query_json = search_strategy.get('query_json', {})
+        strategy_type = search_strategy.get('strategy_type', 'unknown')
+        
+        # Validate query syntax
+        if not validate_patentview_query(query_json):
+            print(f"Invalid PatentView query syntax for strategy {strategy_type}")
+            return {"error": "Invalid query syntax", "patents": [], "strategy": search_strategy}
+        
         # Get OAuth access token for PatentView Gateway
         access_token = fetch_patentview_access_token()
-        print(f"Got PatentView access token: {access_token[:20]}...")
+        print(f"Got PatentView access token for {strategy_type}: {access_token[:20]}...")
         
         # Create MCP client for PatentView Gateway
         mcp_client = MCPClient(lambda: create_streamable_http_transport(PATENTVIEW_GATEWAY_URL, access_token))
@@ -247,10 +745,9 @@ def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[
         with mcp_client:
             # Get tools with pagination
             tools = get_full_tools_list(mcp_client)
-            print(f"Available PatentView tools: {[tool.tool_name for tool in tools] if tools else 'None'}")
             
             if not tools:
-                return []
+                return {"error": "No PatentView tools available", "patents": [], "strategy": search_strategy}
             
             # Find PatentView search tool
             search_tool = None
@@ -260,45 +757,12 @@ def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[
                     break
             
             if not search_tool:
-                print("No PatentView search tool found")
-                return []
-            
-            print(f"Using PatentView tool: {search_tool.tool_name}")
-            
-            # Build PatentView query based on your curl example
-            # Split search_query into keywords for better matching
-            keywords = [kw.strip() for kw in search_query.split(',') if kw.strip()]
-            
-            # Create PatentView JSON query - search in both title and abstract
-            if len(keywords) == 1:
-                # Single keyword search
-                keyword = keywords[0]
-                patentview_query = {
-                    "_or": [
-                        {"_text_any": {"patent_title": keyword}},
-                        {"_text_any": {"patent_abstract": keyword}}
-                    ]
-                }
-            else:
-                # Multiple keywords - create comprehensive search
-                title_queries = []
-                abstract_queries = []
-                
-                for keyword in keywords[:5]:  # Limit to first 5 keywords to avoid overly complex queries
-                    title_queries.append({"_text_any": {"patent_title": keyword}})
-                    abstract_queries.append({"_text_any": {"patent_abstract": keyword}})
-                
-                patentview_query = {
-                    "_or": [
-                        {"_or": title_queries},
-                        {"_or": abstract_queries}
-                    ]
-                }
+                return {"error": "PatentView search tool not found", "patents": [], "strategy": search_strategy}
             
             # Convert query to JSON string
-            query_json = json.dumps(patentview_query)
+            query_json_str = json.dumps(query_json)
             
-            # Define fields to return (matching your curl example + additional useful fields)
+            # Define fields to return
             fields_json = json.dumps([
                 "patent_id", "patent_title", "patent_date", "patent_abstract", "patent_type",
                 "patent_num_times_cited_by_us_patents",
@@ -310,41 +774,37 @@ def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[
             sort_json = json.dumps([{"patent_num_times_cited_by_us_patents": "desc"}])
             
             # Options with size limit
-            options_json = json.dumps({"size": min(limit, 1000)})  # PatentView max is 1000
+            options_json = json.dumps({"size": min(limit, 1000)})
             
-            print(f"PatentView query: {query_json}")
+            print(f"Executing {strategy_type} search: {query_json_str}")
             
             # Call the tool with PatentView parameters
             result = mcp_client.call_tool_sync(
                 name=search_tool.tool_name,
                 arguments={
-                    "q": query_json,
+                    "q": query_json_str,
                     "f": fields_json,
                     "s": sort_json,
                     "o": options_json
                 },
-                tool_use_id=f"patentview-search-{hash(search_query)}"
+                tool_use_id=f"patentview-{strategy_type}-{hash(query_json_str)}"
             )
-            
-            print(f"PatentView tool call result type: {type(result)}")
             
             if result and isinstance(result, dict) and 'content' in result:
                 content = result['content']
                 if isinstance(content, list) and len(content) > 0:
                     text_content = content[0].get('text', '') if isinstance(content[0], dict) else str(content[0])
-                    print(f"PatentView content preview: {text_content[:200]}...")
                     
                     try:
                         data = json.loads(text_content)
                         
-                        # Check for PatentView response structure
                         if data.get('error') == False and 'patents' in data:
                             patents = data.get('patents', [])
                             total_hits = data.get('total_hits', 0)
                             
-                            print(f"✅ Found {len(patents)} PatentView patents (total hits: {total_hits})!")
+                            print(f"✅ {strategy_type} search found {len(patents)} patents (total hits: {total_hits})")
                             
-                            # Process PatentView patents to match our expected structure
+                            # Process PatentView patents
                             processed_patents = []
                             for patent in patents:
                                 # Extract inventor names
@@ -375,13 +835,13 @@ def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[
                                 processed_patent = {
                                     # Core Identity
                                     'patent_id': patent.get('patent_id', ''),
-                                    'patent_number': patent.get('patent_id', ''),  # PatentView uses patent_id
+                                    'patent_number': patent.get('patent_id', ''),
                                     'patent_title': patent.get('patent_title', ''),
                                     'patent_abstract': patent.get('patent_abstract', ''),
                                     
                                     # Dates
                                     'patent_date': patent.get('patent_date', ''),
-                                    'grant_date': patent.get('patent_date', ''),  # Same as patent_date in PatentView
+                                    'grant_date': patent.get('patent_date', ''),
                                     
                                     # Patent Info
                                     'patent_type': patent.get('patent_type', ''),
@@ -392,34 +852,37 @@ def search_patentview_patents(search_query: str, limit: int = 100) -> List[Dict[
                                     'assignee_names': assignee_names,
                                     
                                     # Search metadata
-                                    'search_query_used': search_query,
-                                    'relevance_score': 0.8,  # Default relevance score
-                                    'matching_keywords': search_query,
+                                    'search_strategy_type': strategy_type,
+                                    'search_query_used': query_json_str,
+                                    'matching_keywords': str(query_json),
                                     'data_source': 'PatentView'
                                 }
                                 processed_patents.append(processed_patent)
                             
-                            return processed_patents
+                            return {
+                                "patents": processed_patents,
+                                "total_hits": total_hits,
+                                "strategy": search_strategy,
+                                "success": True
+                            }
                         else:
-                            error_msg = data.get('error', 'Unknown error')
-                            print(f"⚠️ PatentView API error: {error_msg}")
-                            return []
+                            error_msg = data.get('error', 'Unknown PatentView API error')
+                            print(f"⚠️ PatentView API error for {strategy_type}: {error_msg}")
+                            return {"error": error_msg, "patents": [], "strategy": search_strategy}
                             
                     except json.JSONDecodeError as je:
-                        print(f"JSON decode error: {je}")
-                        return []
+                        print(f"JSON decode error for {strategy_type}: {je}")
+                        return {"error": f"JSON parsing failed: {str(je)}", "patents": [], "strategy": search_strategy}
                 else:
-                    print("No valid content in PatentView result")
-                    return []
+                    return {"error": "No content in PatentView result", "patents": [], "strategy": search_strategy}
             else:
-                print(f"No content in PatentView result: {result}")
-                return []
+                return {"error": "No valid PatentView response", "patents": [], "strategy": search_strategy}
                 
     except Exception as e:
-        print(f"Error searching PatentView: {e}")
+        print(f"Error executing {strategy_type} patent search: {e}")
         import traceback
         traceback.print_exc()
-        return []
+        return {"error": f"Search execution failed: {str(e)}", "patents": [], "strategy": search_strategy}
 
 @tool
 def get_patentview_patent_details(patent_id: str) -> Dict[str, Any]:
@@ -529,84 +992,513 @@ def get_patentview_patent_details(patent_id: str) -> Dict[str, Any]:
         return {"error": f"Patent details retrieval failed: {str(e)}"}
 
 @tool
-def calculate_patentview_relevance_score(patent_data: Dict, original_keywords: Dict) -> float:
-    """Calculate relevance score between PatentView patent and keywords."""
+def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context: Dict[str, Any]) -> Dict[str, Any]:
+    """Evaluate patent relevance using LLM for semantic analysis and prior art assessment."""
     try:
-        # Combine patent text fields for matching (prioritize title and abstract)
+        # Extract patent information
+        patent_id = patent_data.get('patent_id', 'unknown')
+        patent_title = patent_data.get('patent_title', 'Unknown Title')
+        patent_abstract = patent_data.get('patent_abstract', '')
+        grant_date = patent_data.get('grant_date', '')
+        assignee_names = patent_data.get('assignee_names', [])
+        citation_count = patent_data.get('citation_count', 0)
+        patent_type = patent_data.get('patent_type', '')
+        
+        # Extract invention context
+        invention_title = invention_context.get('title', 'Unknown Invention')
+        tech_description = invention_context.get('technology_description', '')
+        tech_applications = invention_context.get('technology_applications', '')
+        keywords = invention_context.get('keywords', '')
+        
+        # Skip patents without abstracts
+        if not patent_abstract or len(patent_abstract.strip()) < 50:
+            print(f"Patent {patent_id} lacks sufficient abstract content")
+            return {
+                'overall_relevance_score': 0.2,
+                'technical_overlap_score': 0.0,
+                'novelty_threat_level': 'none',
+                'specific_overlaps': [],
+                'key_differences': ['Insufficient patent abstract for analysis'],
+                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment',
+                'citation_recommendation': 'not_relevant',
+                'confidence_level': 'low'
+            }
+        
+        # Create LLM prompt for patent relevance evaluation
+        evaluation_prompt = f"""You are a patent examiner evaluating prior art relevance for novelty assessment.
+
+INVENTION UNDER EXAMINATION:
+Title: {invention_title}
+Technology: {tech_description}
+Applications: {tech_applications}
+Key Technologies: {keywords}
+
+PRIOR ART PATENT:
+Patent ID: {patent_id}
+Title: {patent_title}
+Abstract: {patent_abstract}
+Grant Date: {grant_date}
+Assignee: {', '.join(assignee_names) if assignee_names else 'Unknown'}
+Citations: {citation_count}
+Patent Type: {patent_type}
+
+PRIOR ART ANALYSIS:
+Evaluate this patent's relevance for novelty assessment:
+
+1. TECHNICAL OVERLAP ANALYSIS:
+   - Core technology similarity (0-10 scale)
+   - Method/process similarity (0-10 scale)
+   - System architecture similarity (0-10 scale)
+   - Component/material overlap (0-10 scale)
+
+2. NOVELTY IMPACT ASSESSMENT:
+   - Does this patent disclose the same invention? (Yes/No)
+   - What specific features overlap? (List)
+   - What features are different? (List)
+   - Could this patent be cited in a rejection? (Yes/No/Maybe)
+
+3. PRIOR ART STRENGTH:
+   - Publication date vs invention date
+   - Patent status (granted/published/expired)
+   - Citation impact in the field
+   - Assignee credibility in the domain
+
+RESPOND IN THIS EXACT JSON FORMAT:
+{{
+    "overall_relevance_score": 0.0-1.0,
+    "technical_overlap_score": 0.0-1.0,
+    "novelty_threat_level": "high|medium|low|none",
+    "specific_overlaps": ["list of overlapping features"],
+    "key_differences": ["list of differentiating features"],
+    "examiner_notes": "detailed analysis for patent examiner",
+    "citation_recommendation": "primary_reference|secondary_reference|background_art|not_relevant",
+    "confidence_level": "high|medium|low"
+}}
+
+Be precise and focus specifically on patent novelty implications."""
+
+        # Make LLM call with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+                request_body = {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 1500,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": evaluation_prompt
+                        }
+                    ]
+                }
+                
+                response = bedrock_client.invoke_model(
+                    modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    body=json.dumps(request_body)
+                )
+                
+                response_body = json.loads(response['body'].read())
+                llm_response = response_body['content'][0]['text']
+                
+                # Parse JSON from LLM response
+                json_start = llm_response.find('{')
+                json_end = llm_response.rfind('}') + 1
+                if json_start != -1 and json_end != -1:
+                    json_str = llm_response[json_start:json_end]
+                    llm_evaluation = json.loads(json_str)
+                    
+                    # Validate required fields
+                    required_fields = ['overall_relevance_score', 'technical_overlap_score', 'novelty_threat_level', 
+                                     'specific_overlaps', 'key_differences', 'examiner_notes', 
+                                     'citation_recommendation', 'confidence_level']
+                    
+                    if all(field in llm_evaluation for field in required_fields):
+                        print(f"✅ LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}, Threat={llm_evaluation['novelty_threat_level']}")
+                        return llm_evaluation
+                    else:
+                        print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
+                        if attempt == max_retries - 1:
+                            # Fallback to rule-based scoring
+                            return calculate_fallback_relevance_score(patent_data, invention_context)
+                else:
+                    print(f"Could not find JSON in LLM response (attempt {attempt + 1}/{max_retries})")
+                    if attempt == max_retries - 1:
+                        return calculate_fallback_relevance_score(patent_data, invention_context)
+                        
+            except json.JSONDecodeError as je:
+                print(f"JSON parsing error (attempt {attempt + 1}/{max_retries}): {je}")
+                if attempt == max_retries - 1:
+                    return calculate_fallback_relevance_score(patent_data, invention_context)
+                    
+            except Exception as e:
+                print(f"LLM call error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt == max_retries - 1:
+                    return calculate_fallback_relevance_score(patent_data, invention_context)
+            
+            # Wait before retry
+            if attempt < max_retries - 1:
+                time.sleep(1)
+        
+        # Should not reach here, but fallback just in case
+        return calculate_fallback_relevance_score(patent_data, invention_context)
+        
+    except Exception as e:
+        print(f"Error in LLM patent relevance evaluation: {str(e)}")
+        return calculate_fallback_relevance_score(patent_data, invention_context)
+
+def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dict) -> Dict[str, Any]:
+    """Simple fallback relevance scoring when LLM fails."""
+    try:
+        # Combine patent text fields for matching
         patent_text_parts = []
         
-        # Title is most important
         title = patent_data.get('patent_title', '')
         if title:
             patent_text_parts.append(title)
         
-        # Abstract is very important for novelty assessment
         abstract = patent_data.get('patent_abstract', '')
         if abstract:
             patent_text_parts.append(abstract)
         
-        # Inventor names can be relevant
-        inventor_names = patent_data.get('inventor_names', [])
-        if inventor_names:
-            patent_text_parts.append(' '.join(inventor_names))
-        
-        # Assignee names can be relevant
-        assignee_names = patent_data.get('assignee_names', [])
-        if assignee_names:
-            patent_text_parts.append(' '.join(assignee_names))
-        
         patent_text = ' '.join(patent_text_parts).lower()
         
-        # Get the keywords string and split into individual keywords
-        keywords_string = original_keywords.get('keywords', '')
+        # Get keywords
+        keywords_string = invention_context.get('keywords', '')
         if not keywords_string:
-            return 0.0
+            return {
+                'overall_relevance_score': 0.0,
+                'technical_overlap_score': 0.0,
+                'novelty_threat_level': 'none',
+                'specific_overlaps': [],
+                'key_differences': [],
+                'examiner_notes': 'Fallback scoring - no keywords available',
+                'citation_recommendation': 'not_relevant',
+                'confidence_level': 'low'
+            }
         
         keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
         if not keyword_list:
-            return 0.0
+            return {
+                'overall_relevance_score': 0.0,
+                'technical_overlap_score': 0.0,
+                'novelty_threat_level': 'none',
+                'specific_overlaps': [],
+                'key_differences': [],
+                'examiner_notes': 'Fallback scoring - no valid keywords',
+                'citation_recommendation': 'not_relevant',
+                'confidence_level': 'low'
+            }
         
         # Count matches
         matches = sum(1 for keyword in keyword_list if keyword in patent_text)
-        
-        # Calculate base score as percentage of keywords found
         base_score = matches / len(keyword_list)
         
-        # Bonus scoring for different fields
+        # Simple bonus for title/abstract matches
         title_lower = title.lower()
-        abstract_lower = abstract.lower()
-        
-        # Title matches get highest bonus (40%)
         title_matches = sum(1 for keyword in keyword_list if keyword in title_lower)
         if title_matches > 0:
-            base_score += (title_matches / len(keyword_list)) * 0.4
+            base_score += (title_matches / len(keyword_list)) * 0.3
         
-        # Abstract matches get high bonus (30%)
-        abstract_matches = sum(1 for keyword in keyword_list if keyword in abstract_lower)
-        if abstract_matches > 0:
-            base_score += (abstract_matches / len(keyword_list)) * 0.3
-        
-        # Bonus for highly cited patents (more relevant for novelty)
+        # Citation bonus
         citation_count = patent_data.get('citation_count', 0)
         if citation_count > 50:
             base_score += 0.1
-        elif citation_count > 10:
-            base_score += 0.05
         
-        # Bonus for utility patents (most relevant for novelty assessment)
-        patent_type = patent_data.get('patent_type', '').lower()
-        if patent_type == 'utility':
-            base_score += 0.05
+        final_score = round(min(base_score, 1.0), 3)
         
-        return round(min(base_score, 1.0), 3)  # Cap at 1.0
+        # Determine threat level
+        if final_score > 0.7:
+            threat_level = 'high'
+        elif final_score > 0.4:
+            threat_level = 'medium'
+        elif final_score > 0.2:
+            threat_level = 'low'
+        else:
+            threat_level = 'none'
+        
+        return {
+            'overall_relevance_score': final_score,
+            'technical_overlap_score': final_score * 0.8,
+            'novelty_threat_level': threat_level,
+            'specific_overlaps': [kw for kw in keyword_list if kw in patent_text],
+            'key_differences': [],
+            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched',
+            'citation_recommendation': 'secondary_reference' if final_score > 0.5 else 'background_art',
+            'confidence_level': 'low'
+        }
         
     except Exception as e:
-        print(f"Error calculating PatentView relevance score: {str(e)}")
-        return 0.0
+        print(f"Fallback scoring error: {e}")
+        return {
+            'overall_relevance_score': 0.0,
+            'technical_overlap_score': 0.0,
+            'novelty_threat_level': 'none',
+            'specific_overlaps': [],
+            'key_differences': [],
+            'examiner_notes': f'Fallback scoring failed: {str(e)}',
+            'citation_recommendation': 'not_relevant',
+            'confidence_level': 'low'
+        }
+
+@tool
+def validate_search_coverage_llm(all_patents: List[Dict[str, Any]], invention_context: Dict[str, Any], search_strategies_used: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Validate if patent search has achieved comprehensive prior art coverage."""
+    try:
+        # Extract invention context
+        invention_title = invention_context.get('title', '')
+        tech_description = invention_context.get('technology_description', '')
+        tech_applications = invention_context.get('technology_applications', '')
+        keywords = invention_context.get('keywords', '')
+        
+        # Analyze collected patents
+        total_patents = len(all_patents)
+        unique_assignees = set()
+        patent_types = {}
+        date_range = {'earliest': None, 'latest': None}
+        avg_citations = 0
+        
+        for patent in all_patents:
+            # Assignees
+            assignees = patent.get('assignee_names', [])
+            for assignee in assignees:
+                if assignee:
+                    unique_assignees.add(assignee)
+            
+            # Patent types
+            ptype = patent.get('patent_type', 'unknown')
+            patent_types[ptype] = patent_types.get(ptype, 0) + 1
+            
+            # Date range
+            grant_date = patent.get('grant_date', '')
+            if grant_date:
+                if not date_range['earliest'] or grant_date < date_range['earliest']:
+                    date_range['earliest'] = grant_date
+                if not date_range['latest'] or grant_date > date_range['latest']:
+                    date_range['latest'] = grant_date
+            
+            # Citations
+            avg_citations += patent.get('citation_count', 0)
+        
+        avg_citations = avg_citations / total_patents if total_patents > 0 else 0
+        
+        # Summarize search strategies used
+        strategies_summary = []
+        for strategy in search_strategies_used:
+            strategies_summary.append({
+                'type': strategy.get('strategy_type', 'unknown'),
+                'rationale': strategy.get('rationale', '')
+            })
+        
+        # Create LLM prompt for coverage validation
+        validation_prompt = f"""Validate if this patent search has achieved comprehensive prior art coverage for the invention.
+
+INVENTION CONTEXT:
+Title: {invention_title}
+Technology: {tech_description}
+Applications: {tech_applications}
+Key Technologies: {keywords}
+
+SEARCH STRATEGIES EXECUTED ({len(search_strategies_used)}):
+{chr(10).join(f"- {s['type']}: {s['rationale']}" for s in strategies_summary)}
+
+SEARCH RESULTS SUMMARY:
+- Total patents collected: {total_patents}
+- Unique assignees: {len(unique_assignees)}
+- Patent types: {', '.join(f"{k}({v})" for k, v in patent_types.items())}
+- Date range: {date_range['earliest']} to {date_range['latest']}
+- Average citations: {avg_citations:.1f}
+
+SAMPLE PATENT TITLES (first 10):
+{chr(10).join(f"- {p.get('patent_title', 'Unknown')}" for p in all_patents[:10])}
+
+COVERAGE VALIDATION TASK:
+Assess if the search has comprehensively covered all relevant prior art areas for this invention.
+
+COVERAGE CRITERIA:
+1. Technology Aspects: Are all core technology components covered?
+2. Application Domains: Are all application areas explored?
+3. Temporal Coverage: Both recent developments and historical foundational patents?
+4. Assignee Diversity: Multiple organizations, not dominated by single entity?
+5. Patent Type Coverage: Appropriate mix of utility, design, etc.?
+6. Search Strategy Diversity: Multiple search approaches used?
+
+GAPS TO IDENTIFY:
+- Missing technology aspects not covered by current results
+- Underrepresented application domains
+- Temporal gaps (e.g., only old or only new patents)
+- Missing key players in the field
+- Alternative terminology not explored
+
+RESPOND IN JSON FORMAT:
+{{
+    "coverage_completeness": 0.0-1.0,
+    "missing_areas": ["list of specific gaps or areas not covered"],
+    "additional_searches_needed": ["suggested specific search queries to fill gaps"],
+    "search_termination_recommendation": "continue|sufficient|excellent",
+    "coverage_analysis": "detailed explanation of coverage assessment",
+    "strengths": ["list of well-covered areas"],
+    "weaknesses": ["list of poorly-covered areas"]
+}}"""
+
+        try:
+            bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+            request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 1500,
+                "messages": [{"role": "user", "content": validation_prompt}]
+            }
+            
+            response = bedrock_client.invoke_model(
+                modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                body=json.dumps(request_body)
+            )
+            
+            response_body = json.loads(response['body'].read())
+            llm_response = response_body['content'][0]['text']
+            
+            # Parse JSON
+            json_start = llm_response.find('{')
+            json_end = llm_response.rfind('}') + 1
+            if json_start != -1 and json_end != -1:
+                json_str = llm_response[json_start:json_end]
+                coverage_validation = json.loads(json_str)
+                
+                print(f"✅ Coverage validation: {coverage_validation['coverage_completeness']:.2f} completeness, recommendation: {coverage_validation['search_termination_recommendation']}")
+                return coverage_validation
+                
+        except Exception as e:
+            print(f"LLM coverage validation failed: {e}")
+            # Fallback to simple validation
+            return {
+                'coverage_completeness': 0.7 if total_patents >= 20 else 0.5,
+                'missing_areas': [],
+                'additional_searches_needed': [],
+                'search_termination_recommendation': 'sufficient' if total_patents >= 20 else 'continue',
+                'coverage_analysis': f'Fallback validation: {total_patents} patents collected',
+                'strengths': [f'{total_patents} patents found'],
+                'weaknesses': ['LLM validation unavailable']
+            }
+            
+    except Exception as e:
+        print(f"Error validating search coverage: {e}")
+        return {
+            'coverage_completeness': 0.5,
+            'missing_areas': [],
+            'additional_searches_needed': [],
+            'search_termination_recommendation': 'sufficient',
+            'coverage_analysis': f'Validation error: {str(e)}',
+            'strengths': [],
+            'weaknesses': ['Validation failed']
+        }
+
+@tool
+def generate_gap_filling_searches_llm(coverage_validation: Dict[str, Any], invention_context: Dict[str, Any], existing_strategies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Generate additional search strategies to fill identified coverage gaps."""
+    try:
+        missing_areas = coverage_validation.get('missing_areas', [])
+        additional_searches = coverage_validation.get('additional_searches_needed', [])
+        
+        if not missing_areas and not additional_searches:
+            print("No coverage gaps identified, no additional searches needed")
+            return []
+        
+        # Extract invention context
+        invention_title = invention_context.get('title', '')
+        tech_description = invention_context.get('technology_description', '')
+        keywords = invention_context.get('keywords', '')
+        
+        # Summarize existing strategies
+        existing_types = [s.get('strategy_type', 'unknown') for s in existing_strategies]
+        
+        gap_filling_prompt = f"""Generate targeted patent search strategies to fill identified coverage gaps.
+
+INVENTION CONTEXT:
+Title: {invention_title}
+Technology: {tech_description}
+Keywords: {keywords}
+
+EXISTING SEARCH STRATEGIES USED:
+{', '.join(existing_types)}
+
+IDENTIFIED COVERAGE GAPS:
+{chr(10).join(f"- {gap}" for gap in missing_areas)}
+
+SUGGESTED ADDITIONAL SEARCHES:
+{chr(10).join(f"- {search}" for search in additional_searches)}
+
+TASK:
+Generate 2-4 highly targeted PatentView search strategies that specifically address these gaps.
+
+PATENTVIEW QUERY SYNTAX:
+- Text operators: _text_any, _text_all, _text_phrase
+- Fields: patent_title, patent_abstract
+- Logical: _and, _or, _not
+- Example: {{"_text_any": {{"patent_title": "machine learning"}}}}
+
+FOCUS ON:
+1. Alternative terminology for missed technology aspects
+2. Specific application domains not yet covered
+3. Temporal adjustments (older foundational patents or newer developments)
+4. Specific assignees or inventors known in the field
+5. Related but not identical technologies
+
+RESPOND IN JSON FORMAT (2-4 strategies):
+[
+    {{
+        "query_json": {{"_text_any": {{"patent_title": "gap-filling query"}}}},
+        "strategy_type": "gap_filling_[specific_gap]",
+        "rationale": "Addresses specific gap: [explanation]",
+        "expected_relevance": "high|medium|low",
+        "search_scope": "broad|medium|narrow"
+    }}
+]"""
+
+        try:
+            bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+            request_body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 2000,
+                "messages": [{"role": "user", "content": gap_filling_prompt}]
+            }
+            
+            response = bedrock_client.invoke_model(
+                modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                body=json.dumps(request_body)
+            )
+            
+            response_body = json.loads(response['body'].read())
+            llm_response = response_body['content'][0]['text']
+            
+            # Parse JSON
+            json_start = llm_response.find('[')
+            json_end = llm_response.rfind(']') + 1
+            if json_start != -1 and json_end != -1:
+                json_str = llm_response[json_start:json_end]
+                gap_strategies = json.loads(json_str)
+                
+                # Validate each strategy
+                validated_strategies = []
+                for strategy in gap_strategies:
+                    if validate_patentview_query(strategy.get('query_json', {})):
+                        validated_strategies.append(strategy)
+                    else:
+                        print(f"Invalid gap-filling query: {strategy}")
+                
+                print(f"✅ Generated {len(validated_strategies)} gap-filling search strategies")
+                return validated_strategies
+                
+        except Exception as e:
+            print(f"LLM gap-filling strategy generation failed: {e}")
+            return []
+            
+    except Exception as e:
+        print(f"Error generating gap-filling searches: {e}")
+        return []
 
 @tool
 def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) -> str:
-    """Store comprehensive PatentView patent analysis result in DynamoDB."""
+    """Store comprehensive PatentView patent analysis result with LLM evaluation in DynamoDB."""
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(RESULTS_TABLE)
@@ -628,6 +1520,17 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         assignee_names = patent_data.get('assignee_names', [])
         assignees_str = '; '.join(assignee_names) if assignee_names else "N/A"
         
+        # Extract LLM evaluation data
+        llm_evaluation = patent_data.get('llm_evaluation', {})
+        overall_relevance = llm_evaluation.get('overall_relevance_score', patent_data.get('relevance_score', 0.0))
+        technical_overlap = llm_evaluation.get('technical_overlap_score', 0.0)
+        novelty_threat = llm_evaluation.get('novelty_threat_level', 'unknown')
+        specific_overlaps = llm_evaluation.get('specific_overlaps', [])
+        key_differences = llm_evaluation.get('key_differences', [])
+        examiner_notes = llm_evaluation.get('examiner_notes', '')
+        citation_recommendation = llm_evaluation.get('citation_recommendation', 'not_assessed')
+        confidence_level = llm_evaluation.get('confidence_level', 'unknown')
+        
         item = {
             # Primary Keys
             'pdf_filename': pdf_filename,
@@ -640,7 +1543,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             # Legal Status & Dates (Critical for novelty)
             'patent_type': get_value_or_na(patent_data.get('patent_type', '')),
             'grant_date': get_value_or_na(patent_data.get('patent_date', '')),
-            'filing_date': get_value_or_na(patent_data.get('patent_date', '')),  # PatentView uses patent_date for grant date
+            'filing_date': get_value_or_na(patent_data.get('patent_date', '')),
             'publication_date': get_value_or_na(patent_data.get('patent_date', '')),
             
             # Ownership
@@ -651,8 +1554,18 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             'citation_count': patent_data.get('citation_count', 0),
             'times_cited': patent_data.get('citation_count', 0),
             
+            # LLM-Powered Relevance Assessment
+            'relevance_score': Decimal(str(overall_relevance)),
+            'technical_overlap_score': Decimal(str(technical_overlap)),
+            'novelty_threat_level': novelty_threat,
+            'specific_overlaps': ', '.join(specific_overlaps) if specific_overlaps else 'None identified',
+            'key_differences': ', '.join(key_differences) if key_differences else 'None identified',
+            'llm_examiner_notes': examiner_notes,
+            'citation_recommendation': citation_recommendation,
+            'llm_confidence_level': confidence_level,
+            
             # Search Metadata
-            'relevance_score': Decimal(str(patent_data.get('relevance_score', 0.0))),
+            'search_strategy_type': get_value_or_na(patent_data.get('search_strategy_type', '')),
             'search_strategy_used': get_value_or_na(patent_data.get('search_query_used', '')),
             'search_timestamp': timestamp,
             'matching_keywords': get_value_or_na(patent_data.get('matching_keywords', '')),
@@ -681,7 +1594,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         table.put_item(Item=item)
         
         patent_title = patent_data.get('patent_title', 'Unknown Title')
-        return f"Successfully stored PatentView patent {sort_key}: {patent_title}"
+        return f"Successfully stored PatentView patent {sort_key}: {patent_title} (Relevance: {overall_relevance}, Threat: {novelty_threat})"
         
     except Exception as e:
         sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
@@ -1445,68 +2358,113 @@ keyword_generator = Agent(
     After completing your analysis, ALWAYS use the store_keywords_in_dynamodb tool to save all four fields (title, technology_description, technology_applications, keywords)."""
 )
 
-# PatentView Search Agent
+# PatentView Search Agent - LLM-Powered Optimized
 patentview_search_agent = Agent(
     model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_keywords_from_dynamodb, search_patentview_patents, get_patentview_patent_details, calculate_patentview_relevance_score, store_patentview_analysis],
-    system_prompt="""You are a PatentView Patent Search Expert. Execute this workflow EXACTLY ONCE:
+    tools=[read_keywords_from_dynamodb, generate_patent_search_strategies_llm, execute_adaptive_patent_search, get_patentview_patent_details, evaluate_patent_relevance_llm, store_patentview_analysis],
+    system_prompt="""You are an AI Patent Search Expert with advanced LLM capabilities for dynamic prior art discovery.
 
-    1. Read patent analysis data from DynamoDB using the PDF filename
-    2. Use the extracted keywords to execute 2-3 strategic PatentView searches
-    3. For high-relevance patents, get additional details using get_patentview_patent_details
-    4. Calculate relevance scores for each patent found
-    5. Store comprehensive patent data with abstracts in DynamoDB
+MISSION: Conduct comprehensive, adaptive patent searches using LLM intelligence for optimal prior art discovery and semantic relevance assessment.
 
-    PATENTVIEW SEARCH PROCESS:
-    For each search strategy:
-    1. Take keywords from the patent analysis data
-    2. Call search_patentview_patents with strategic keyword combinations
-    3. For top patents (high citation count or strong relevance), call get_patentview_patent_details
-    4. Calculate relevance score using calculate_patentview_relevance_score
-    5. Store each patent using store_patentview_analysis
+WORKFLOW - OPTIMIZED SINGLE-ROUND SEARCH:
 
-    EXAMPLE WORKFLOW:
-    ```
-    # Get patents from PatentView search
-    patents = search_patentview_patents("machine learning, neural networks")
+1. STRATEGIC PLANNING: 
+   - Read patent analysis data from DynamoDB using the PDF filename
+   - Use generate_patent_search_strategies_llm to create 3-4 intelligent search strategies based on invention analysis
+
+2. ADAPTIVE EXECUTION: 
+   - Execute each strategy using execute_adaptive_patent_search (includes automatic quality assessment and refinement)
+   - Each search automatically refines queries if results are poor quality (max 1 refinement per search)
+   - Collect all patents from all search strategies
+   - Monitor search quality and results diversity
+
+3. INTELLIGENT EVALUATION: 
+   - Pre-filter: Select top 15 patents by citation count (focuses on most impactful prior art)
+   - Use evaluate_patent_relevance_llm for semantic analysis of top 15 candidates only
+   - LLM evaluates: technical overlap, novelty threat, specific overlaps, key differences
+   - For patents with relevance > 0.6, get additional details using get_patentview_patent_details
+   - Rank evaluated patents by LLM-determined relevance score
+
+4. OPTIMAL SELECTION:
+   - Select the top 6 most relevant patents across ALL search strategies
+   - Prioritize patents with high novelty threat levels (high > medium > low)
+   - Ensure diversity in patent types, assignees, and technical approaches
+   - Store each selected patent with complete LLM evaluation using store_patentview_analysis
+
+EXAMPLE WORKFLOW:
+```
+# 1. Get invention context
+keywords_data = read_keywords_from_dynamodb(pdf_filename)
+
+# 2. Generate LLM-powered search strategies (3-4 strategies)
+strategies = generate_patent_search_strategies_llm(keywords_data)
+
+# 3. Execute each strategy with adaptive refinement (max 1 refinement)
+all_patents = []
+for strategy in strategies:
+    result = execute_adaptive_patent_search(strategy, keywords_data, limit=100, max_refinements=1)
+    if result.get('success'):
+        all_patents.extend(result['patents'])
+
+# 4. Remove duplicates
+unique_patents = {}
+for patent in all_patents:
+    patent_id = patent.get('patent_id')
+    if patent_id and patent_id not in unique_patents:
+        unique_patents[patent_id] = patent
+
+all_patents = list(unique_patents.values())
+
+# 5. Pre-filter: Select top 15 patents by citation count for LLM evaluation
+# This reduces LLM calls while focusing on most impactful prior art
+top_candidates = sorted(all_patents, key=lambda x: x.get('citation_count', 0), reverse=True)[:15]
+
+# 6. LLM evaluation for top candidates only
+for patent in top_candidates:
+    # Use LLM for semantic relevance evaluation
+    llm_eval = evaluate_patent_relevance_llm(patent, keywords_data)
+    patent['llm_evaluation'] = llm_eval
+    patent['relevance_score'] = llm_eval['overall_relevance_score']
     
-    for patent in patents[:3]:  # Process top 3 patents
-        # Calculate relevance score
-        relevance = calculate_patentview_relevance_score(patent, keywords_data)
-        patent['relevance_score'] = relevance
-        
-        # Get additional details for highly relevant patents
-        if relevance > 0.6:
-            details = get_patentview_patent_details(patent['patent_id'])
-            patent.update(details.get('detailed_data', {}))
-        
-        # Store the patent data
-        store_patentview_analysis(pdf_filename, patent)
-    ```
+    # Get details for high-relevance patents
+    if llm_eval['overall_relevance_score'] > 0.6:
+        details = get_patentview_patent_details(patent['patent_id'])
+        if 'detailed_data' in details:
+            patent.update(details['detailed_data'])
 
-    SEARCH STRATEGIES:
-    Use the keywords from the patent analysis to create strategic PatentView searches:
-    1. Core technical keywords (focus on mechanism/technology terms)
-    2. Application domain keywords (focus on use case/application terms)  
-    3. Combined keyword search (mix technical + application terms)
+# 7. Select top 6 by LLM relevance and store
+top_patents = sorted(top_candidates, key=lambda x: x.get('relevance_score', 0), reverse=True)[:6]
+for patent in top_patents:
+    store_patentview_analysis(pdf_filename, patent)
+```
 
-    PATENTVIEW ADVANTAGES:
-    - Rich abstract data for better relevance assessment
-    - Citation counts for identifying impactful prior art
-    - Comprehensive inventor and assignee information
-    - Full-text search in titles and abstracts
-    - Only granted patents (stronger prior art)
+QUALITY STANDARDS:
+- Zero tolerance for missed critical prior art
+- LLM-powered semantic relevance assessment for maximum precision
+- Complete coverage of technology landscape
+- LLM-driven strategy generation for optimal query construction
+- Deep semantic understanding over simple keyword matching
+- Detailed examiner notes for each patent evaluation
 
-    CRITICAL RULES:
-    - Execute each tool call only once per search strategy
-    - Calculate relevance scores for all patents found
-    - Get additional details for patents with relevance > 0.6
-    - Collect patents from all searches, then select ONLY the top 6 by relevance score
-    - Maximum 3 search attempts total
-    - Focus on patents with high citation counts and strong technical overlap
-    - MUST store exactly 6 patents maximum - no more, no less
+CRITICAL RULES:
+- Use LLM to generate 3-4 strategic search queries (optimized for speed)
+- Execute ALL generated strategies with adaptive refinement
+- Each search automatically assesses quality and refines if needed (max 1 refinement per strategy)
+- Remove duplicate patents before evaluation
+- Pre-filter to top 15 patents by citation count (most impactful prior art)
+- Use LLM to evaluate relevance for top 15 candidates only (reduces execution time)
+- Select EXACTLY 6 most relevant patents for storage
+- Prioritize patents with high novelty threat levels
+- Store complete LLM evaluation data (overlaps, differences, examiner notes)
+- MUST complete storage step - do not stop after evaluation
 
-    Focus on patents that could impact novelty assessment - PatentView provides only granted patents which are stronger prior art. Store only the 6 most relevant patents found across all search strategies."""
+Execute with optimized LLM intelligence for speed and reliability:
+1. LLM for strategic query generation (3-4 queries)
+2. Rule-based search quality assessment (fast)
+3. LLM for query refinement only when needed (max 1 per search)
+4. LLM for semantic relevance evaluation (all unique patents)
+
+This ensures efficient prior art discovery with automatic quality control and detailed novelty impact assessment while maintaining fast execution times."""
 )
 
 # Scholarly Article Search Agent (Semantic Scholar Only)
@@ -1660,20 +2618,14 @@ async def handle_patentview_search(payload):
         async for event in patentview_search_agent.stream_async(enhanced_prompt):
             if "data" in event:
                 full_response += event["data"]
-            elif "output" in event:
-                # Handle output events from Strands agent
-                full_response += str(event["output"])
             elif "current_tool_use" in event and event["current_tool_use"].get("name"):
                 tool_name = event["current_tool_use"]["name"]
                 yield {"tool_name": tool_name, "agent": "patentview_search"}
-                if tool_name == "search_patentview_patents":
+                if tool_name in ["generate_patent_search_strategies_llm", "execute_adaptive_patent_search"]:
                     search_metadata["strategies_used"].append(tool_name)
             elif "error" in event:
                 yield {"error": event["error"]}
                 return
-            elif "content" in event:
-                # Handle content events
-                full_response += str(event["content"])
         
         if full_response.strip():
             yield {"response": full_response, "search_metadata": search_metadata, "agent": "patentview_search"}
