@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Patent Novelty Report Generator
-Generates professional PDF reports from DynamoDB data using ReportLab.
+Patent Novelty Report Generator. Generates professional PDF reports from DynamoDB data using ReportLab.
 """
 import os
 import boto3
@@ -39,7 +38,7 @@ class PatentNoveltyReportGenerator:
     def fetch_all_data(self) -> bool:
         """Fetch data from all DynamoDB tables."""
         try:
-            print(f"📊 Fetching data for case: {self.pdf_filename}")
+            print(f"Fetching data for case: {self.pdf_filename}")
             
             # Fetch keywords data
             self.data['keywords'] = self._fetch_keywords_data()
@@ -50,11 +49,11 @@ class PatentNoveltyReportGenerator:
             # Fetch article results (top 8 by relevance)
             self.data['articles'] = self._fetch_article_results()
             
-            print(f"✅ Data fetched: {len(self.data['patents'])} patents, {len(self.data['articles'])} articles")
+            print(f"Data fetched: {len(self.data['patents'])} patents, {len(self.data['articles'])} articles")
             return True
             
         except Exception as e:
-            print(f"❌ Error fetching data: {e}")
+            print(f"Error fetching data: {e}")
             return False
     
     def _fetch_keywords_data(self) -> Dict[str, Any]:
@@ -141,7 +140,7 @@ class PatentNoveltyReportGenerator:
     
     def generate_pdf(self) -> BytesIO:
         """Generate PDF report using ReportLab."""
-        print("📄 Generating PDF report...")
+        print("Generating PDF report...")
         
         # Create PDF in memory
         buffer = BytesIO()
@@ -366,7 +365,7 @@ class PatentNoveltyReportGenerator:
         
         # Get PDF bytes
         buffer.seek(0)
-        print("✅ PDF generated successfully")
+        print("PDF generated successfully")
         return buffer
     
 
@@ -376,7 +375,7 @@ class PatentNoveltyReportGenerator:
             report_filename = f"{self.pdf_filename}_report.pdf"
             s3_key = f"reports/{report_filename}"
             
-            print(f"📤 Uploading to S3: {s3_key}")
+            print(f"Uploading to S3: {s3_key}")
             
             self.s3_client.put_object(
                 Bucket=BUCKET_NAME,
@@ -386,11 +385,11 @@ class PatentNoveltyReportGenerator:
             )
             
             s3_path = f"s3://{BUCKET_NAME}/{s3_key}"
-            print(f"✅ Report uploaded: {s3_path}")
+            print(f"Report uploaded: {s3_path}")
             return s3_path
             
         except Exception as e:
-            print(f"❌ Error uploading to S3: {e}")
+            print(f"Error uploading to S3: {e}")
             raise
     
     def generate_and_upload_report(self) -> Dict[str, Any]:
@@ -425,12 +424,6 @@ class PatentNoveltyReportGenerator:
 def generate_report(pdf_filename: str) -> Dict[str, Any]:
     """
     Convenience function to generate a patent novelty report.
-    
-    Args:
-        pdf_filename: The case identifier (e.g., "ROI2023-005")
-    
-    Returns:
-        Dictionary with success status and report path or error message
     """
     generator = PatentNoveltyReportGenerator(pdf_filename)
     return generator.generate_and_upload_report()
