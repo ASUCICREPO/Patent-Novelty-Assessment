@@ -1,11 +1,11 @@
-# Dependencies
-node_modules/
+# Dependencies (now in backend/)
+backend/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# CDK
-cdk.out/
+# CDK (now in backend/)
+backend/cdk.out/
 
 # Compiled TypeScript files
 dist/

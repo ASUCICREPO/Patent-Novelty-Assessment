@@ -56,6 +56,10 @@ echo "Using hardcoded BDA Project ARN: $BDA_PROJECT_ARN"
 # 
 # echo "Created BDA Project ARN: $BDA_PROJECT_ARN"
 
+# Change to backend directory
+echo "Changing to backend directory..."
+cd backend
+
 # Install dependencies
 echo "Installing dependencies..."
 npm install
@@ -63,6 +67,9 @@ npm install
 # Deploy CDK stack
 echo "Deploying CDK stack..."
 npx cdk deploy --require-approval never --context bdaProjectArn="$BDA_PROJECT_ARN"
+
+# Return to root directory
+cd ..
 
 echo "Deployment completed!"
 echo ""

@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node backend/infrastructure/app.ts",
+  "app": "npx ts-node infrastructure/app.ts",
   "watch": {
     "include": ["**"],
     "exclude": [

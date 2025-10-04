@@ -1,0 +1,219 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PatentView API",
+    "version": "1.0.0",
+    "description": "PatentView Patent Search API for patent prior art search"
+  },
+  "servers": [
+    {
+      "url": "https://search.patentsview.org/api/v1",
+      "description": "PatentView API Server"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
+    },
+    "schemas": {
+      "PatentSearchRequest": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "JSON query string for patent search"
+          },
+          "f": {
+            "type": "string",
+            "description": "JSON array of fields to return",
+            "default": "[\"patent_id\",\"patent_title\",\"patent_date\",\"patent_abstract\",\"inventors.inventor_name_first\",\"inventors.inventor_name_last\",\"assignees.assignee_organization\",\"assignees.assignee_individual_name_first\",\"assignees.assignee_individual_name_last\",\"patent_type\",\"patent_num_times_cited_by_us_patents\"]"
+          },
+          "s": {
+            "type": "string",
+            "description": "JSON array of sort parameters",
+            "default": "[{\"patent_num_times_cited_by_us_patents\":\"desc\"}]"
+          },
+          "o": {
+            "type": "string",
+            "description": "JSON options object",
+            "default": "{\"size\":100}"
+          }
+        },
+        "required": ["q"]
+      },
+      "PatentSearchResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "boolean",
+            "description": "Whether the request succeeded or failed"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of records returned in this response"
+          },
+          "total_hits": {
+            "type": "integer",
+            "description": "Total number of records that matched the query"
+          },
+          "patents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "patent_id": {
+                  "type": "string",
+                  "description": "Patent number"
+                },
+                "patent_title": {
+                  "type": "string",
+                  "description": "Title of patent"
+                },
+                "patent_date": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Date when patent was granted"
+                },
+                "patent_abstract": {
+                  "type": "string",
+                  "description": "Abstract text of the patent"
+                },
+                "patent_type": {
+                  "type": "string",
+                  "description": "Category of patent (utility, design, etc.)"
+                },
+                "patent_num_times_cited_by_us_patents": {
+                  "type": "integer",
+                  "description": "Number of times cited by other US patents"
+                },
+                "inventors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "inventor_name_first": {
+                        "type": "string",
+                        "description": "Inventor first name"
+                      },
+                      "inventor_name_last": {
+                        "type": "string",
+                        "description": "Inventor last name"
+                      }
+                    }
+                  }
+                },
+                "assignees": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "assignee_organization": {
+                        "type": "string",
+                        "description": "Organization name if assignee is an organization"
+                      },
+                      "assignee_individual_name_first": {
+                        "type": "string",
+                        "description": "First name if assignee is an individual"
+                      },
+                      "assignee_individual_name_last": {
+                        "type": "string",
+                        "description": "Last name if assignee is an individual"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/patent": {
+      "get": {
+        "summary": "Search patents using PatentView API",
+        "operationId": "searchPatentsPatentView",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "JSON query string for patent search (e.g., '{\"_text_any\":{\"patent_title\":\"machine learning\"}}')"
+          },
+          {
+            "name": "f",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "[\"patent_id\",\"patent_title\",\"patent_date\",\"patent_abstract\",\"inventors.inventor_name_first\",\"inventors.inventor_name_last\",\"assignees.assignee_organization\",\"assignees.assignee_individual_name_first\",\"assignees.assignee_individual_name_last\",\"patent_type\",\"patent_num_times_cited_by_us_patents\"]"
+            },
+            "description": "JSON array of fields to return"
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "[{\"patent_num_times_cited_by_us_patents\":\"desc\"}]"
+            },
+            "description": "JSON array of sort parameters"
+          },
+          {
+            "name": "o",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "{\"size\":100}"
+            },
+            "description": "JSON options object for pagination and settings"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Patent search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatentSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid query parameters"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "429": {
+            "description": "Too Many Requests - Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    }
+  }
+}
