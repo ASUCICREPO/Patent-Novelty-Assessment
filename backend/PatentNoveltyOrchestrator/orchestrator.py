@@ -24,41 +24,6 @@ KEYWORDS_TABLE = os.getenv('KEYWORDS_TABLE_NAME')
 ARTICLES_TABLE = os.getenv('ARTICLES_TABLE_NAME')
 
 # =============================================================================
-# REPORT GENERATION TOOL
-# =============================================================================
-
-@tool
-def generate_patent_novelty_report(pdf_filename: str) -> str:
-    """
-    Generate a comprehensive PDF report for patent novelty assessment.
-    
-    This tool creates a professional PDF report containing:
-    - Case information and invention details
-    - Patent search results (top 8 patents by relevance)
-    - Literature search results (top 8 articles by relevance)
-    
-    The report is stored in S3 bucket under reports/ folder.
-    
-    Args:
-        pdf_filename: The case identifier (e.g., "ROI2023-005")
-    
-    Returns:
-        Success message with S3 path or error message
-    """
-    try:
-        print(f"🎯 Generating report for case: {pdf_filename}")
-        result = generate_report(pdf_filename)
-        
-        if result['success']:
-            return f"✅ Report generated successfully!\nS3 Path: {result['report_path']}\n{result['message']}"
-        else:
-            return f"❌ Report generation failed: {result['error']}"
-            
-    except Exception as e:
-        return f"❌ Error generating report: {str(e)}"
-
-
-# =============================================================================
 # ORCHESTRATOR LOGIC
 # =============================================================================
 
@@ -270,7 +235,7 @@ async def handle_scholarly_search(payload):
 
 async def handle_report_generation(payload):
     """Handle PDF report generation requests."""
-    print("🎯 Orchestrator: Routing to Report Generator")
+    print("Orchestrator: Routing to Report Generator")
     
     if isinstance(payload, str):
         try:
@@ -285,13 +250,18 @@ async def handle_report_generation(payload):
         return
     
     try:
-        print(f"📄 Generating PDF report for case: {pdf_filename}")
+        print(f"Generating PDF report for case: {pdf_filename}")
         
-        # Call the report generation tool directly
-        result_message = generate_patent_novelty_report(pdf_filename)
+        # Call generate_report directly from report_generator module
+        result = generate_report(pdf_filename)
+        
+        if result['success']:
+            message = f"Report generated successfully!\nS3 Path: {result['report_path']}\n{result['message']}"
+        else:
+            message = f"Report generation failed: {result['error']}"
         
         yield {
-            "response": result_message,
+            "response": message,
             "agent": "report_generator"
         }
         
@@ -303,7 +273,7 @@ async def handle_report_generation(payload):
 
 async def handle_orchestrator_request(payload):
     """Main orchestrator logic - routes requests to appropriate agents."""
-    print(f"🎯 Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
+    print(f"Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
     
     # Determine action type from payload
     action = payload.get("action")
@@ -319,7 +289,7 @@ async def handle_orchestrator_request(payload):
             yield {"error": "Unable to determine action. Please specify 'action' field or provide appropriate payload structure."}
             return
     
-    print(f"🎯 Orchestrator: Determined action: {action}")
+    print(f"Orchestrator: Determined action: {action}")
     
     # Route to appropriate agent
     if action == "generate_keywords":
