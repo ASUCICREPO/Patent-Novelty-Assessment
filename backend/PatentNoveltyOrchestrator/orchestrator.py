@@ -234,14 +234,6 @@ def read_keywords_from_dynamodb(pdf_filename: str) -> Dict[str, Any]:
 def parse_keywords(keywords_string: str) -> List[Dict[str, Any]]:
     """
     Parse comma-separated keywords and detect multi-word phrases.
-    
-    Returns list of dicts with 'keyword' and 'is_phrase' fields.
-    Example: "lignin, cellulose microbead, ionic liquid" 
-    -> [
-        {"keyword": "lignin", "is_phrase": False},
-        {"keyword": "cellulose microbead", "is_phrase": True},
-        {"keyword": "ionic liquid", "is_phrase": True}
-    ]
     """
     try:
         if not keywords_string:
@@ -269,9 +261,7 @@ def parse_keywords(keywords_string: str) -> List[Dict[str, Any]]:
 @tool
 def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) -> Dict[str, Any]:
     """
-    Search PatentView for patents matching a single keyword.
-    Uses _text_any for both single words and multi-word keywords.
-    Sorts by patent_date DESC (newest first).
+    Search PatentView for patents matching a single keyword. Uses _text_any for both single words and multi-word keywords.
     """
     try:
         # Build query - always use _text_any for broader results
@@ -290,12 +280,12 @@ def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) ->
         result = run_patentview_search_via_gateway(
             query_json=query_json,
             limit=limit,
-            sort_by=[{"patent_num_times_cited_by_us_patents": "desc"}]  # Most cited first (better for prior art)
+            sort_by=[{"patent_date": "desc"}]  # Most cited first (better for prior art)
         )
         
         if result.get('success'):
             patents = result.get('patents', [])
-            print(f"✅ Found {len(patents)} patents for keyword '{keyword}'")
+            print(f"Found {len(patents)} patents for keyword '{keyword}'")
             
             # Add keyword metadata to each patent
             for patent in patents:
@@ -309,7 +299,7 @@ def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) ->
                 'total_found': len(patents)
             }
         else:
-            print(f"❌ Search failed for keyword '{keyword}': {result.get('error')}")
+            print(f"Search failed for keyword '{keyword}': {result.get('error')}")
             return {
                 'success': False,
                 'keyword': keyword,
@@ -329,7 +319,7 @@ def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) ->
 @tool
 def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> Dict[str, Any]:
     """
-    Orchestrator tool: Parse keywords, search each one, deduplicate, and pre-filter.
+    Intelligent tool: Parse keywords, search each one, deduplicate, and pre-filter.
     Returns top N patents by citation count, ready for LLM evaluation.
     
     This tool does ALL the search work in one call:
@@ -340,8 +330,8 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
     5. Returns ready-to-evaluate patents
     """
     try:
-        print(f"🚀 Starting comprehensive keyword search")
-        print(f"   Keywords: {keywords_string}")
+        print(f"Starting comprehensive keyword search")
+        print(f"Keywords: {keywords_string}")
         
         # Step 1: Parse keywords
         parsed_keywords = parse_keywords(keywords_string)
@@ -353,7 +343,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
                 'summary': 'No keywords provided'
             }
         
-        print(f"📝 Parsed {len(parsed_keywords)} keywords")
+        print(f"Parsed {len(parsed_keywords)} keywords")
         
         # Step 2: Search each keyword
         all_patents = []
@@ -363,7 +353,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
             keyword = kw_info['keyword']
             is_phrase = kw_info['is_phrase']
             
-            print(f"   Searching: '{keyword}' (phrase={is_phrase})")
+            print(f"Searching: '{keyword}' (phrase={is_phrase})")
             result = search_patents_by_keyword(keyword, is_phrase, limit=10)
             
             patents_found = len(result.get('patents', []))
@@ -377,7 +367,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
             if result.get('success'):
                 all_patents.extend(result.get('patents', []))
         
-        print(f"🔍 Searched {len(parsed_keywords)} keywords, found {len(all_patents)} total patents")
+        print(f"Searched {len(parsed_keywords)} keywords, found {len(all_patents)} total patents")
         
         if not all_patents:
             return {
@@ -389,11 +379,11 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
         
         # Step 3: Deduplicate
         unique_patents = deduplicate_patents(all_patents)
-        print(f"🔄 After deduplication: {len(unique_patents)} unique patents")
+        print(f"After deduplication: {len(unique_patents)} unique patents")
         
         # Step 4: Pre-filter by citation count
         top_patents = prefilter_by_citations(unique_patents, top_n=top_n)
-        print(f"📊 Pre-filtered to top {len(top_patents)} patents by citation count")
+        print(f"Pre-filtered to top {len(top_patents)} patents by citation count")
         
         return {
             'success': True,
@@ -406,7 +396,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
         }
         
     except Exception as e:
-        print(f"❌ Error in search_all_keywords_and_prefilter: {e}")
+        print(f"Error in search_all_keywords_and_prefilter: {e}")
         import traceback
         traceback.print_exc()
         return {
@@ -417,8 +407,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
 
 def deduplicate_patents(all_patents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Deduplicate patents by patent_id, keeping first occurrence.
-    Tracks which keywords matched each patent.
+    Deduplicate patents by patent_id, keeping first occurrence. Tracks which keywords matched each patent.
     """
     try:
         unique_patents = {}
@@ -448,7 +437,7 @@ def deduplicate_patents(all_patents: List[Dict[str, Any]]) -> List[Dict[str, Any
                     existing['matching_keywords'] = ', '.join(existing['matched_keywords'])
         
         result = list(unique_patents.values())
-        print(f"🔄 Deduplicated: {len(all_patents)} → {len(result)} unique patents")
+        print(f"Deduplicated: {len(all_patents)} → {len(result)} unique patents")
         return result
         
     except Exception as e:
@@ -462,7 +451,7 @@ def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> Li
     """
     try:
         if len(patents) <= top_n:
-            print(f"✅ {len(patents)} patents (no pre-filtering needed)")
+            print(f"{len(patents)} patents (no pre-filtering needed)")
             return patents
         
         # Sort by citation count descending
@@ -475,8 +464,8 @@ def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> Li
         # Keep top N
         filtered = sorted_patents[:top_n]
         
-        print(f"📊 Pre-filtered: {len(patents)} → {len(filtered)} patents (top {top_n} by citations)")
-        print(f"   Citation range: {filtered[0].get('citation_count', 0)} (max) to {filtered[-1].get('citation_count', 0)} (min)")
+        print(f"Pre-filtered: {len(patents)} → {len(filtered)} patents (top {top_n} by citations)")
+        print(f"Citation range: {filtered[0].get('citation_count', 0)} (max) to {filtered[-1].get('citation_count', 0)} (min)")
         
         return filtered
         
@@ -510,7 +499,7 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                     break
             
             if not search_tool:
-                print(f"❌ PatentView search tool not found. Available tools: {[t.tool_name if hasattr(t, 'tool_name') else str(t.name) for t in tools[:5]]}")
+                print(f"PatentView search tool not found. Available tools: {[t.tool_name if hasattr(t, 'tool_name') else str(t.name) for t in tools[:5]]}")
                 return {
                     'success': False,
                     'patents': [],
@@ -518,7 +507,7 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                 }
             
             tool_name = search_tool.tool_name if hasattr(search_tool, 'tool_name') else str(search_tool.name)
-            print(f"✅ Using PatentView tool: {tool_name}")
+            print(f"Using PatentView tool: {tool_name}")
             
             # Build search parameters
             search_params = {
@@ -559,7 +548,7 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                 patents = response_data.get('patents', [])
                 total_hits = response_data.get('total_hits', 0)
                 
-                print(f"📊 PatentView response: {len(patents)} patents returned, {total_hits} total hits")
+                print(f"PatentView response: {len(patents)} patents returned, {total_hits} total hits")
                 
                 # Extract citation counts
                 for patent in patents:
@@ -571,7 +560,7 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                     'total_hits': total_hits
                 }
             else:
-                print(f"❌ No content in MCP response: {result}")
+                print(f"No content in MCP response: {result}")
                 return {
                     'success': False,
                     'patents': [],
@@ -579,7 +568,7 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                 }
                 
     except Exception as e:
-        print(f"❌ PatentView gateway search error: {e}")
+        print(f"PatentView gateway search error: {e}")
         import traceback
         traceback.print_exc()
         return {
@@ -591,10 +580,6 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
 def fix_patentview_query(query_json: Dict) -> None:
     """
     Fix common PatentView query syntax issues IN-PLACE.
-    
-    Key fix: Text operators (_text_any, _text_all, _text_phrase) require STRING values, not arrays.
-    Example: {"_text_any": {"patent_title": ["word1", "word2"]}} 
-          -> {"_text_any": {"patent_title": "word1 word2"}}
     """
     text_operators = ['_text_any', '_text_all', '_text_phrase']
     
@@ -781,7 +766,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                     required_fields = ['overall_relevance_score', 'key_differences', 'examiner_notes']
                     
                     if all(field in llm_evaluation for field in required_fields):
-                        print(f"✅ LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}")
+                        print(f"LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}")
                         return llm_evaluation
                     else:
                         print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
@@ -890,7 +875,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         overall_relevance = llm_evaluation.get('overall_relevance_score', patent_data.get('relevance_score', 0.0))
         
         if overall_relevance == 0.000 and not llm_evaluation:
-            return f"❌ REJECTED: Patent {sort_key} has not been evaluated by LLM. relevance_score=0, no llm_evaluation data. Must evaluate before storing."
+            return f"REJECTED: Patent {sort_key} has not been evaluated by LLM. relevance_score=0, no llm_evaluation data. Must evaluate before storing."
         
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
         table = dynamodb.Table(RESULTS_TABLE)
@@ -989,7 +974,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         table.put_item(Item=item)
         
         patent_title = patent_data.get('patent_title', 'Unknown Title')
-        return f"✅ Successfully stored PatentView patent {sort_key}: {patent_title} (Relevance: {overall_relevance})"
+        return f"Successfully stored PatentView patent {sort_key}: {patent_title} (Relevance: {overall_relevance})"
         
     except Exception as e:
         sort_key = patent_data.get('patent_id') or patent_data.get('patent_number', 'unknown')
@@ -1903,7 +1888,7 @@ scholarly_article_agent = Agent(
 
 async def handle_keyword_generation(payload):
     """Handle keyword generation requests."""
-    print("🔍 Orchestrator: Routing to Keyword Generator Agent")
+    print("Orchestrator: Routing to Keyword Generator Agent")
     
     if isinstance(payload, str):
         try:
@@ -2039,7 +2024,7 @@ async def handle_patentview_search(payload):
 
 async def handle_scholarly_search(payload):
     """Handle scholarly article search requests using Semantic Scholar."""
-    print("🔍 Orchestrator: Routing to Scholarly Article Search Agent (Semantic Scholar)")
+    print("Orchestrator: Routing to Scholarly Article Search Agent (Semantic Scholar)")
     
     if isinstance(payload, str):
         try:
@@ -2109,7 +2094,7 @@ async def handle_scholarly_search(payload):
 
 async def handle_orchestrator_request(payload):
     """Main orchestrator logic - routes requests to appropriate agents."""
-    print(f"🎯 Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
+    print(f"Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
     
     # Determine action type from payload
     action = payload.get("action")
@@ -2125,7 +2110,7 @@ async def handle_orchestrator_request(payload):
             yield {"error": "Unable to determine action. Please specify 'action' field or provide appropriate payload structure."}
             return
     
-    print(f"🎯 Orchestrator: Determined action: {action}")
+    print(f"Orchestrator: Determined action: {action}")
     
     # Route to appropriate agent
     if action == "generate_keywords":
