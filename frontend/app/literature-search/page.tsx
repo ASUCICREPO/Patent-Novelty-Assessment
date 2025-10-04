@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
-import { PatentSearchResults } from "@/components/PatentSearchResults";
+import { LiteratureSearchResults } from "@/components/LiteratureSearchResults";
 import { fetchAnalysisResults } from "@/lib/dynamodb";
 import type { ParsedAnalysisResult } from "@/types";
 
-export default function PatentSearchPage() {
+export default function LiteratureSearchPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const fileName = searchParams.get("file");
@@ -54,8 +54,6 @@ export default function PatentSearchPage() {
     setKeywords(newKeywords);
   };
 
-
-
   if (loading) {
     return (
       <main className="bg-white flex flex-col items-center justify-center min-h-screen w-full">
@@ -65,7 +63,7 @@ export default function PatentSearchPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7a0019] mx-auto mb-4"></div>
             <p className="text-slate-800 mb-2">Loading analysis results...</p>
             <p className="text-sm text-slate-600">
-              Please wait while we prepare your patent search.
+              Please wait while we prepare your literature search.
             </p>
           </div>
         </div>
@@ -111,8 +109,8 @@ export default function PatentSearchPage() {
       <div className="border-t border-slate-100 w-full px-16 py-10">
         <div className="flex flex-col gap-10 items-end w-full max-w-6xl mx-auto">
           <div className="flex flex-col gap-4 items-start w-full">
-            {/* Patent Search Results */}
-            <PatentSearchResults
+            {/* Literature Search Results */}
+            <LiteratureSearchResults
               keywords={keywords}
               fileName={fileName || ""}
               onKeywordsChange={handleKeywordsChange}

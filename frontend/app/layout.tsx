@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Patent Search Tool - University of Minnesota",
   description: "Use AI to analyze invention disclosures for novelty and commercialization potential.",
+  icons: {
+    icon: "/University_of_Minnesota_wordmark.png",
+    shortcut: "/University_of_Minnesota_wordmark.png",
+    apple: "/University_of_Minnesota_wordmark.png",
+  },
 };
 
 export default function RootLayout({

@@ -11,6 +11,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.901.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.901.0",
     "@radix-ui/react-slot": "^1.2.3",
     "aws-sdk": "^2.1692.0",

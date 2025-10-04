@@ -92,3 +92,34 @@ export interface PatentSearchResponse {
   searchId: string;
   status: "searching" | "completed" | "failed";
 }
+
+// Scholarly Article Types
+export interface ScholarlyArticle {
+  pdf_filename: string;
+  article_doi: string;
+  abstract: string;
+  article_title: string;
+  article_type: string;
+  article_url: string;
+  authors: string;
+  citation_count: number;
+  fields_of_study: string;
+  journal: string;
+  key_technical_overlaps: string;
+  llm_decision: string;
+  llm_reasoning: string;
+  matching_keywords: string;
+  novelty_impact_assessment: string;
+  open_access_pdf_url: string;
+  published_date: string;
+  relevance_score: number;
+  search_query_used: string;
+  search_timestamp: string;
+}
+
+export interface ScholarlyArticleResponse {
+  results: ScholarlyArticle[];
+  totalCount: number;
+  searchId: string;
+  status: "searching" | "completed" | "failed";
+}

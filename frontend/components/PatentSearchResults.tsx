@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { patentSearchService } from "@/lib/patentSearch";
 import type { PatentSearchResult } from "@/types";
@@ -16,6 +17,7 @@ export function PatentSearchResults({
   fileName,
   onKeywordsChange,
 }: PatentSearchResultsProps) {
+  const router = useRouter();
   const [searchResults, setSearchResults] = useState<PatentSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +82,10 @@ export function PatentSearchResults({
   const removeKeyword = (keywordToRemove: string) => {
     const updatedKeywords = keywords.filter(k => k !== keywordToRemove);
     onKeywordsChange(updatedKeywords);
+  };
+
+  const handleProceedToLiteratureSearch = () => {
+    router.push(`/literature-search?file=${fileName}`);
   };
 
 
@@ -324,6 +330,7 @@ export function PatentSearchResults({
       {/* Action Buttons */}
       <div className="flex gap-4 items-start justify-end w-full">
         <Button
+          onClick={handleProceedToLiteratureSearch}
           className="bg-[#7a0019] hover:bg-[#5d0013] text-white flex items-center gap-1"
         >
           Proceed to Literature Search
