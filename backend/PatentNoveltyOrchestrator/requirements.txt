@@ -14,3 +14,6 @@ botocore>=1.40.0
 # HTTP requests for USPTO API
 requests>=2.31.0
 aiohttp>=3.8.0
+
+# PDF generation
+reportlab>=4.0.0
