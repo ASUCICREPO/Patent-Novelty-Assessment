@@ -15,6 +15,8 @@ from strands import Agent, tool
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from report_generator import generate_report
+from keyword_agent import keyword_generator
 
 # Environment Variables
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
@@ -62,88 +64,6 @@ if not SEMANTIC_SCHOLAR_GATEWAY_URL:
 
 if semantic_scholar_missing_vars:
     raise Exception(f"CRITICAL: Missing required Semantic Scholar environment variables: {', '.join(semantic_scholar_missing_vars)}. Cannot start orchestrator without these variables.")
-
-# =============================================================================
-# KEYWORD GENERATOR TOOLS
-# =============================================================================
-
-@tool
-def read_bda_results(file_path: str) -> str:
-    """
-    Read BDA processing results from S3 and return the full document content.
-    """
-    try:
-        s3_client = boto3.client('s3', region_name=AWS_REGION)
-        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=file_path)
-        content = response['Body'].read().decode('utf-8')
-        bda_data = json.loads(content)
-        
-        # Extract the full document text
-        document_text = bda_data.get('document', {}).get('representation', {}).get('text', '')
-        
-        if not document_text:
-            return "Error: No document text found in BDA results"
-        
-        return document_text
-    except Exception as e:
-        return f"Error reading BDA results: {str(e)}"
-
-@tool
-def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str:
-    """
-    Parse agent response and store patent analysis data in DynamoDB.
-    """
-    try:
-        # Initialize DynamoDB resource
-        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
-        table = dynamodb.Table(KEYWORDS_TABLE)
-        
-        # Parse the structured response
-        def extract_section(section_name: str, text: str) -> str:
-            # Look for ## Section Name format
-            pattern = f"## {section_name}\\s*\\n([^#]*?)(?=\\n##|$)"
-            match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-            if match:
-                content = match.group(1).strip()
-                # Remove any leading/trailing brackets or formatting
-                content = re.sub(r'^\[|\]$', '', content.strip())
-                return content
-            return ""
-        
-        # Extract all sections
-        title = extract_section("Title", keywords_response)
-        technology_description = extract_section("Technology Description", keywords_response)
-        technology_applications = extract_section("Technology Applications", keywords_response)
-        keywords = extract_section("Keywords", keywords_response)
-        
-        # Clean up keywords - remove extra whitespace and ensure proper comma separation
-        if keywords:
-            keyword_list = [kw.strip() for kw in keywords.split(',') if kw.strip()]
-            keywords = ', '.join(keyword_list)
-        
-        # Create timestamp
-        timestamp = datetime.utcnow().isoformat()
-        
-        # Store in DynamoDB with new simplified structure
-        item = {
-            'pdf_filename': pdf_filename,
-            'timestamp': timestamp,
-            'title': title or 'Unknown Invention',
-            'technology_description': technology_description or 'No description provided',
-            'technology_applications': technology_applications or 'No applications specified',
-            'keywords': keywords or 'No keywords extracted',
-            'processing_status': 'completed'
-        }
-        
-        # Put item in DynamoDB
-        table.put_item(Item=item)
-        
-        return f"Successfully stored patent analysis for {pdf_filename} in DynamoDB table {KEYWORDS_TABLE}. Extracted {len(keywords.split(',')) if keywords else 0} keywords."
-        
-    except Exception as e:
-        error_msg = f"Error storing patent analysis in DynamoDB: {str(e)}"
-        print(error_msg)  # Log for debugging
-        return error_msg
 
 # =============================================================================
 # PatentView SEARCH TOOLS
@@ -1682,62 +1602,42 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         return f"Error storing Semantic Scholar article {article_data.get('paperId', 'unknown')}: {str(e)}"
 
 # =============================================================================
-# AGENT DEFINITIONS
+# REPORT GENERATION TOOL
 # =============================================================================
 
-# Keyword Generator Agent
-keyword_generator = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-    tools=[read_bda_results, store_keywords_in_dynamodb],
-    system_prompt="""You are a Patent Search Professional specializing in extracting high-quality keywords from invention disclosure documents for prior art searches.
+@tool
+def generate_patent_novelty_report(pdf_filename: str) -> str:
+    """
+    Generate a comprehensive PDF report for patent novelty assessment.
+    
+    This tool creates a professional PDF report containing:
+    - Case information and invention details
+    - Patent search results (top 8 patents by relevance)
+    - Literature search results (top 8 articles by relevance)
+    
+    The report is stored in S3 bucket under reports/ folder.
+    
+    Args:
+        pdf_filename: The case identifier (e.g., "ROI2023-005")
+    
+    Returns:
+        Success message with S3 path or error message
+    """
+    try:
+        print(f"🎯 Generating report for case: {pdf_filename}")
+        result = generate_report(pdf_filename)
+        
+        if result['success']:
+            return f"✅ Report generated successfully!\nS3 Path: {result['report_path']}\n{result['message']}"
+        else:
+            return f"❌ Report generation failed: {result['error']}"
+            
+    except Exception as e:
+        return f"❌ Error generating report: {str(e)}"
 
-    Your expertise lies in identifying the EXACT terms and phrases that patent examiners and searchers use to find relevant prior art in patent databases. You think like a seasoned patent attorney conducting a comprehensive novelty search.
-
-    CRITICAL MISSION: Extract keywords that capture the complete technical essence of the invention - the terms that would appear in competing patents or prior art.
-
-    WORKFLOW:
-    1. Read the BDA processed document using the read_bda_results tool
-    2. Analyze the invention with patent search expertise
-    3. Extract professional-grade keywords and metadata
-    4. Store results using the store_keywords_in_dynamodb tool
-
-    ANALYSIS APPROACH:
-    Think like a patent professional who needs to find ALL possible prior art. Ask yourself:
-    - What are the CORE technical terms that define this invention?
-    - What synonyms and variations would appear in patent literature?
-    - What application domains and use cases are involved?
-    - What materials, processes, and mechanisms are described?
-    - What problem does this solve and how?
-
-    KEYWORD EXTRACTION PRINCIPLES:
-    - Focus on SINGLE WORDS (not sentences or phrases)
-    - Include technical terminology that appears in patent databases
-    - Extract both specific terms ("polyethylene") and general terms ("plastic")
-    - Include process terms ("deployment", "rotation", "threading")
-    - Add application domain terms ("biliary", "pancreatic", "endoscopic")
-    - Include synonyms and variations patent searchers would use
-    - Aim for 12-15 high-impact keywords MAXIMUM - quality over quantity
-    - Each keyword must be highly relevant and likely to appear in prior art
-
-    OUTPUT FORMAT (use this exact structure):
-    # Patent Analysis
-
-    ## Title
-    [Create a concise, professional title for the invention]
-
-    ## Technology Description
-    [Write a brief technical description of what the invention is in 100-150 words - focus on the core technology/mechanism]
-
-    ## Technology Applications
-    [Write a brief description of what problems it solves and where it's used in 100-150 words]
-
-    ## Keywords
-    [List 12-15 comma-separated keywords MAXIMUM that capture the invention's essence - mix of single words and 2-3 word phrases. Focus on the MOST important terms only.]
-
-    QUALITY STANDARD: Your keywords should match the quality of professional patent searchers. Each keyword should be a term that could realistically appear in a competing patent or prior art document.
-
-    After completing your analysis, ALWAYS use the store_keywords_in_dynamodb tool to save all four fields (title, technology_description, technology_applications, keywords)."""
-)
+# =============================================================================
+# AGENT DEFINITIONS
+# =============================================================================
 
 # PatentView Search Agent - Keyword-Based Direct Search
 patentview_search_agent = Agent(
@@ -2092,9 +1992,42 @@ async def handle_scholarly_search(payload):
     except Exception as e:
         yield {"error": f"Error in scholarly article search: {str(e)}"}
 
+async def handle_report_generation(payload):
+    """Handle PDF report generation requests."""
+    print("🎯 Orchestrator: Routing to Report Generator")
+    
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            payload = {"pdf_filename": payload}
+    
+    pdf_filename = payload.get("pdf_filename")
+    
+    if not pdf_filename:
+        yield {"error": "Error: 'pdf_filename' is required for report generation."}
+        return
+    
+    try:
+        print(f"📄 Generating PDF report for case: {pdf_filename}")
+        
+        # Call the report generation tool directly
+        result_message = generate_patent_novelty_report(pdf_filename)
+        
+        yield {
+            "response": result_message,
+            "agent": "report_generator"
+        }
+        
+    except Exception as e:
+        print(f"Report generation error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        yield {"error": f"Error generating report: {str(e)}"}
+
 async def handle_orchestrator_request(payload):
     """Main orchestrator logic - routes requests to appropriate agents."""
-    print(f"Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
+    print(f"🎯 Orchestrator: Received payload: {json.dumps(payload, indent=2)}")
     
     # Determine action type from payload
     action = payload.get("action")
@@ -2110,7 +2043,7 @@ async def handle_orchestrator_request(payload):
             yield {"error": "Unable to determine action. Please specify 'action' field or provide appropriate payload structure."}
             return
     
-    print(f"Orchestrator: Determined action: {action}")
+    print(f"🎯 Orchestrator: Determined action: {action}")
     
     # Route to appropriate agent
     if action == "generate_keywords":
@@ -2122,8 +2055,11 @@ async def handle_orchestrator_request(payload):
     elif action == "search_articles":
         async for event in handle_scholarly_search(payload):
             yield event
+    elif action == "generate_report":
+        async for event in handle_report_generation(payload):
+            yield event
     else:
-        yield {"error": f"Unknown action: {action}. Supported actions: 'generate_keywords', 'search_patents', 'search_articles'"}
+        yield {"error": f"Unknown action: {action}. Supported actions: 'generate_keywords', 'search_patents', 'search_articles', 'generate_report'"}
 
 # =============================================================================
 # BEDROCK AGENT CORE APP
