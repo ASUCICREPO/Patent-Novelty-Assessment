@@ -290,7 +290,7 @@ def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) ->
         result = run_patentview_search_via_gateway(
             query_json=query_json,
             limit=limit,
-            sort_by=[{"patent_date": "desc"}]  # Newest first
+            sort_by=[{"patent_num_times_cited_by_us_patents": "desc"}]  # Most cited first (better for prior art)
         )
         
         if result.get('success'):
@@ -644,27 +644,38 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         patent_abstract = patent_data.get('patent_abstract', '')
         grant_date = patent_data.get('patent_date', '')
         
-        # Extract inventor names
+        # Extract inventor names (show first 3 for LLM prompt)
         inventors = patent_data.get('inventors', [])
         inventor_names = []
-        for inv in inventors[:3]:  # Show first 3 inventors
-            first = inv.get('inventor_name_first', '')
-            last = inv.get('inventor_name_last', '')
-            if first or last:
-                inventor_names.append(f"{first} {last}".strip())
+        if inventors and isinstance(inventors, list):
+            for inv in inventors[:3]:  # Show first 3 inventors
+                if isinstance(inv, dict):
+                    first = inv.get('inventor_name_first', '') or ''
+                    last = inv.get('inventor_name_last', '') or ''
+                    if first or last:
+                        full_name = f"{first} {last}".strip()
+                        if full_name:
+                            inventor_names.append(full_name)
         
         # Extract assignee names
+        # Priority: 1) Organization name, 2) Individual name
         assignees = patent_data.get('assignees', [])
         assignee_names = []
-        for asg in assignees:
-            org = asg.get('assignee_organization', '')
-            if org:
-                assignee_names.append(org)
-            else:
-                first = asg.get('assignee_individual_name_first', '')
-                last = asg.get('assignee_individual_name_last', '')
-                if first or last:
-                    assignee_names.append(f"{first} {last}".strip())
+        if assignees and isinstance(assignees, list):
+            for asg in assignees:
+                if isinstance(asg, dict):
+                    # First check for organization name
+                    org = asg.get('assignee_organization', '') or ''
+                    if org and org.strip():
+                        assignee_names.append(org.strip())
+                    else:
+                        # Fallback to individual name
+                        first = asg.get('assignee_individual_name_first', '') or ''
+                        last = asg.get('assignee_individual_name_last', '') or ''
+                        if first or last:
+                            full_name = f"{first} {last}".strip()
+                            if full_name:
+                                assignee_names.append(full_name)
         
         # Citation data
         forward_citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
@@ -893,28 +904,42 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         # Extract inventor names from nested structure
         inventors = patent_data.get('inventors', [])
         inventor_names = []
-        for inv in inventors:
-            first = inv.get('inventor_name_first', '')
-            last = inv.get('inventor_name_last', '')
-            if first or last:
-                full_name = f"{first} {last}".strip()
-                inventor_names.append(full_name)
-        inventors_str = '; '.join(inventor_names) if inventor_names else "N/A"
+        
+        if inventors and isinstance(inventors, list):
+            for inv in inventors:
+                if isinstance(inv, dict):
+                    first = inv.get('inventor_name_first', '') or ''
+                    last = inv.get('inventor_name_last', '') or ''
+                    # Only add if at least one name component exists
+                    if first or last:
+                        full_name = f"{first} {last}".strip()
+                        if full_name:  # Ensure not just whitespace
+                            inventor_names.append(full_name)
+        
+        inventors_str = '; '.join(inventor_names) if inventor_names else "Data not available"
         
         # Extract assignee names from nested structure
+        # Priority: 1) Organization name, 2) Individual name, 3) "Data not available"
         assignees = patent_data.get('assignees', [])
         assignee_names = []
-        for asg in assignees:
-            org = asg.get('assignee_organization', '')
-            if org:
-                assignee_names.append(org)
-            else:
-                first = asg.get('assignee_individual_name_first', '')
-                last = asg.get('assignee_individual_name_last', '')
-                if first or last:
-                    full_name = f"{first} {last}".strip()
-                    assignee_names.append(full_name)
-        assignees_str = '; '.join(assignee_names) if assignee_names else "N/A"
+        
+        if assignees and isinstance(assignees, list):
+            for asg in assignees:
+                if isinstance(asg, dict):
+                    # First check for organization name (most common for patents)
+                    org = asg.get('assignee_organization', '') or ''
+                    if org and org.strip():
+                        assignee_names.append(org.strip())
+                    else:
+                        # Fallback to individual name if organization is null/empty
+                        first = asg.get('assignee_individual_name_first', '') or ''
+                        last = asg.get('assignee_individual_name_last', '') or ''
+                        if first or last:
+                            full_name = f"{first} {last}".strip()
+                            if full_name:  # Ensure not just whitespace
+                                assignee_names.append(full_name)
+        
+        assignees_str = '; '.join(assignee_names) if assignee_names else "Data not available"
         
         # Extract LLM evaluation data
         key_differences = llm_evaluation.get('key_differences', [])
