@@ -63,25 +63,27 @@ export interface ParsedAnalysisResult {
 export interface PatentSearchResult {
   pdf_filename: string;
   patent_number: string;
-  patent_title: string;
-  application_status: string;
-  filing_date: string;
-  publication_date: string;
-  patent_inventors: string;
-  publication_number: string;
-  parent_patents: number;
-  relevance_score: number;
-  search_strategy_used: string;
-  search_timestamp: string;
-  matching_keywords: string;
-  specification_url: string;
-  abstract_url: string;
-  claims_url: string;
-  specification_pages: number;
-  abstract_pages: number;
-  claims_pages: number;
-  uspto_url: string;
-  rank_position: number;
+  backward_citations?: number;
+  citation_count?: number;
+  filing_date?: string;
+  foreign_citations?: number;
+  forward_citations?: number;
+  google_patents_url?: string;
+  grant_date?: string;
+  key_differences?: string;
+  llm_examiner_notes?: string;
+  matching_keywords?: string;
+  patent_abstract?: string;
+  patent_assignees?: string;
+  patent_inventors?: string;
+  patent_title?: string;
+  publication_date?: string;
+  publication_number?: string;
+  relevance_score?: number;
+  search_timestamp?: string;
+  // Legacy fields for backward compatibility
+  application_status?: string;
+  uspto_url?: string;
 }
 
 export interface PatentSearchResponse {

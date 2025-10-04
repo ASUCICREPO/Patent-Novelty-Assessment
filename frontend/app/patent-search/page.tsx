@@ -54,10 +54,6 @@ export default function PatentSearchPage() {
     setKeywords(newKeywords);
   };
 
-  const handleRefineKeywords = () => {
-    // Navigate back to keywords page or show keyword refinement modal
-    router.push(`/results?file=${fileName}`);
-  };
 
 
   if (loading) {
@@ -114,25 +110,12 @@ export default function PatentSearchPage() {
       <Header />
       <div className="border-t border-slate-100 box-border flex flex-1 flex-col items-center w-full px-16 py-10">
         <div className="flex flex-1 flex-col gap-10 items-end w-full max-w-6xl">
-          <div className="flex flex-col gap-6 items-start w-full">
-            {/* File and Title Section */}
-            <div className="border border-slate-100 box-border flex flex-col items-end justify-end p-4 rounded-2xl w-full">
-              <div className="flex flex-col gap-2 items-start w-full">
-                <div className="text-sm font-medium text-slate-600">
-                  Uploaded File: <span className="text-slate-900">{analysisResults.fileName}.pdf</span>
-                </div>
-                <div className="font-semibold text-base text-slate-950">
-                  Title: {analysisResults.title}
-                </div>
-              </div>
-            </div>
-            
+          <div className="flex flex-col gap-4 items-start w-full">
             {/* Patent Search Results */}
             <PatentSearchResults
               keywords={keywords}
               fileName={fileName || ""}
               onKeywordsChange={handleKeywordsChange}
-              onRefineKeywords={handleRefineKeywords}
             />
           </div>
         </div>
