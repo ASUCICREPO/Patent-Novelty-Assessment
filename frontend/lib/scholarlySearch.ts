@@ -1,15 +1,17 @@
-import AWS from "aws-sdk";
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { ScholarlyArticle } from "@/types";
 
-// Configure AWS
-AWS.config.update({
+// Configure DynamoDB v3
+const ddbClient = new DynamoDBClient({
   region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
-  accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY,
+  credentials: {
+    accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
+  },
 });
-
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const docClient = DynamoDBDocumentClient.from(ddbClient);
 const bedrockClient = new BedrockAgentCoreClient({
   region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
   credentials: {
@@ -90,16 +92,16 @@ export class ScholarlySearchService {
     try {
       const cleanFilename = this.cleanFilename(pdfFilename);
       
-      const params = {
+      const params = new QueryCommand({
         TableName: this.resultsTableName,
         KeyConditionExpression: "pdf_filename = :filename",
         ExpressionAttributeValues: {
           ":filename": cleanFilename,
         },
         ScanIndexForward: false, // Get most recent first
-      };
+      });
 
-      const result = await dynamodb.query(params).promise();
+      const result = await docClient.send(params);
       
       if (!result.Items || result.Items.length === 0) {
         return [];
@@ -117,8 +119,8 @@ export class ScholarlySearchService {
    */
   async pollForSearchResults(
     pdfFilename: string,
-    maxAttempts: number = 30,
-    delayMs: number = 5000
+    maxAttempts: number = 20, // Reduced since we wait 30 seconds first
+    delayMs: number = 30000 // 30 seconds between polls
   ): Promise<ScholarlyArticle[]> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -128,11 +130,11 @@ export class ScholarlySearchService {
           return results;
         }
 
-        // Wait before next attempt with exponential backoff for polling
-        const pollDelay = Math.min(delayMs * Math.pow(1.1, attempt), 30000); // Max 30 seconds
-        await this.sleep(pollDelay);
+        // Wait 30 seconds before next attempt
+        await this.sleep(delayMs);
       } catch (error) {
-        // For other errors, use normal delay
+        console.error("Error polling for search results:", error);
+        // Wait 30 seconds before retrying
         await this.sleep(delayMs);
       }
     }

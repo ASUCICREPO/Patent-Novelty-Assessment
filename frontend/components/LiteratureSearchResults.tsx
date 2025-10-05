@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { scholarlySearchService } from "@/lib/scholarlySearch";
 import type { ScholarlyArticle } from "@/types";
@@ -20,12 +20,14 @@ export function LiteratureSearchResults({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const hasTriggeredSearch = useRef(false);
 
   useEffect(() => {
-    if (fileName && keywords.length > 0) {
+    if (fileName && keywords.length > 0 && !hasTriggeredSearch.current) {
+      hasTriggeredSearch.current = true;
       triggerSearch();
     }
-  }, [fileName, keywords]);
+  }, [fileName]);
 
   const triggerSearch = async () => {
     try {
@@ -33,27 +35,33 @@ export function LiteratureSearchResults({
       setSearching(true);
       setError(null);
 
-      // Try direct fetch first to see if results are already there
-      const results = await scholarlySearchService.fetchSearchResults(fileName);
+      // First, trigger the literature search via Agent Core
+      console.log("Triggering literature search via Agent Core...");
+      await scholarlySearchService.triggerScholarlySearch(fileName);
+      
+      // Wait for 2 minutes for the search to complete
+      console.log("Waiting 2 minutes for search to complete...");
+      setError("Search initiated. Please wait 2 minutes for results to be processed...");
+      
+      // Wait 2 minutes
+      await new Promise(resolve => setTimeout(resolve, 120000));
+      
+      console.log("2 minutes elapsed, starting to poll for results...");
+      setError("Search completed. Fetching results...");
+      
+      // Now start polling for results with 30-second intervals
+      const results = await scholarlySearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
-        // Found results immediately, no need to poll
         setSearchResults(results);
+        setError(null);
       } else {
-        // No immediate results, trigger search and then poll
-        await scholarlySearchService.triggerScholarlySearch(fileName);
-        const polledResults = await scholarlySearchService.pollForSearchResults(fileName);
-        
-        if (polledResults.length > 0) {
-          setSearchResults(polledResults);
-        } else {
-          setError("No scholarly articles found matching your keywords. Try refining your search terms.");
-        }
+        setError("No scholarly articles found matching your keywords. Try refining your search terms.");
       }
     } catch (err) {
-      console.error("Error during scholarly search:", err);
+      console.error("Error during literature search:", err);
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to search scholarly articles: ${errorMessage}`);
+      setError(`Failed to search literature: ${errorMessage}`);
     } finally {
       setLoading(false);
       setSearching(false);
@@ -173,7 +181,7 @@ export function LiteratureSearchResults({
                     <div className="flex gap-2 items-start w-full">
                       <div className="flex flex-1 items-start min-h-0 min-w-0">
                         <a
-                          href={article.article_url}
+                          href={article.open_access_pdf_url || article.article_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-semibold text-base text-slate-950 underline decoration-solid underline-offset-[25%] hover:text-[#7a0019] transition-colors"
@@ -225,12 +233,10 @@ export function LiteratureSearchResults({
                     </p>
                   </div>
                   
-                  {/* Keyword highlighting section */}
+                  {/* Novelty Assessment section */}
                   <div className="bg-[#fff7f9] flex gap-2 items-center justify-center p-3 rounded-lg w-full">
                     <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
-                      {highlightKeywords(
-                        `Recent studies on ${article.matching_keywords || "this research area"} demonstrate promising results for ${keywords.join(", ")} with significantly improved outcomes.`
-                      )}
+                      {article.novelty_impact_assessment || "No novelty assessment provided for this article."}
                     </p>
                   </div>
                   
@@ -239,30 +245,13 @@ export function LiteratureSearchResults({
                     <p>Authors: {article.authors}</p>
                     <p>Published in: {article.journal}</p>
                     <p>Published: {formatDate(article.published_date)}</p>
-                    <p>DOI: {article.article_doi}</p>
+                    {/* DOI removed per requirements */}
                     <p>Citations: {article.citation_count}</p>
                     <p>Relevance Score: {article.relevance_score?.toFixed(2) || "N/A"}</p>
                   </div>
 
-                  {/* LLM Analysis */}
-                  {article.llm_reasoning && (
-                    <div className="bg-slate-50 border border-slate-200 flex flex-col gap-2 items-start p-3 rounded-lg w-full">
-                      <p className="font-semibold text-sm text-slate-900">AI Analysis</p>
-                      <p className="font-normal text-sm text-slate-700 whitespace-pre-wrap">
-                        {article.llm_reasoning}
-                      </p>
-                    </div>
-                  )}
 
-                  {/* Novelty Impact Assessment */}
-                  {article.novelty_impact_assessment && (
-                    <div className="bg-slate-50 border border-slate-200 flex flex-col gap-2 items-start p-3 rounded-lg w-full">
-                      <p className="font-semibold text-sm text-slate-900">Novelty Impact Assessment</p>
-                      <p className="font-normal text-sm text-slate-700 whitespace-pre-wrap">
-                        {article.novelty_impact_assessment}
-                      </p>
-                    </div>
-                  )}
+                  {/* Dedicated Novelty Impact Assessment section removed per requirements */}
                 </div>
               ))}
             </div>

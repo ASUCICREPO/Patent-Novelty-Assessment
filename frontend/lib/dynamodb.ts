@@ -1,4 +1,5 @@
-import AWS from "aws-sdk";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { PatentAnalysisResult, ParsedAnalysisResult } from "@/types";
 
 /**
@@ -8,18 +9,21 @@ export async function fetchAnalysisResults(
   fileName: string
 ): Promise<ParsedAnalysisResult | null> {
   try {
-    // Configure AWS DynamoDB
-    const dynamodb = new AWS.DynamoDB.DocumentClient({
-      accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY,
+    // Configure AWS DynamoDB v3
+    const ddbClient = new DynamoDBClient({
       region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
+      credentials: {
+        accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
+        secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
+      },
     });
+    const docClient = DynamoDBDocumentClient.from(ddbClient);
 
     const tableName =
       process.env.NEXT_PUBLIC_DYNAMODB_TABLE || "patent-keywords";
 
     // Query DynamoDB for the results
-    const params = {
+    const params = new QueryCommand({
       TableName: tableName,
       KeyConditionExpression: "pdf_filename = :filename",
       ExpressionAttributeValues: {
@@ -27,9 +31,9 @@ export async function fetchAnalysisResults(
       },
       ScanIndexForward: false, // Get most recent first
       Limit: 1,
-    };
+    });
 
-    const result = await dynamodb.query(params).promise();
+    const result = await docClient.send(params);
 
     if (!result.Items || result.Items.length === 0) {
       return null;
@@ -97,27 +101,30 @@ export async function updateKeywords(
   keywords: string[]
 ): Promise<void> {
   try {
-    // Configure AWS DynamoDB
-    const dynamodb = new AWS.DynamoDB.DocumentClient({
-      accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY,
+    // Configure AWS DynamoDB v3
+    const ddbClient = new DynamoDBClient({
       region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
+      credentials: {
+        accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
+        secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
+      },
     });
+    const docClient = DynamoDBDocumentClient.from(ddbClient);
 
     const tableName =
       process.env.NEXT_PUBLIC_DYNAMODB_TABLE || "patent-keywords";
 
     // First, find the item to get its full key structure
-    const queryParams = {
+    const queryParams = new QueryCommand({
       TableName: tableName,
       KeyConditionExpression: "pdf_filename = :filename",
       ExpressionAttributeValues: {
         ":filename": fileName.replace(/\.pdf$/i, ""),
       },
       Limit: 1,
-    };
+    });
 
-    const queryResult = await dynamodb.query(queryParams).promise();
+    const queryResult = await docClient.send(queryParams);
 
     if (!queryResult.Items || queryResult.Items.length === 0) {
       throw new Error("Item not found in DynamoDB");
@@ -143,7 +150,7 @@ export async function updateKeywords(
     }
 
     // Update the keywords field using the full key structure
-    const updateParams = {
+    const updateParams = new UpdateCommand({
       TableName: tableName,
       Key: key,
       UpdateExpression: "SET keywords = :keywords",
@@ -151,9 +158,9 @@ export async function updateKeywords(
         ":keywords": keywords.join(", "),
       },
       ReturnValues: "UPDATED_NEW",
-    };
+    });
 
-    await dynamodb.update(updateParams).promise();
+    await docClient.send(updateParams);
   } catch (error) {
     console.error("Error updating keywords:", error);
     throw error;

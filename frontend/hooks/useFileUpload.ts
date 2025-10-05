@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import AWS from "aws-sdk";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import type { UploadedFile, UploadProgress } from "@/types";
 
 interface UseFileUploadReturn {
@@ -36,11 +36,13 @@ export function useFileUpload(): UseFileUploadReturn {
         message: "Preparing upload...",
       });
 
-      // Configure AWS S3
-      const s3 = new AWS.S3({
-        accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY,
+      // Configure AWS S3 (v3)
+      const s3Client = new S3Client({
         region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-west-2',
+        credentials: {
+          accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
+          secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
+        },
       });
 
       const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET;
@@ -57,16 +59,18 @@ export function useFileUpload(): UseFileUploadReturn {
       });
 
       // Upload directly to S3 using putObject for better CORS compatibility
+      // Convert file to a Uint8Array to avoid ReadableStream issues in browsers
+      const fileBuffer = new Uint8Array(await file.arrayBuffer());
+
       const uploadParams = {
         Bucket: bucketName,
         Key: s3Key,
-        Body: file,
+        Body: fileBuffer,
         ContentType: file.type,
-        ACL: 'private', // Make sure it's private
       };
 
-      // Use putObject instead of upload for better CORS handling
-      await s3.putObject(uploadParams).promise();
+      // Use PutObjectCommand in AWS SDK v3
+      await s3Client.send(new PutObjectCommand(uploadParams));
 
       setProgress({
         percentage: 80,
