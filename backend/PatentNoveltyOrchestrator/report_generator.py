@@ -346,8 +346,120 @@ class PatentNoveltyReportGenerator:
         else:
             story.append(Paragraph("No literature results found.", styles['Normal']))
         
-        # Add footer note
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Add Detailed Prior Art Analysis (Abstracts)
+        story.append(Paragraph("Detailed Prior Art Analysis", heading_style))
+        
+        # Combine patents and articles for abstract table
+        combined_results = []
+        
+        # Add patents first
+        for idx, patent in enumerate(self.data['patents'], 1):
+            combined_results.append({
+                'number': idx,
+                'assignee_author': patent.get('patent_assignees', 'Data not available'),
+                'title': patent.get('patent_title', 'Title not available'),
+                'abstract': patent.get('patent_abstract', 'Abstract not available')
+            })
+        
+        # Add articles after patents
+        start_idx = len(self.data['patents']) + 1
+        for idx, article in enumerate(self.data['articles'], start_idx):
+            combined_results.append({
+                'number': idx,
+                'assignee_author': article.get('authors', 'Authors not available'),
+                'title': article.get('article_title', 'Title not available'),
+                'abstract': article.get('abstract', 'Abstract not available')
+            })
+        
+        if combined_results:
+            # Styles for abstract table
+            abstract_cell_style = ParagraphStyle(
+                'AbstractCell',
+                parent=styles['Normal'],
+                fontSize=7,
+                fontName='Helvetica',
+                leading=9
+            )
+            
+            abstract_title_style = ParagraphStyle(
+                'AbstractTitle',
+                parent=styles['Normal'],
+                fontSize=8,
+                fontName='Helvetica-Bold',
+                leading=10,
+                spaceAfter=4
+            )
+            
+            abstract_header_style = ParagraphStyle(
+                'AbstractHeader',
+                parent=styles['Normal'],
+                fontSize=9,
+                fontName='Helvetica-Bold',
+                textColor=colors.whitesmoke,
+                alignment=TA_CENTER
+            )
+            
+            abstract_table_data = [[
+                Paragraph('#', abstract_header_style),
+                Paragraph('Assignee/Author', abstract_header_style),
+                Paragraph('Title & Abstract', abstract_header_style)
+            ]]
+            
+            for item in combined_results:
+                # Combine title (bold) and abstract in one cell
+                title_and_abstract = f"<b>{item['title']}</b><br/><br/>{item['abstract']}"
+                
+                abstract_table_data.append([
+                    Paragraph(str(item['number']), abstract_cell_style),
+                    Paragraph(item['assignee_author'], abstract_cell_style),
+                    Paragraph(title_and_abstract, abstract_cell_style)
+                ])
+            
+            abstract_table = Table(abstract_table_data, colWidths=[0.3*inch, 1.5*inch, 4.7*inch])
+            abstract_table.setStyle(TableStyle([
+                # Header row
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a365d')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                # Alternating row colors
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#f7fafc'), colors.HexColor('#edf2f7')]),
+                # Grid
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(abstract_table)
+        else:
+            story.append(Paragraph("No prior art results available for detailed analysis.", styles['Normal']))
+        
+        # Add legal notice
         story.append(Spacer(1, 0.5*inch))
+        
+        notice_style = ParagraphStyle(
+            'Notice',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.HexColor('#333333'),
+            alignment=TA_LEFT,
+            leading=11,
+            spaceBefore=10,
+            spaceAfter=10
+        )
+        
+        legal_notice = """<b>Notice:</b> This report is technical in nature, and does not constitute a legal opinion. 
+        The characterization, paraphrasing, quotation, inclusion or omission of any prior art with regard to this report 
+        represents the personal, non-legal judgment of the AI system involved in the preparation of this report. 
+        Therefore, the content of this report, including the characterization, paraphrasing, quotation, inclusion or 
+        omission of any prior art, should not be construed as having any legal weight nor of being legally dispositive 
+        in any manner."""
+        
+        story.append(Paragraph(legal_notice, notice_style))
+        
+        # Add timestamp footer
+        story.append(Spacer(1, 0.2*inch))
         footer_style = ParagraphStyle(
             'Footer',
             parent=styles['Normal'],
