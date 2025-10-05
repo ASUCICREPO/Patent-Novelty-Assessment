@@ -375,15 +375,15 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             else:
                 print(f"No result for query '{query_info['query']}'")
         
-        # Remove duplicates and select top 6 papers
+        # Remove duplicates and select top 8 papers
         unique_papers = {}
         for paper in all_relevant_papers:
             paper_id = paper['paperId']
             if paper_id not in unique_papers:
                 unique_papers[paper_id] = paper
         
-        # Sort by citation count and relevance, take top 6
-        final_papers = sorted(unique_papers.values(), key=lambda x: x['citation_count'], reverse=True)[:6]
+        # Sort by citation count and relevance, take top 8
+        final_papers = sorted(unique_papers.values(), key=lambda x: x['citation_count'], reverse=True)[:8]
         
         print(f"Final selection: {len(final_papers)} highly relevant papers for patent novelty assessment")
         for i, paper in enumerate(final_papers, 1):
@@ -752,7 +752,7 @@ scholarly_article_agent = Agent(
       * Generate optimal search queries using LLM analysis
       * Execute adaptive searches with refinement based on result quality
       * Evaluate each paper using LLM for semantic relevance
-      * Return only the top 6 most relevant papers
+      * Return only the top 8 most relevant papers
 
     3. STORE RESULTS
     - For each paper returned by the strategic search, use store_semantic_scholar_analysis
