@@ -719,6 +719,9 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             # Legacy compatibility - set relevance score based on decision
             'relevance_score': Decimal('0.8') if article_data.get('llm_decision') == 'KEEP' else Decimal('0.2'),
             'matching_keywords': article_data.get('search_query_used', ''),
+            
+            # Report Control
+            'add_to_report': 'No',  # Default to No - user must manually change to Yes
         }
         table.put_item(Item=item)
         return f"Successfully stored LLM-analyzed article {paper_id}: {article_title} (Decision: {article_data.get('llm_decision', 'UNKNOWN')})"

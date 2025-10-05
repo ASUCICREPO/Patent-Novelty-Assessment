@@ -91,7 +91,7 @@ class PatentNoveltyReportGenerator:
             }
     
     def _fetch_patent_results(self) -> List[Dict[str, Any]]:
-        """Fetch top 8 patent results sorted by relevance score."""
+        """Fetch top 8 patent results marked for report inclusion."""
         try:
             table = self.dynamodb.Table(RESULTS_TABLE)
             response = table.query(
@@ -100,9 +100,12 @@ class PatentNoveltyReportGenerator:
             
             patents = response['Items']
             
+            # Filter to only patents marked for report (add_to_report = "Yes")
+            patents_for_report = [p for p in patents if p.get('add_to_report') == 'Yes']
+            
             # Sort by relevance_score (descending)
             patents_sorted = sorted(
-                patents,
+                patents_for_report,
                 key=lambda x: float(x.get('relevance_score', 0)),
                 reverse=True
             )
@@ -115,7 +118,7 @@ class PatentNoveltyReportGenerator:
             return []
     
     def _fetch_article_results(self) -> List[Dict[str, Any]]:
-        """Fetch top 8 article results sorted by relevance score."""
+        """Fetch top 8 article results marked for report inclusion."""
         try:
             table = self.dynamodb.Table(ARTICLES_TABLE)
             response = table.query(
@@ -124,9 +127,12 @@ class PatentNoveltyReportGenerator:
             
             articles = response['Items']
             
+            # Filter to only articles marked for report (add_to_report = "Yes")
+            articles_for_report = [a for a in articles if a.get('add_to_report') == 'Yes']
+            
             # Sort by relevance_score if available, otherwise by citation_count
             articles_sorted = sorted(
-                articles,
+                articles_for_report,
                 key=lambda x: float(x.get('relevance_score', x.get('citation_count', 0))),
                 reverse=True
             )
@@ -229,7 +235,9 @@ class PatentNoveltyReportGenerator:
         # Add Patent Search Results
         story.append(Paragraph("Patent Search Results", heading_style))
         
-        if self.data['patents']:
+        if not self.data['patents']:
+            story.append(Paragraph("No patents selected for report. Please mark patents with 'add_to_report: Yes' in DynamoDB.", styles['Normal']))
+        else:
             # Style for table cells
             cell_style = ParagraphStyle(
                 'TableCell',
@@ -280,15 +288,15 @@ class PatentNoveltyReportGenerator:
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(patent_table)
-        else:
-            story.append(Paragraph("No patent results found.", styles['Normal']))
         
         story.append(Spacer(1, 0.3*inch))
         
         # Add Literature Search Results
         story.append(Paragraph("Literature Search Results", heading_style))
         
-        if self.data['articles']:
+        if not self.data['articles']:
+            story.append(Paragraph("No articles selected for report. Please mark articles with 'add_to_report: Yes' in DynamoDB.", styles['Normal']))
+        else:
             # Style for table cells
             cell_style = ParagraphStyle(
                 'TableCell',
@@ -343,8 +351,6 @@ class PatentNoveltyReportGenerator:
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(article_table)
-        else:
-            story.append(Paragraph("No literature results found.", styles['Normal']))
         
         story.append(Spacer(1, 0.3*inch))
         

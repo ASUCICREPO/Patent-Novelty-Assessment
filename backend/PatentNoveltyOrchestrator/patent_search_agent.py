@@ -874,6 +874,9 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             'search_timestamp': timestamp,
             'matching_keywords': get_value_or_na(patent_data.get('matching_keywords', '')),
             
+            # Report Control
+            'add_to_report': 'No',  # Default to No - user must manually change to Yes
+            
             # PatentView URLs for reference
             'google_patents_url': f"https://patents.google.com/patent/US{sort_key}",
             
