@@ -514,38 +514,44 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         patent_abstract = patent_data.get('patent_abstract', '')
         grant_date = patent_data.get('patent_date', '')
         
-        # Extract inventor names (show first 3 for LLM prompt)
-        inventors = patent_data.get('inventors', [])
+        # Extract inventor names (show first 3 for LLM prompt) - HANDLES None properly
+        inventors = patent_data.get('inventors')
         inventor_names = []
-        if inventors and isinstance(inventors, list):
+        if inventors is not None and isinstance(inventors, list):
             for inv in inventors[:3]:  # Show first 3 inventors
                 if isinstance(inv, dict):
-                    first = inv.get('inventor_name_first', '') or ''
-                    last = inv.get('inventor_name_last', '') or ''
-                    if first or last:
-                        full_name = f"{first} {last}".strip()
-                        if full_name:
-                            inventor_names.append(full_name)
+                    first = inv.get('inventor_name_first')
+                    last = inv.get('inventor_name_last')
+                    name_parts = []
+                    if first and str(first).strip():
+                        name_parts.append(str(first).strip())
+                    if last and str(last).strip():
+                        name_parts.append(str(last).strip())
+                    if name_parts:
+                        inventor_names.append(' '.join(name_parts))
         
-        # Extract assignee names
+        # Extract assignee names - HANDLES None properly
         # Priority: 1) Organization name, 2) Individual name
-        assignees = patent_data.get('assignees', [])
+        assignees = patent_data.get('assignees')
         assignee_names = []
-        if assignees and isinstance(assignees, list):
+        if assignees is not None and isinstance(assignees, list):
             for asg in assignees:
                 if isinstance(asg, dict):
                     # First check for organization name
-                    org = asg.get('assignee_organization', '') or ''
-                    if org and org.strip():
-                        assignee_names.append(org.strip())
+                    org = asg.get('assignee_organization')
+                    if org and str(org).strip():
+                        assignee_names.append(str(org).strip())
                     else:
                         # Fallback to individual name
-                        first = asg.get('assignee_individual_name_first', '') or ''
-                        last = asg.get('assignee_individual_name_last', '') or ''
-                        if first or last:
-                            full_name = f"{first} {last}".strip()
-                            if full_name:
-                                assignee_names.append(full_name)
+                        first = asg.get('assignee_individual_name_first')
+                        last = asg.get('assignee_individual_name_last')
+                        name_parts = []
+                        if first and str(first).strip():
+                            name_parts.append(str(first).strip())
+                        if last and str(last).strip():
+                            name_parts.append(str(last).strip())
+                        if name_parts:
+                            assignee_names.append(' '.join(name_parts))
         
         # Citation data
         forward_citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
@@ -771,43 +777,63 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         def get_value_or_na(value):
             return value if value else "N/A"
         
-        # Extract inventor names from nested structure
-        inventors = patent_data.get('inventors', [])
+        # Extract inventor names from nested structure - HANDLES None, [], and valid data
+        inventors = patent_data.get('inventors')
         inventor_names = []
         
-        if inventors and isinstance(inventors, list):
+        if inventors is None:
+            # PatentView returned None (field missing or no data)
+            pass
+        elif not inventors:
+            # Empty list []
+            pass
+        elif isinstance(inventors, list):
+            # Valid list with data
             for inv in inventors:
                 if isinstance(inv, dict):
-                    first = inv.get('inventor_name_first', '') or ''
-                    last = inv.get('inventor_name_last', '') or ''
-                    # Only add if at least one name component exists
-                    if first or last:
-                        full_name = f"{first} {last}".strip()
-                        if full_name:  # Ensure not just whitespace
-                            inventor_names.append(full_name)
+                    first = inv.get('inventor_name_first')
+                    last = inv.get('inventor_name_last')
+                    # Build name from non-None, non-empty parts
+                    name_parts = []
+                    if first and str(first).strip():
+                        name_parts.append(str(first).strip())
+                    if last and str(last).strip():
+                        name_parts.append(str(last).strip())
+                    if name_parts:
+                        inventor_names.append(' '.join(name_parts))
         
         inventors_str = '; '.join(inventor_names) if inventor_names else "Data not available"
         
-        # Extract assignee names from nested structure
+        # Extract assignee names from nested structure - HANDLES None, [], and valid data
         # Priority: 1) Organization name, 2) Individual name, 3) "Data not available"
-        assignees = patent_data.get('assignees', [])
+        assignees = patent_data.get('assignees')
         assignee_names = []
         
-        if assignees and isinstance(assignees, list):
+        if assignees is None:
+            # PatentView returned None (field missing or no data)
+            pass
+        elif not assignees:
+            # Empty list []
+            pass
+        elif isinstance(assignees, list):
+            # Valid list with data
             for asg in assignees:
                 if isinstance(asg, dict):
                     # First check for organization name (most common for patents)
-                    org = asg.get('assignee_organization', '') or ''
-                    if org and org.strip():
-                        assignee_names.append(org.strip())
+                    org = asg.get('assignee_organization')
+                    if org and str(org).strip():
+                        assignee_names.append(str(org).strip())
                     else:
                         # Fallback to individual name if organization is null/empty
-                        first = asg.get('assignee_individual_name_first', '') or ''
-                        last = asg.get('assignee_individual_name_last', '') or ''
-                        if first or last:
-                            full_name = f"{first} {last}".strip()
-                            if full_name:  # Ensure not just whitespace
-                                assignee_names.append(full_name)
+                        first = asg.get('assignee_individual_name_first')
+                        last = asg.get('assignee_individual_name_last')
+                        name_parts = []
+                        if first and str(first).strip():
+                            name_parts.append(str(first).strip())
+                        if last and str(last).strip():
+                            name_parts.append(str(last).strip())
+                        if name_parts:
+                            assignee_names.append(' '.join(name_parts))
         
         assignees_str = '; '.join(assignee_names) if assignee_names else "Data not available"
         
@@ -927,6 +953,8 @@ patentview_search_agent = Agent(
     top_8 = sorted(top_10_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
     stored_count = 0
     for patent in top_8:
+        # CRITICAL: Pass the COMPLETE patent object with ALL fields
+        # The patent object MUST include: inventors, assignees, and all other fields from the search
         store_patentview_analysis(pdf_filename, patent)
         stored_count += 1
         print(f"Progress: Stored {stored_count}/8 patents")
@@ -967,6 +995,9 @@ patentview_search_agent = Agent(
     - DO NOT just describe what you will do
     - DO NOT just list the patent numbers
     - IMMEDIATELY call store_patentview_analysis() 8 times (once for each top patent)
-    - Each call should be: store_patentview_analysis(pdf_filename="ROI2023-005", patent_data={...})
+    - CRITICAL: Pass the COMPLETE patent object from top_10_patents - do NOT create a new object
+    - The patent object MUST include ALL fields: inventors, assignees, patent_title, patent_abstract, etc.
+    - Each call should be: store_patentview_analysis(pdf_filename="ROI2023-005", patent_data=patent)
+    - Where 'patent' is the FULL patent object from the search results, not a subset
     - You are NOT done until you see 8 successful storage confirmations"""
 )
