@@ -634,22 +634,48 @@ class PatentNoveltyReportGenerator:
             parent=styles['Normal'],
             fontSize=9,
             fontName='Helvetica',
-            leading=11
+            leading=11,
+            spaceBefore=0,
+            spaceAfter=0
         )
+        
+        def format_text_for_pdf(text: str) -> str:
+            """
+            Convert plain text with line breaks to HTML for ReportLab Paragraph.
+            Preserves paragraph breaks and formatting from DynamoDB.
+            """
+            if not text or text == 'Not available':
+                return text
+            
+            # Replace double line breaks with paragraph breaks
+            text = text.replace('\n\n', '<br/><br/>')
+            
+            # Replace single line breaks with line breaks (but keep them softer)
+            text = text.replace('\n', '<br/>')
+            
+            # Escape any HTML special characters (except our <br/> tags)
+            # This prevents issues with < > & in the text
+            text = text.replace('&', '&amp;')
+            text = text.replace('<br/>', '|||BR|||')  # Temporarily protect our breaks
+            text = text.replace('<', '&lt;')
+            text = text.replace('>', '&gt;')
+            text = text.replace('|||BR|||', '<br/>')  # Restore breaks
+            
+            return text
         
         # Define the 10 sections
         sections = [
-            ('Problem Solved', eca_data.get('problem_solved', 'Not available')),
-            ('Solution Offered', eca_data.get('solution_offered', 'Not available')),
-            ('Non-Confidential Marketing Abstract', eca_data.get('non_confidential_abstract', 'Not available')),
-            ('Technology Details', eca_data.get('technology_details', 'Not available')),
-            ('Potential Applications', eca_data.get('potential_applications', 'Not available')),
-            ('Market Overview', eca_data.get('market_overview', 'Not available')),
-            ('Competition', eca_data.get('competition', 'Not available')),
-            ('Potential Licensees', eca_data.get('potential_licensees', 'Not available')),
-            ('Key Commercialization Challenges', eca_data.get('key_challenges', 'Not available')),
-            ('Key Assumptions', eca_data.get('key_assumptions', 'Not available')),
-            ('Key Companies', eca_data.get('key_companies', 'Not available'))
+            ('Problem Solved', format_text_for_pdf(eca_data.get('problem_solved', 'Not available'))),
+            ('Solution Offered', format_text_for_pdf(eca_data.get('solution_offered', 'Not available'))),
+            ('Non-Confidential Marketing Abstract', format_text_for_pdf(eca_data.get('non_confidential_abstract', 'Not available'))),
+            ('Technology Details', format_text_for_pdf(eca_data.get('technology_details', 'Not available'))),
+            ('Potential Applications', format_text_for_pdf(eca_data.get('potential_applications', 'Not available'))),
+            ('Market Overview', format_text_for_pdf(eca_data.get('market_overview', 'Not available'))),
+            ('Competition', format_text_for_pdf(eca_data.get('competition', 'Not available'))),
+            ('Potential Licensees', format_text_for_pdf(eca_data.get('potential_licensees', 'Not available'))),
+            ('Key Commercialization Challenges', format_text_for_pdf(eca_data.get('key_challenges', 'Not available'))),
+            ('Key Assumptions', format_text_for_pdf(eca_data.get('key_assumptions', 'Not available'))),
+            ('Key Companies', format_text_for_pdf(eca_data.get('key_companies', 'Not available')))
         ]
         
         # Create table data
@@ -660,12 +686,12 @@ class PatentNoveltyReportGenerator:
                 Paragraph(content, content_style)
             ])
         
-        # Create table
-        eca_table = Table(eca_table_data, colWidths=[2*inch, 4.5*inch])
+        # Create table with compact spacing
+        eca_table = Table(eca_table_data, colWidths=[2*inch, 4.5*inch], repeatRows=0, spaceBefore=0, spaceAfter=0)
         eca_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ('LEFTPADDING', (0, 0), (-1, -1), 6),
             ('RIGHTPADDING', (0, 0), (-1, -1), 6),
             ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.HexColor('#f7fafc'), colors.HexColor('#edf2f7')]),
