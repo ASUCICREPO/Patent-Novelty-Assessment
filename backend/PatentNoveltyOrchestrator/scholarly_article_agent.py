@@ -375,15 +375,15 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             else:
                 print(f"No result for query '{query_info['query']}'")
         
-        # Remove duplicates and select top 6 papers
+        # Remove duplicates and select top 8 papers
         unique_papers = {}
         for paper in all_relevant_papers:
             paper_id = paper['paperId']
             if paper_id not in unique_papers:
                 unique_papers[paper_id] = paper
         
-        # Sort by citation count and relevance, take top 6
-        final_papers = sorted(unique_papers.values(), key=lambda x: x['citation_count'], reverse=True)[:6]
+        # Sort by citation count and relevance, take top 8
+        final_papers = sorted(unique_papers.values(), key=lambda x: x['citation_count'], reverse=True)[:8]
         
         print(f"Final selection: {len(final_papers)} highly relevant papers for patent novelty assessment")
         for i, paper in enumerate(final_papers, 1):
@@ -583,10 +583,18 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         RESPOND IN THIS EXACT JSON FORMAT:
         {{
             "decision": "KEEP" or "DISCARD",
+            "relevance_score": 0-10,
             "reasoning": "Detailed 2-3 sentence explanation of why this paper is/isn't relevant for novelty assessment",
             "technical_overlaps": ["list", "of", "specific", "technical", "overlaps"],
             "novelty_impact": "Brief assessment of how this paper could affect the invention's novelty claims"
         }}
+
+        RELEVANCE SCORE GUIDELINES (0-10):
+        - 9-10: Directly describes the same or very similar invention
+        - 7-8: Highly relevant, significant technical overlap
+        - 5-6: Moderately relevant, some technical overlap
+        - 3-4: Tangentially related, minimal overlap
+        - 0-2: Not relevant or very weak connection
 
         Be precise and focus specifically on patent novelty implications."""
 
@@ -683,6 +691,26 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
             'novelty_impact': 'Unable to assess due to evaluation error'
         }
 
+def calculate_recency_score(published_date: str) -> float:
+    """Calculate recency score based on publication year (0.0 - 1.0)."""
+    try:
+        if not published_date:
+            return 0.5  # Default for unknown dates
+        
+        # Extract year from date string (handles formats like "2024", "2024-01-15", etc.)
+        year_str = published_date.split('-')[0]
+        pub_year = int(year_str)
+        current_year = datetime.now().year
+        
+        # Calculate score: 1.0 for current year, decreases over 20 years
+        years_old = current_year - pub_year
+        score = max(0.0, 1.0 - (years_old / 20.0))
+        
+        return round(score, 3)
+    except Exception as e:
+        print(f"Error calculating recency score: {e}")
+        return 0.5  # Default fallback
+
 @tool
 def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, Any]) -> str:
     """Store LLM-analyzed Semantic Scholar article in DynamoDB with enhanced metadata."""
@@ -693,6 +721,40 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         paper_id = article_data.get('paperId', 'unknown')
         article_title = article_data.get('title', 'Unknown Title')
 
+        # Calculate smart relevance score
+        llm_decision = article_data.get('llm_decision', 'UNKNOWN')
+        
+        if llm_decision == 'DISCARD':
+            # DISCARD articles always get 0.0
+            final_relevance_score = 0.0
+        else:
+            # Factor 1: LLM Semantic Score (40% weight)
+            llm_score_raw = article_data.get('relevance_score', 5)  # 0-10 from LLM, default 5
+            llm_semantic_score = llm_score_raw / 10.0  # Convert to 0.0-1.0
+            
+            # Factor 2: Technical Overlap Count (30% weight)
+            technical_overlaps = article_data.get('technical_overlaps', [])
+            overlap_count = len(technical_overlaps) if technical_overlaps else 0
+            technical_overlap_score = min(overlap_count / 5.0, 1.0)  # 5+ overlaps = 1.0
+            
+            # Factor 3: Citation Count (20% weight)
+            citation_count = article_data.get('citation_count', 0)
+            citation_score = min(citation_count / 100.0, 1.0)  # 100+ citations = 1.0
+            
+            # Factor 4: Publication Recency (10% weight)
+            published_date = article_data.get('published_date', '')
+            recency_score = calculate_recency_score(published_date)
+            
+            # Weighted combination
+            final_relevance_score = (
+                llm_semantic_score * 0.40 +
+                technical_overlap_score * 0.30 +
+                citation_score * 0.20 +
+                recency_score * 0.10
+            )
+            
+            final_relevance_score = round(final_relevance_score, 3)
+        
         # Use paperId as the sort key
         item = {
             'pdf_filename': pdf_filename,
@@ -715,10 +777,13 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'llm_reasoning': article_data.get('llm_reasoning', ''),
             'key_technical_overlaps': ', '.join(article_data.get('technical_overlaps', [])) if article_data.get('technical_overlaps') else '',
             'novelty_impact_assessment': article_data.get('novelty_impact_assessment', ''),
-            
-            # Legacy compatibility - set relevance score based on decision
-            'relevance_score': Decimal('0.8') if article_data.get('llm_decision') == 'KEEP' else Decimal('0.2'),
             'matching_keywords': article_data.get('search_query_used', ''),
+            
+            # Smart Relevance Score (calculated from multiple factors)
+            'relevance_score': Decimal(str(final_relevance_score)),
+            
+            # Report Control
+            'add_to_report': 'No',  # Default to No - user must manually change to Yes
         }
         table.put_item(Item=item)
         return f"Successfully stored LLM-analyzed article {paper_id}: {article_title} (Decision: {article_data.get('llm_decision', 'UNKNOWN')})"
@@ -749,7 +814,7 @@ scholarly_article_agent = Agent(
       * Generate optimal search queries using LLM analysis
       * Execute adaptive searches with refinement based on result quality
       * Evaluate each paper using LLM for semantic relevance
-      * Return only the top 6 most relevant papers
+      * Return only the top 8 most relevant papers
 
     3. STORE RESULTS
     - For each paper returned by the strategic search, use store_semantic_scholar_analysis

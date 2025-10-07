@@ -16,12 +16,14 @@ from report_generator import generate_report
 from keyword_agent import keyword_generator
 from patent_search_agent import patentview_search_agent, read_keywords_from_dynamodb
 from scholarly_article_agent import scholarly_article_agent
+from commercial_assessment_agent import commercial_assessment_agent
 
 # Environment Variables
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 KEYWORDS_TABLE = os.getenv('KEYWORDS_TABLE_NAME')
 ARTICLES_TABLE = os.getenv('ARTICLES_TABLE_NAME')
+COMMERCIAL_ASSESSMENT_TABLE = os.getenv('COMMERCIAL_ASSESSMENT_TABLE_NAME')
 
 # =============================================================================
 # ORCHESTRATOR LOGIC
@@ -233,6 +235,79 @@ async def handle_scholarly_search(payload):
     except Exception as e:
         yield {"error": f"Error in scholarly article search: {str(e)}"}
 
+async def handle_commercial_assessment(payload):
+    """Handle early commercial assessment requests."""
+    print("Orchestrator: Routing to Commercial Assessment Agent")
+    
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            payload = {"pdf_filename": payload}
+    
+    pdf_filename = payload.get("pdf_filename")
+    bda_file_path = payload.get("bda_file_path")
+    
+    if not pdf_filename:
+        yield {"error": "Error: 'pdf_filename' is required for commercial assessment."}
+        return
+    
+    if not bda_file_path:
+        yield {"error": "Error: 'bda_file_path' is required for commercial assessment."}
+        return
+    
+    # Create enhanced prompt with BDA file path
+    enhanced_prompt = f"""Conduct a comprehensive Early Commercial Assessment for the invention disclosure document.
+
+    First, use the read_bda_results tool to read the document content from: {bda_file_path}
+
+    Then, analyze the invention thoroughly and answer all 10 commercialization questions:
+    1. Problem Solved & Solution Offered
+    2. Non-Confidential Marketing Abstract (150-250 words, exclude confidential details)
+    3. Technology Details (300-500 words, business-friendly language)
+    4. Potential Applications (3-5 specific applications)
+    5. Market Overview (size, trends, customers, regulations, policies)
+    6. Competition (up to 5 competitors with products/technologies)
+    7. Potential Licensees (up to 5 companies with strategic rationale)
+    8. Key Commercialization Challenges (3-5 realistic challenges)
+    9. Key Assumptions (3-5 testable assumptions)
+    10. Key Companies (up to 5 with relationship type and URLs)
+
+    After completing your analysis, use the store_commercial_assessment tool with:
+    - pdf_filename: '{pdf_filename}'
+    - assessment_data: [your complete JSON response with all 10 fields]
+
+    Focus on providing strategic, actionable insights for commercialization decision-making."""
+    
+    try:
+        # Collect the complete response from streaming events
+        full_response = ""
+        async for event in commercial_assessment_agent.stream_async(enhanced_prompt):
+            if "data" in event:
+                full_response += event["data"]
+            elif "output" in event:
+                full_response += str(event["output"])
+            elif "current_tool_use" in event and event["current_tool_use"].get("name"):
+                yield {"tool_name": event["current_tool_use"]["name"], "agent": "commercial_assessment"}
+            elif "error" in event:
+                yield {"error": event["error"]}
+                return
+            elif "content" in event:
+                full_response += str(event["content"])
+        
+        # Yield the complete response once streaming is done
+        if full_response.strip():
+            yield {"response": full_response, "agent": "commercial_assessment"}
+        else:
+            yield {"error": "No response generated from commercial assessment agent"}
+                
+    except Exception as e:
+        print(f"Commercial assessment error: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        yield {"error": f"Error in commercial assessment: {str(e)}"}
+
 async def handle_report_generation(payload):
     """Handle PDF report generation requests."""
     print("Orchestrator: Routing to Report Generator")
@@ -250,19 +325,36 @@ async def handle_report_generation(payload):
         return
     
     try:
-        print(f"Generating PDF report for case: {pdf_filename}")
+        print(f"Generating PDF reports for case: {pdf_filename}")
         
         # Call generate_report directly from report_generator module
         result = generate_report(pdf_filename)
         
         if result['success']:
-            message = f"Report generated successfully!\nS3 Path: {result['report_path']}\n{result['message']}"
+            messages = []
+            
+            # Novelty report status
+            if result.get('novelty_report'):
+                if result['novelty_report'].get('success'):
+                    messages.append(f"✅ Novelty Report: {result['novelty_report']['report_path']}")
+                else:
+                    messages.append(f"❌ Novelty Report: {result['novelty_report'].get('error', 'Failed')}")
+            
+            # ECA report status
+            if result.get('eca_report'):
+                if result['eca_report'].get('success'):
+                    messages.append(f"✅ ECA Report: {result['eca_report']['report_path']}")
+                else:
+                    messages.append(f"❌ ECA Report: {result['eca_report'].get('error', 'Failed')}")
+            
+            message = "Report Generation Complete:\n" + "\n".join(messages)
         else:
-            message = f"Report generation failed: {result['error']}"
+            message = f"Report generation failed: {result.get('error', 'Unknown error')}"
         
         yield {
             "response": message,
-            "agent": "report_generator"
+            "agent": "report_generator",
+            "details": result
         }
         
     except Exception as e:
@@ -301,11 +393,14 @@ async def handle_orchestrator_request(payload):
     elif action == "search_articles":
         async for event in handle_scholarly_search(payload):
             yield event
+    elif action == "commercial_assessment":
+        async for event in handle_commercial_assessment(payload):
+            yield event
     elif action == "generate_report":
         async for event in handle_report_generation(payload):
             yield event
     else:
-        yield {"error": f"Unknown action: {action}. Supported actions: 'generate_keywords', 'search_patents', 'search_articles', 'generate_report'"}
+        yield {"error": f"Unknown action: {action}. Supported actions: 'generate_keywords', 'search_patents', 'search_articles', 'commercial_assessment', 'generate_report'"}
 
 # =============================================================================
 # BEDROCK AGENT CORE APP
