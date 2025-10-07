@@ -74,12 +74,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     payload=json.dumps(keywords_payload).encode('utf-8')
                 )
                 
-                print(f"✅ Keyword Generator invoked successfully: {keywords_response.get('ResponseMetadata', {}).get('RequestId')}")
+                print(f"Keyword Generator invoked successfully: {keywords_response.get('ResponseMetadata', {}).get('RequestId')}")
                 results['keywords_triggered'] = True
                 
             except Exception as keywords_error:
                 error_msg = f"Error invoking Keyword Generator: {str(keywords_error)}"
-                print(f"❌ {error_msg}")
+                print(f"{error_msg}")
                 results['errors'].append(error_msg)
                 # Continue to ECA even if keywords fail
             
@@ -106,19 +106,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     payload=json.dumps(eca_payload).encode('utf-8')
                 )
                 
-                print(f"✅ Commercial Assessment invoked successfully: {eca_response.get('ResponseMetadata', {}).get('RequestId')}")
+                print(f"Commercial Assessment invoked successfully: {eca_response.get('ResponseMetadata', {}).get('RequestId')}")
                 results['eca_triggered'] = True
                 
             except Exception as eca_error:
                 error_msg = f"Error invoking Commercial Assessment: {str(eca_error)}"
-                print(f"❌ {error_msg}")
+                print(f"{error_msg}")
                 results['errors'].append(error_msg)
             
             # Summary
             print(f"\n{'='*60}")
             print(f"Auto-trigger Summary for {pdf_filename}:")
-            print(f"  Keywords Agent: {'✅ Triggered' if results['keywords_triggered'] else '❌ Failed'}")
-            print(f"  ECA Agent: {'✅ Triggered' if results['eca_triggered'] else '❌ Failed'}")
+            print(f"  Keywords Agent: {'Triggered' if results['keywords_triggered'] else 'Failed'}")
+            print(f"  ECA Agent: {'Triggered' if results['eca_triggered'] else 'Failed'}")
             if results['errors']:
                 print(f"  Errors: {len(results['errors'])}")
                 for error in results['errors']:
@@ -127,7 +127,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
         except Exception as error:
             error_msg = f"Error processing {object_key}: {str(error)}"
-            print(f"❌ {error_msg}")
+            print(f"{error_msg}")
             results['errors'].append(error_msg)
             # Don't raise - allow Lambda to complete and report partial success
     
