@@ -76,6 +76,22 @@ export class PatentNoveltyStack extends cdk.Stack {
       }
     );
 
+    // DynamoDB table for storing early commercial assessment results
+    const commercialAssessmentTable = new dynamodb.Table(
+      this,
+      "CommercialAssessmentTable",
+      {
+        tableName: `early-commercial-assessment-${accountId}`,
+        partitionKey: {
+          name: "pdf_filename",
+          type: dynamodb.AttributeType.STRING,
+        },
+        sortKey: { name: "timestamp", type: dynamodb.AttributeType.STRING },
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      }
+    );
+
     // Lambda execution role with BDA permissions
     const lambdaRole = new iam.Role(this, "PdfProcessorLambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -248,6 +264,7 @@ export class PatentNoveltyStack extends cdk.Stack {
                   keywordsTable.tableArn,
                   patentResultsTable.tableArn,
                   scholarlyArticlesTable.tableArn,
+                  commercialAssessmentTable.tableArn,
                 ],
               }),
             ],
@@ -296,6 +313,12 @@ export class PatentNoveltyStack extends cdk.Stack {
       value: scholarlyArticlesTable.tableName,
       description:
         "DynamoDB table for storing scholarly article search results",
+    });
+
+    new cdk.CfnOutput(this, "CommercialAssessmentTableName", {
+      value: commercialAssessmentTable.tableName,
+      description:
+        "DynamoDB table for storing early commercial assessment results",
     });
 
     // Instructions for Agent Runtime Environment Variables
