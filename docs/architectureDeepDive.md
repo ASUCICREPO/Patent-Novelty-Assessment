@@ -1,7 +1,6 @@
 # Architecture Deep Dive
 
 ![Architecture Diagram](./media/architecture.png)
-> **[PLACEHOLDER]** Architecture diagram needed. Please create a diagram showing the complete system architecture and save it as `docs/media/architecture.png`
 
 ## System Flow
 

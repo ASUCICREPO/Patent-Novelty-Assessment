@@ -24,20 +24,6 @@ The Patent Novelty Assessment System is a serverless, event-driven architecture 
 For a detailed technical explanation of the architecture, see the [Architecture Deep Dive](./docs/architectureDeepDive.md).
 
 ![Architecture Diagram](./docs/media/architecture.png)
-> **[PLACEHOLDER]** Please create and provide an architecture diagram showing:
-> - All major components/services (S3, Lambda, BDA, Agent Core, DynamoDB)
-> - Data flow between components
-> - User interaction points (PDF upload, report download)
-> - External services/APIs (PatentView, Semantic Scholar)
-> 
-> Save the diagram as `docs/media/architecture.png` (or .jpeg/.jpg)
-
-## Quick Links
-
-- **[Deployment Guide](./docs/deploymentGuide.md)** - Step-by-step instructions to deploy the system
-- **[User Guide](./docs/userGuide.md)** - How to use the system for patent novelty assessments
-- **[API Documentation](./docs/APIdoc.md)** - PatentView and Semantic Scholar API reference
-- **[Modification Guide](./docs/modificationGuide.md)** - Developer guide for customizing and extending
 
 ## Directories
 
