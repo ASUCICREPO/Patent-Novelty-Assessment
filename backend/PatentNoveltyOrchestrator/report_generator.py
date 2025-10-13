@@ -710,6 +710,12 @@ class PatentNoveltyReportGenerator:
             text = text.replace('>', '&gt;')
             text = text.replace('|||BR|||', '<br/>')  # Restore breaks
             
+            # Make URLs blue colored (not clickable, just blue text)
+            import re
+            # Find all URLs (http:// or https://)
+            url_pattern = r'(https?://[^\s<>]+)'
+            text = re.sub(url_pattern, r'<font color="#0000FF">\1</font>', text)
+            
             return text
         
         # Define the 10 sections
