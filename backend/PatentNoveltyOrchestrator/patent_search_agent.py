@@ -101,7 +101,7 @@ def parse_keywords(keywords_string: str) -> List[Dict[str, Any]]:
                 "is_phrase": is_phrase
             })
         
-        print(f"📝 Parsed {len(parsed_keywords)} keywords: {[k['keyword'] for k in parsed_keywords]}")
+        print(f"Parsed {len(parsed_keywords)} keywords: {[k['keyword'] for k in parsed_keywords]}")
         return parsed_keywords
         
     except Exception as e:
