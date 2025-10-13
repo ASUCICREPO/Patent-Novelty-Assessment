@@ -249,7 +249,7 @@ class PatentNoveltyReportGenerator:
             [Paragraph('Technology Description:', bold_style), Paragraph(self.data['keywords'].get('technology_description', 'Not available'), normal_style)],
             [Paragraph('Technology Application:', bold_style), Paragraph(self.data['keywords'].get('technology_applications', 'Not available'), normal_style)],
             [Paragraph('Keywords:', bold_style), Paragraph(self.data['keywords'].get('keywords', 'Not available'), normal_style)],
-            [Paragraph('Search Tools:', bold_style), Paragraph('PatentView patent search, Semantic Scholar', normal_style)]
+            [Paragraph('Search Tools:', bold_style), Paragraph('PatentView, Semantic Scholar', normal_style)]
         ]
         
         case_table = Table(case_data, colWidths=[1.5*inch, 5*inch])
@@ -294,12 +294,22 @@ class PatentNoveltyReportGenerator:
             ]]
             
             for idx, patent in enumerate(self.data['patents'], 1):
+                # Get patent title and URL
+                patent_title = patent.get('patent_title', 'N/A')
+                google_url = patent.get('google_patents_url', '')
+                
+                # Create hyperlinked title if URL exists
+                if google_url and google_url.strip():
+                    title_with_link = f'<a href="{google_url}" color="blue"><u>{patent_title}</u></a>'
+                else:
+                    title_with_link = patent_title
+                
                 patent_table_data.append([
                     Paragraph(str(idx), cell_style),
                     Paragraph(patent.get('patent_number', 'N/A'), cell_style),
                     Paragraph(patent.get('patent_inventors', 'Data not available'), cell_style),
                     Paragraph(patent.get('patent_assignees', 'Data not available'), cell_style),
-                    Paragraph(patent.get('patent_title', 'N/A'), cell_style)
+                    Paragraph(title_with_link, cell_style)
                 ])
             
             patent_table = Table(patent_table_data, colWidths=[0.3*inch, 0.9*inch, 1.5*inch, 1.5*inch, 2.3*inch])
@@ -357,12 +367,31 @@ class PatentNoveltyReportGenerator:
                 pub_date = article.get('published_date', '')
                 year = pub_date[:4] if pub_date and len(pub_date) >= 4 else 'N/A'
                 
+                # Get article title and URLs
+                article_title = article.get('article_title', 'N/A')
+                open_access_url = article.get('open_access_pdf_url', '')
+                article_url = article.get('article_url', '')
+                
+                # Prioritize open_access_pdf_url, fallback to article_url
+                if open_access_url and open_access_url.strip():
+                    final_url = open_access_url
+                elif article_url and article_url.strip():
+                    final_url = article_url
+                else:
+                    final_url = ''
+                
+                # Create hyperlinked title if URL exists
+                if final_url:
+                    title_with_link = f'<a href="{final_url}" color="blue"><u>{article_title}</u></a>'
+                else:
+                    title_with_link = article_title
+                
                 article_table_data.append([
                     Paragraph(str(idx), cell_style),
                     Paragraph(article.get('journal', 'N/A'), cell_style),
                     Paragraph(year, cell_style),
                     Paragraph(article.get('authors', 'N/A'), cell_style),
-                    Paragraph(article.get('article_title', 'N/A'), cell_style)
+                    Paragraph(title_with_link, cell_style)
                 ])
             
             article_table = Table(article_table_data, colWidths=[0.3*inch, 1.5*inch, 0.5*inch, 1.5*inch, 2.7*inch])
@@ -395,17 +424,31 @@ class PatentNoveltyReportGenerator:
                 'number': idx,
                 'assignee_author': patent.get('patent_assignees', 'Data not available'),
                 'title': patent.get('patent_title', 'Title not available'),
-                'abstract': patent.get('patent_abstract', 'Abstract not available')
+                'abstract': patent.get('patent_abstract', 'Abstract not available'),
+                'url': patent.get('google_patents_url', '')
             })
         
         # Add articles after patents
         start_idx = len(self.data['patents']) + 1
         for idx, article in enumerate(self.data['articles'], start_idx):
+            # Get article URLs - prioritize open_access_pdf_url
+            open_access_url = article.get('open_access_pdf_url', '')
+            article_url = article.get('article_url', '')
+            
+            # Prioritize open_access_pdf_url, fallback to article_url
+            if open_access_url and open_access_url.strip():
+                final_url = open_access_url
+            elif article_url and article_url.strip():
+                final_url = article_url
+            else:
+                final_url = ''
+            
             combined_results.append({
                 'number': idx,
                 'assignee_author': article.get('authors', 'Authors not available'),
                 'title': article.get('article_title', 'Title not available'),
-                'abstract': article.get('abstract', 'Abstract not available')
+                'abstract': article.get('abstract', 'Abstract not available'),
+                'url': final_url
             })
         
         if combined_results:
@@ -444,7 +487,13 @@ class PatentNoveltyReportGenerator:
             
             for item in combined_results:
                 # Combine title (bold) and abstract in one cell
-                title_and_abstract = f"<b>{item['title']}</b><br/><br/>{item['abstract']}"
+                # Add hyperlink to title if URL exists
+                if item.get('url') and item['url'].strip():
+                    title_html = f'<b><a href="{item["url"]}" color="blue"><u>{item["title"]}</u></a></b>'
+                else:
+                    title_html = f"<b>{item['title']}</b>"
+                
+                title_and_abstract = f"{title_html}<br/><br/>{item['abstract']}"
                 
                 abstract_table_data.append([
                     Paragraph(str(item['number']), abstract_cell_style),
