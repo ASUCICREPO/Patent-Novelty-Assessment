@@ -23,6 +23,7 @@ export function PatentSearchResults({
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [updatingReports, setUpdatingReports] = useState<Set<string>>(new Set());
   const hasTriggeredSearch = useRef(false);
 
   useEffect(() => {
@@ -42,19 +43,21 @@ export function PatentSearchResults({
 
       // First, trigger the patent search via Agent Core
       console.log("Triggering patent search via Agent Core...");
-      await patentSearchService.triggerPatentSearch(fileName);
+      patentSearchService.triggerPatentSearch(fileName);
       
-      // Wait for 3 minutes for the search to complete
-      console.log("Waiting 3 minutes for search to complete...");
-      setError("Search initiated. Please wait 3 minutes for results to be processed...");
+      // Wait for 5 minutes for the search to complete
+      console.log("Waiting 5 minutes for search to complete...");
+      setError("Search initiated. This may take a few minutes to process...");
       
-      // Wait 3 minutes
-      await new Promise(resolve => setTimeout(resolve, 180000));
+      // Wait 5 minutes
+      await new Promise(resolve => setTimeout(resolve, 300000));
       
-      console.log("3 minutes elapsed, starting to poll for results...");
+      console.log("5 minutes elapsed, starting to poll for results...");
       setError("Search completed. Fetching results...");
       
-      // Now start polling for results with 30-second intervals
+      // Start polling for results with 30-second intervals
+      // The polling mechanism will first wait for filename count to reach 8,
+      // then poll for actual results
       const results = await patentSearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
@@ -81,6 +84,31 @@ export function PatentSearchResults({
 
   const handleProceedToLiteratureSearch = () => {
     router.push(`/literature-search?file=${fileName}`);
+  };
+
+  const handleAddToReport = async (patentNumber: string, currentStatus: string) => {
+    try {
+      setUpdatingReports(prev => new Set(prev).add(patentNumber));
+      
+      const newStatus = currentStatus === "Yes" ? false : true;
+      await patentSearchService.updateAddToReport(fileName, patentNumber, newStatus);
+      
+      // Update the local state
+      setSearchResults(prev => prev.map(patent => 
+        patent.patent_number === patentNumber 
+          ? { ...patent, add_to_report: newStatus ? "Yes" : "No" }
+          : patent
+      ));
+    } catch (error) {
+      console.error("Error updating add to report:", error);
+      // You could add a toast notification here
+    } finally {
+      setUpdatingReports(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(patentNumber);
+        return newSet;
+      });
+    }
   };
 
 
@@ -131,7 +159,7 @@ export function PatentSearchResults({
             Searching patents...
           </p>
           <p className="text-sm text-slate-600 mb-2">
-            This may take a few minutes while we search through patent databases.
+            This may take a few minutes to process while we search through patent databases.
           </p>
           {retryCount > 0 && (
             <p className="text-xs text-slate-500">
@@ -216,7 +244,7 @@ export function PatentSearchResults({
                     <div className="flex gap-2 items-center w-full">
                       <div className="flex flex-1 gap-2 items-center min-h-0 min-w-0">
                         <a
-                          href={patent.google_patents_url || patent.uspto_url}
+                          href={patent.google_patents_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-semibold text-base text-slate-950 underline decoration-solid underline-offset-[25%] hover:text-[#7a0019] transition-colors"
@@ -224,7 +252,7 @@ export function PatentSearchResults({
                           {patent.patent_title}
                         </a>
                         <a
-                          href={patent.google_patents_url || patent.uspto_url}
+                          href={patent.google_patents_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="shrink-0 w-5 h-5"
@@ -246,9 +274,17 @@ export function PatentSearchResults({
                           </svg>
                         </a>
                       </div>
-                      <button className="border border-slate-200 flex gap-1 items-center justify-center px-2 py-1.5 rounded shrink-0 hover:bg-slate-50">
-                        <p className="font-medium text-sm text-slate-800">
-                          Add to Report
+                      <button 
+                        onClick={() => handleAddToReport(patent.patent_number, patent.add_to_report || "No")}
+                        disabled={updatingReports.has(patent.patent_number)}
+                        className={`border flex gap-1 items-center justify-center px-2 py-1.5 rounded shrink-0 transition-colors ${
+                          patent.add_to_report === "Yes" 
+                            ? "border-[#7a0019] bg-[#7a0019] text-white hover:bg-[#5d0013]" 
+                            : "border-slate-200 hover:bg-slate-50"
+                        } ${updatingReports.has(patent.patent_number) ? "opacity-50 cursor-not-allowed" : ""}`}
+                      >
+                        <p className="font-medium text-sm">
+                          {patent.add_to_report === "Yes" ? "Remove from Report" : "Add to Report"}
                         </p>
                         <svg
                           width="16"
@@ -258,7 +294,7 @@ export function PatentSearchResults({
                           xmlns="http://www.w3.org/2000/svg"
                         >
                           <path
-                            d="M8 1.33333V14.6667M8 1.33333L14.6667 8M8 1.33333L1.33333 8"
+                            d={patent.add_to_report === "Yes" ? "M4 8H12" : "M8 1.33333V14.6667M8 1.33333L14.6667 8M8 1.33333L1.33333 8"}
                             stroke="currentColor"
                             strokeWidth="1.33"
                             strokeLinecap="round"
@@ -284,9 +320,7 @@ export function PatentSearchResults({
                   {/* Patent details */}
                   <div className="flex flex-col font-normal gap-1 items-start text-sm text-slate-600 w-full whitespace-pre-wrap">
                     <p>Patent: {patent.patent_number}</p>
-                    {patent.forward_citations && patent.backward_citations && (
-                      <p>Forward Citations: {patent.forward_citations} | Backward Citations: {patent.backward_citations}</p>
-                    )}
+                    <p>Citations: {patent.citation_count}</p>
                     <p>Published: {formatDate(patent.publication_date || "")}</p>
                   </div>
                 </div>

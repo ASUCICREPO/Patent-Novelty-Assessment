@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
-import { ExecutiveSummary } from "@/components/ExecutiveSummary";
-import { KeyFindings } from "@/components/KeyFindings";
 import { Keywords } from "@/components/Keywords";
 import { Button } from "@/components/ui/button";
 import { fetchAnalysisResults, pollForResults } from "@/lib/dynamodb";

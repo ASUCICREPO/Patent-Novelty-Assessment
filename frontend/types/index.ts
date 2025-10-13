@@ -10,28 +10,6 @@ export interface UploadedFile {
   uploadedAt: Date;
 }
 
-export interface AnalysisResult {
-  id: string;
-  fileName: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  noveltyScore?: number;
-  commercializationScore?: number;
-  insights?: string[];
-  similarPatents?: Patent[];
-  uploadedAt: Date;
-  completedAt?: Date;
-}
-
-export interface Patent {
-  id: string;
-  title: string;
-  patentNumber: string;
-  publicationDate: string;
-  inventors: string[];
-  abstract: string;
-  similarityScore: number;
-}
-
 export interface UploadProgress {
   percentage: number;
   stage: "uploading" | "processing" | "analyzing" | "complete";
@@ -63,6 +41,7 @@ export interface ParsedAnalysisResult {
 export interface PatentSearchResult {
   pdf_filename: string;
   patent_number: string;
+  add_to_report?: string;
   backward_citations?: number;
   citation_count?: number;
   filing_date?: string;
@@ -86,17 +65,11 @@ export interface PatentSearchResult {
   uspto_url?: string;
 }
 
-export interface PatentSearchResponse {
-  results: PatentSearchResult[];
-  totalCount: number;
-  searchId: string;
-  status: "searching" | "completed" | "failed";
-}
-
 // Scholarly Article Types
 export interface ScholarlyArticle {
   pdf_filename: string;
   article_doi: string;
+  add_to_report?: string;
   abstract: string;
   article_title: string;
   article_type: string;
@@ -115,11 +88,4 @@ export interface ScholarlyArticle {
   relevance_score: number;
   search_query_used: string;
   search_timestamp: string;
-}
-
-export interface ScholarlyArticleResponse {
-  results: ScholarlyArticle[];
-  totalCount: number;
-  searchId: string;
-  status: "searching" | "completed" | "failed";
 }

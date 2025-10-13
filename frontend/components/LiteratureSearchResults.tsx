@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { scholarlySearchService } from "@/lib/scholarlySearch";
+import { reportGenerationService } from "@/lib/reportGeneration";
 import type { ScholarlyArticle } from "@/types";
 
 interface LiteratureSearchResultsProps {
@@ -16,10 +18,12 @@ export function LiteratureSearchResults({
   fileName,
   onKeywordsChange,
 }: LiteratureSearchResultsProps) {
+  const router = useRouter();
   const [searchResults, setSearchResults] = useState<ScholarlyArticle[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [updatingReports, setUpdatingReports] = useState<Set<string>>(new Set());
   const hasTriggeredSearch = useRef(false);
 
   useEffect(() => {
@@ -37,19 +41,21 @@ export function LiteratureSearchResults({
 
       // First, trigger the literature search via Agent Core
       console.log("Triggering literature search via Agent Core...");
-      await scholarlySearchService.triggerScholarlySearch(fileName);
+      scholarlySearchService.triggerScholarlySearch(fileName);
       
-      // Wait for 2 minutes for the search to complete
-      console.log("Waiting 2 minutes for search to complete...");
-      setError("Search initiated. Please wait 2 minutes for results to be processed...");
+      // Wait for 5 minutes for the search to complete
+      console.log("Waiting 5 minutes for search to complete...");
+      setError("Search initiated. This may take a few minutes to process...");
       
-      // Wait 2 minutes
-      await new Promise(resolve => setTimeout(resolve, 120000));
+      // Wait 5 minutes
+      await new Promise(resolve => setTimeout(resolve, 300000));
       
-      console.log("2 minutes elapsed, starting to poll for results...");
+      console.log("5 minutes elapsed, starting to poll for results...");
       setError("Search completed. Fetching results...");
       
-      // Now start polling for results with 30-second intervals
+      // Start polling for results with 30-second intervals
+      // The polling mechanism will first wait for filename count to reach 8,
+      // then poll for actual results
       const results = await scholarlySearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
@@ -68,6 +74,45 @@ export function LiteratureSearchResults({
     }
   };
 
+  const handleAddToReport = async (articleDoi: string, currentStatus: string) => {
+    try {
+      setUpdatingReports(prev => new Set(prev).add(articleDoi));
+      
+      const newStatus = currentStatus === "Yes" ? false : true;
+      await scholarlySearchService.updateAddToReport(fileName, articleDoi, newStatus);
+      
+      // Update the local state
+      setSearchResults(prev => prev.map(article => 
+        article.article_doi === articleDoi 
+          ? { ...article, add_to_report: newStatus ? "Yes" : "No" }
+          : article
+      ));
+    } catch (error) {
+      console.error("Error updating add to report:", error);
+      // You could add a toast notification here
+    } finally {
+      setUpdatingReports(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(articleDoi);
+        return newSet;
+      });
+    }
+  };
+
+  const handleGenerateFinalReports = async () => {
+    if (!fileName) return;
+
+    try {
+      // Trigger report generation
+      await reportGenerationService.triggerReportGeneration(fileName);
+      
+      // Navigate to report generation page
+      router.push(`/report-generation?file=${fileName}`);
+    } catch (err) {
+      console.error("Error generating reports:", err);
+      setError("Failed to generate reports. Please try again.");
+    }
+  };
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
@@ -109,7 +154,7 @@ export function LiteratureSearchResults({
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7a0019] mx-auto mb-4"></div>
           <p className="text-slate-800 mb-2">Searching scholarly articles...</p>
           <p className="text-sm text-slate-600">
-            Please wait while we find relevant academic literature.
+            This may take a few minutes to process while we search through academic literature.
           </p>
         </div>
       </div>
@@ -207,9 +252,17 @@ export function LiteratureSearchResults({
                           </span>
                         </a>
                       </div>
-                      <button className="border border-slate-200 flex gap-1 items-center justify-center px-2 py-1.5 rounded shrink-0 hover:bg-slate-50">
-                        <p className="font-medium text-sm text-slate-800">
-                          Add to Report
+                      <button 
+                        onClick={() => handleAddToReport(article.article_doi, article.add_to_report || "No")}
+                        disabled={updatingReports.has(article.article_doi)}
+                        className={`border flex gap-1 items-center justify-center px-2 py-1.5 rounded shrink-0 transition-colors ${
+                          article.add_to_report === "Yes" 
+                            ? "border-[#7a0019] bg-[#7a0019] text-white hover:bg-[#5d0013]" 
+                            : "border-slate-200 hover:bg-slate-50"
+                        } ${updatingReports.has(article.article_doi) ? "opacity-50 cursor-not-allowed" : ""}`}
+                      >
+                        <p className="font-medium text-sm">
+                          {article.add_to_report === "Yes" ? "Remove from Report" : "Add to Report"}
                         </p>
                         <svg
                           width="16"
@@ -219,7 +272,7 @@ export function LiteratureSearchResults({
                           xmlns="http://www.w3.org/2000/svg"
                         >
                           <path
-                            d="M8 1.33333V14.6667M8 1.33333L14.6667 8M8 1.33333L1.33333 8"
+                            d={article.add_to_report === "Yes" ? "M4 8H12" : "M8 1.33333V14.6667M8 1.33333L14.6667 8M8 1.33333L1.33333 8"}
                             stroke="currentColor"
                             strokeWidth="1.33"
                             strokeLinecap="round"
@@ -245,13 +298,9 @@ export function LiteratureSearchResults({
                     <p>Authors: {article.authors}</p>
                     <p>Published in: {article.journal}</p>
                     <p>Published: {formatDate(article.published_date)}</p>
-                    {/* DOI removed per requirements */}
                     <p>Citations: {article.citation_count}</p>
                     <p>Relevance Score: {article.relevance_score?.toFixed(2) || "N/A"}</p>
                   </div>
-
-
-                  {/* Dedicated Novelty Impact Assessment section removed per requirements */}
                 </div>
               ))}
             </div>
@@ -262,6 +311,7 @@ export function LiteratureSearchResults({
       {/* Action Buttons */}
       <div className="flex gap-4 items-start justify-end w-full">
         <Button
+          onClick={handleGenerateFinalReports}
           className="bg-[#7a0019] hover:bg-[#5d0013] text-white flex items-center gap-1"
         >
           Generate Final Reports

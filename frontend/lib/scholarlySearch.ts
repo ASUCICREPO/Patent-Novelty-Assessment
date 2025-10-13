@@ -1,6 +1,6 @@
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { ScholarlyArticle } from "@/types";
 
 // Configure DynamoDB v3
@@ -115,31 +115,100 @@ export class ScholarlySearchService {
   }
 
   /**
+   * Check if filename count has reached the expected number (8) before polling
+   */
+  async checkFilenameCount(pdfFilename: string, expectedCount: number = 8): Promise<boolean> {
+    try {
+      const cleanFilename = this.cleanFilename(pdfFilename);
+      
+      const params = new QueryCommand({
+        TableName: this.resultsTableName,
+        KeyConditionExpression: "pdf_filename = :filename",
+        ExpressionAttributeValues: {
+          ":filename": cleanFilename,
+        },
+        Select: "COUNT", // Only get count, not full items
+      });
+
+      const result = await docClient.send(params);
+      const count = result.Count || 0;
+      
+      console.log(`Filename count for ${cleanFilename}: ${count}/${expectedCount}`);
+      return count >= expectedCount;
+    } catch (error) {
+      console.error("Error checking filename count:", error);
+      return false;
+    }
+  }
+
+  /**
    * Poll for scholarly article search results until they're available
+   * Continues polling until filename count reaches expected number, then fetches results
    */
   async pollForSearchResults(
     pdfFilename: string,
-    maxAttempts: number = 20, // Reduced since we wait 30 seconds first
-    delayMs: number = 30000 // 30 seconds between polls
+    delayMs: number = 30000, // 30 seconds between polls
+    expectedFilenameCount: number = 8
   ): Promise<ScholarlyArticle[]> {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Poll until filename count reaches expected number
+    console.log(`Waiting for filename count to reach ${expectedFilenameCount}...`);
+    while (true) {
       try {
-        const results = await this.fetchSearchResults(pdfFilename);
-
-        if (results.length > 0) {
-          return results;
+        const countReached = await this.checkFilenameCount(pdfFilename, expectedFilenameCount);
+        
+        if (countReached) {
+          console.log(`Filename count reached ${expectedFilenameCount}, fetching results...`);
+          break;
         }
-
-        // Wait 30 seconds before next attempt
+        
+        console.log(`Count not yet reached, waiting ${delayMs/1000} seconds...`);
+        
+        // Wait before next count check
         await this.sleep(delayMs);
       } catch (error) {
-        console.error("Error polling for search results:", error);
-        // Wait 30 seconds before retrying
+        console.error("Error during count check:", error);
         await this.sleep(delayMs);
       }
     }
+    
+    // Fetch actual results once count is reached
+    console.log("Fetching search results...");
+    try {
+      const results = await this.fetchSearchResults(pdfFilename);
+      console.log(`Found ${results.length} search results`);
+      return results;
+    } catch (error) {
+      console.error("Error fetching search results:", error);
+      return [];
+    }
+  }
 
-    return []; // Timeout
+  /**
+   * Update add_to_report field for a scholarly article
+   */
+  async updateAddToReport(pdfFilename: string, articleDoi: string, addToReport: boolean): Promise<void> {
+    try {
+      const cleanFilename = this.cleanFilename(pdfFilename);
+      
+      const params = new UpdateCommand({
+        TableName: this.resultsTableName,
+        Key: {
+          pdf_filename: cleanFilename,
+          article_doi: articleDoi,
+        },
+        UpdateExpression: "SET add_to_report = :addToReport",
+        ExpressionAttributeValues: {
+          ":addToReport": addToReport ? "Yes" : "No",
+        },
+        ReturnValues: "UPDATED_NEW",
+      });
+
+      await docClient.send(params);
+      console.log(`Updated add_to_report for article ${articleDoi} to ${addToReport ? "Yes" : "No"}`);
+    } catch (error) {
+      console.error("Error updating add_to_report:", error);
+      throw error;
+    }
   }
 
   /**
@@ -155,6 +224,6 @@ export class ScholarlySearchService {
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-}
+} 
 
 export const scholarlySearchService = new ScholarlySearchService();
