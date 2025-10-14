@@ -463,6 +463,7 @@ export function LiteratureSearchResults({
                     <p>Authors: {article.authors}</p>
                     <p>Published in: {article.journal}</p>
                     <p>Published: {formatDate(article.published_date)}</p>
+                    <p>Fields of Study: {article.fields_of_study}</p>
                     <p>Citations: {article.citation_count}</p>
                     {article.relevance_score && (
                       <p>Relevance: {article.relevance_score}</p>

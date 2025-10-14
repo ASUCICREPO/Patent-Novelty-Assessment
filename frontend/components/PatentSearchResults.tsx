@@ -454,18 +454,22 @@ export function PatentSearchResults({
                     </div>
                   </div>
                   
-                  {/* Keyword highlighting section */}
+                  {/* LLM Notes section */}
                   <div className="bg-[#fff7f9] flex gap-2 items-center justify-center p-3 rounded-lg w-full">
                     <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
-                      The invention relates to {patent.patent_title || "this patent"} and involves {patent.matching_keywords || "patent technology"}.
+                      {patent.llm_examiner_notes || "No examiner notes provided for this patent."}
                     </p>
                   </div>
                   
                   {/* Patent details */}
                   <div className="flex flex-col font-normal gap-1 items-start text-sm text-slate-600 w-full whitespace-pre-wrap">
                     <p>Patent: {patent.patent_number}</p>
+                    <p>Inventors: {patent.patent_inventors}</p>
+                    <p>Filing Date: {formatDate(patent.filing_date || "")}</p>
+                    <p>Grant Date: {formatDate(patent.grant_date || "")}</p>
+                    <p>Publication Date: {formatDate(patent.publication_date || "")}</p>
                     <p>Citations: {patent.citation_count}</p>
-                    <p>Published: {formatDate(patent.publication_date || "")}</p>
+                    <p>Backward Citations: {patent.backward_citations}</p>
                     {patent.relevance_score && (
                       <p>Relevance: {patent.relevance_score}</p>
                     )}
