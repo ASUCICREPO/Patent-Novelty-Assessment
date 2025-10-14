@@ -103,7 +103,7 @@ def store_keywords_in_dynamodb(pdf_filename: str, keywords_response: str) -> str
 # =============================================================================
 
 keyword_generator = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[read_bda_results, store_keywords_in_dynamodb],
     system_prompt="""You are a Patent Search Professional specializing in extracting high-quality keywords from invention disclosure documents for prior art searches.
 

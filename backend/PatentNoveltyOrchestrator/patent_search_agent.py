@@ -638,7 +638,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                 }
                 
                 response = bedrock_client.invoke_model(
-                    modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
                     body=json.dumps(request_body)
                 )
                 
@@ -897,7 +897,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
 # =============================================================================
 
 patentview_search_agent = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[read_keywords_from_dynamodb, search_all_keywords_and_prefilter, evaluate_patent_relevance_llm, store_patentview_analysis],
     system_prompt="""You are an AI Patent Search Expert conducting comprehensive prior art searches using direct keyword-based queries.
 

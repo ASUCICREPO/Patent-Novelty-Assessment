@@ -166,7 +166,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             
             # Make the LLM call
             response = bedrock_client.invoke_model(
-                modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
                 body=json.dumps(request_body)
             )
             
@@ -518,7 +518,7 @@ def generate_refined_query(original_query_info: Dict, quality_assessment: Dict, 
             "messages": [{"role": "user", "content": refinement_prompt}]
         }
         response = bedrock_client.invoke_model(
-            modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
             body=json.dumps(request_body)
         )
         response_body = json.loads(response['body'].read())
@@ -616,7 +616,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                 }
                 # Make the LLM call
                 response = bedrock_client.invoke_model(
-                    modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
                     body=json.dumps(request_body)
                 )
                 
@@ -797,7 +797,7 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
 # =============================================================================
 
 scholarly_article_agent = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[read_keywords_from_dynamodb, search_semantic_scholar_articles_strategic, 
            store_semantic_scholar_analysis],
     system_prompt="""You are an Intelligent Scholarly Article Search Expert using LLM-driven adaptive search for Patent Novelty Assessment.
