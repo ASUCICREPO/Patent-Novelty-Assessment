@@ -464,7 +464,7 @@ export function LiteratureSearchResults({
                         </svg>
                       </button>
                     </div>
-                    <div className="h-48 overflow-y-auto w-full">
+                    <div className="h-36 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
                       <p className="font-normal text-base text-slate-800 whitespace-pre-wrap">
                         {article.abstract}
                       </p>
