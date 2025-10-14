@@ -18,7 +18,7 @@ When BDA completes and creates the `result.json` file, an S3 event triggers the 
 - **Commercial Assessment Agent** - Conducts early commercialization analysis
 
 ### 4. Keyword Extraction
-The Keyword Generator Agent reads the BDA results from S3, analyzes the invention disclosure using Claude 3.7 Sonnet, and extracts:
+The Keyword Generator Agent reads the BDA results from S3, analyzes the invention disclosure using Claude Sonnet 4.5, and extracts:
 - Invention title
 - Technology description
 - Technology applications
@@ -49,7 +49,7 @@ The Scholarly Article Agent conducts an intelligent search:
 The Commercial Assessment Agent analyzes commercialization potential:
 - Reads BDA results from S3
 - Analyzes invention across 10 dimensions (problem solved, market overview, competition, potential licensees, challenges, etc.)
-- Generates comprehensive assessment using Claude 3.7 Sonnet
+- Generates comprehensive assessment using Claude Sonnet 4.5
 - Stores results in `early-commercial-assessment` DynamoDB table
 
 ### 8. Report Generation
@@ -83,7 +83,7 @@ Users download PDF reports from S3 for review by patent examiners and technology
   - Routes requests to specialized agents based on action type
   - Manages agent lifecycle and streaming responses
 
-- **Amazon Bedrock (Claude 3.7 Sonnet)**: Large Language Model for AI analysis
+- **Amazon Bedrock (Claude Sonnet 4.5)**: Large Language Model for AI analysis
   - Keyword extraction and strategic search term generation
   - Patent relevance evaluation (semantic analysis of abstracts)
   - Academic paper relevance scoring

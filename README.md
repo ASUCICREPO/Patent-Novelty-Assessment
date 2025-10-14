@@ -3,19 +3,20 @@
 An AI-powered patent novelty assessment platform that automates prior art searches across patent databases and academic literature. The system analyzes invention disclosure documents, generates strategic search keywords, executes comprehensive searches, and produces professional PDF reports for patent examiners and technology transfer professionals.
 
 ![User Interface Demo](./docs/media/user-interface.gif)
+
 > **[PLACEHOLDER]** Please provide a GIF or screenshot of the application interface and save it as `docs/media/user-interface.gif`
 
 ## Table of Contents
 
-| Index                                               | Description                                             |
-| :-------------------------------------------------- | :------------------------------------------------------ |
-| [High Level Architecture](#high-level-architecture) | High level overview illustrating component interactions |
-| [Deployment Guide](./docs/deploymentGuide.md)      | How to deploy the project                               |
-| [User Guide](./docs/userGuide.md)                  | The working solution                                    |
-| [Directories](#directories)                         | General project directory structure                     |
-| [API Documentation](./docs/APIdoc.md)              | Documentation on the APIs the project uses              |
-| [Architecture Deep Dive](./docs/architectureDeepDive.md) | Technical architecture explanation                |
-| [Modification Guide](./docs/modificationGuide.md)  | Developer guide for extending/modifying                 |
+| Index                                                    | Description                                             |
+| :------------------------------------------------------- | :------------------------------------------------------ |
+| [High Level Architecture](#high-level-architecture)      | High level overview illustrating component interactions |
+| [Deployment Guide](./docs/deploymentGuide.md)            | How to deploy the project                               |
+| [User Guide](./docs/userGuide.md)                        | The working solution                                    |
+| [Directories](#directories)                              | General project directory structure                     |
+| [API Documentation](./docs/APIdoc.md)                    | Documentation on the APIs the project uses              |
+| [Architecture Deep Dive](./docs/architectureDeepDive.md) | Technical architecture explanation                      |
+| [Modification Guide](./docs/modificationGuide.md)        | Developer guide for extending/modifying                 |
 
 ## High-Level Architecture
 
@@ -59,7 +60,7 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 
 ### Directory Explanations
 
-1. **backend/PatentNoveltyOrchestrator/** - Contains all AI agent implementations using the Strands framework. The orchestrator routes requests to specialized agents (keyword extraction, patent search, article search, commercial assessment, report generation). Each agent uses AWS Bedrock Claude 3.7 Sonnet for LLM-powered analysis.
+1. **backend/PatentNoveltyOrchestrator/** - Contains all AI agent implementations using the Strands framework. The orchestrator routes requests to specialized agents (keyword extraction, patent search, article search, commercial assessment, report generation). Each agent uses AWS Bedrock Claude Sonnet 4.5 for LLM-powered analysis.
 
 2. **backend/infrastructure/** - AWS CDK Infrastructure as Code defining all cloud resources: S3 buckets, Lambda functions, DynamoDB tables, IAM roles, and Docker image assets. The stack creates a complete serverless architecture.
 
@@ -70,7 +71,7 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 ## Key Features
 
 - **Automated Document Processing** - Uses Amazon Bedrock Data Automation to extract text from invention disclosure PDFs
-- **AI-Powered Keyword Extraction** - Claude 3.7 Sonnet analyzes documents and generates strategic search keywords
+- **AI-Powered Keyword Extraction** - Claude Sonnet 4.5 analyzes documents and generates strategic search keywords
 - **Comprehensive Patent Search** - Searches PatentView database with intelligent query strategies and LLM-based relevance scoring
 - **Academic Literature Search** - Searches Semantic Scholar with adaptive query refinement and semantic relevance evaluation
 - **Early Commercial Assessment** - Analyzes market potential, competition, and commercialization viability
@@ -79,7 +80,7 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 
 ## Technology Stack
 
-- **AWS Bedrock** - Claude 3.7 Sonnet for LLM analysis, Data Automation for PDF processing
+- **AWS Bedrock** - Claude Sonnet 4.5 for LLM analysis, Data Automation for PDF processing
 - **AWS Bedrock Agent Core** - Orchestrates multi-agent workflows with tool calling
 - **AWS Lambda** - Serverless compute for event handling
 - **Amazon S3** - Document storage and report delivery
@@ -92,7 +93,7 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 
 ## Credits
 
-This application was architected and developed by <a href="https://www.linkedin.com/in/shaashvatm156/" target="_blank">Shaashvat Mittal</a>, <a href="https://www.linkedin.com/in/sahajpreet/" target="_blank">Sahajpreet Singh</a>, and <a href="https://www.linkedin.com/in/ashik-tharakan/" target="_blank">Ashik Tharakan</a>, with solutions architect <a href="https://www.linkedin.com/in/arunarunachalam/" target="_blank">Arun Arunachalam</a>, program manager <a href="https://www.linkedin.com/in/thomas-orr/" target="_blank">Thomas Orr</a>  and product manager <a href="https://www.linkedin.com/in/rachelhayden/" target="_blank">Rachel Hayden</a>. Thanks to the ASU Cloud Innovation Center Technical and Project Management teams for their guidance and support.
+This application was architected and developed by <a href="https://www.linkedin.com/in/shaashvatm156/" target="_blank">Shaashvat Mittal</a>, <a href="https://www.linkedin.com/in/sahajpreet/" target="_blank">Sahajpreet Singh</a>, and <a href="https://www.linkedin.com/in/ashik-tharakan/" target="_blank">Ashik Tharakan</a>, with solutions architect <a href="https://www.linkedin.com/in/arunarunachalam/" target="_blank">Arun Arunachalam</a>, program manager <a href="https://www.linkedin.com/in/thomas-orr/" target="_blank">Thomas Orr</a> and product manager <a href="https://www.linkedin.com/in/rachelhayden/" target="_blank">Rachel Hayden</a>. Thanks to the ASU Cloud Innovation Center Technical and Project Management teams for their guidance and support.
 
 ## License
 
@@ -100,6 +101,6 @@ This project is licensed under the terms specified in the [LICENSE](./LICENSE) f
 
 ---
 
-*For detailed deployment instructions, see the [Deployment Guide](./docs/deploymentGuide.md).*
+_For detailed deployment instructions, see the [Deployment Guide](./docs/deploymentGuide.md)._
 
-*For usage instructions, see the [User Guide](./docs/userGuide.md).*
+_For usage instructions, see the [User Guide](./docs/userGuide.md)._

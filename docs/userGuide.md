@@ -59,7 +59,7 @@ aws logs tail /aws/lambda/PatentNoveltyStack-PdfProcessorFunction --follow
 ### 4. Automatic Keyword Extraction
 
 When BDA completes, the system automatically triggers the Keyword Generator Agent:
-- Analyzes the invention disclosure using Claude 3.7 Sonnet
+- Analyzes the invention disclosure using Claude Sonnet 4.5
 - Extracts strategic search keywords (12-15 keywords)
 - Generates invention title, technology description, and applications
 - Stores results in DynamoDB `patent-keywords` table
