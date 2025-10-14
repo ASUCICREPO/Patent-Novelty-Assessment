@@ -160,7 +160,7 @@ def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> Li
         # Sort by citation count descending
         sorted_patents = sorted(
             patents,
-            key=lambda x: x.get('citation_count', 0),
+            key=lambda x: x.get('citations', 0),
             reverse=True
         )
         
@@ -168,7 +168,7 @@ def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> Li
         filtered = sorted_patents[:top_n]
         
         print(f"Pre-filtered: {len(patents)} → {len(filtered)} patents (top {top_n} by citations)")
-        print(f"Citation range: {filtered[0].get('citation_count', 0)} (max) to {filtered[-1].get('citation_count', 0)} (min)")
+        print(f"Citation range: {filtered[0].get('citations', 0)} (max) to {filtered[-1].get('citations', 0)} (min)")
         
         return filtered
         
@@ -295,9 +295,9 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                 
                 print(f"PatentView response: {len(patents)} patents returned, {total_hits} total hits")
                 
-                # Extract citation counts
+                # Extract citations for sorting
                 for patent in patents:
-                    patent['citation_count'] = patent.get('patent_num_times_cited_by_us_patents', 0)
+                    patent['citations'] = patent.get('patent_num_times_cited_by_us_patents', 0)
                 
                 return {
                     'success': True,
@@ -425,7 +425,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
     1. Parses comma-separated keywords (detects multi-word phrases)
     2. Searches each keyword (top 10 newest patents per keyword)
     3. Deduplicates by patent_id
-    4. Pre-filters to top N by citation_count
+    4. Pre-filters to top N by citations
     5. Returns ready-to-evaluate patents
     """
     try:
@@ -554,9 +554,8 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                             assignee_names.append(' '.join(name_parts))
         
         # Citation data
-        forward_citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
+        citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
         backward_citations = patent_data.get('patent_num_us_patents_cited', 0)
-        citation_count = patent_data.get('citation_count', forward_citations)
         
         # Extract invention context
         invention_title = invention_context.get('title', 'Unknown Invention')
@@ -589,7 +588,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         Grant Date: {grant_date}
         Inventors: {', '.join(inventor_names) if inventor_names else 'Unknown'}
         Assignee: {', '.join(assignee_names) if assignee_names else 'Unknown'}
-        Forward Citations (cited by others): {forward_citations}
+        Citations (cited by others): {citations}
         Backward Citations (cites others): {backward_citations}
 
         PRIOR ART ANALYSIS:
@@ -734,8 +733,8 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
             base_score += (title_matches / len(keyword_list)) * 0.3
         
         # Citation bonus
-        citation_count = patent_data.get('citation_count', 0)
-        if citation_count > 50:
+        citations = patent_data.get('citations', 0)
+        if citations > 50:
             base_score += 0.1
         
         final_score = round(min(base_score, 1.0), 3)
@@ -860,10 +859,8 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             'patent_assignees': assignees_str,
             
             # Citation Information (Important for novelty assessment)
-            'forward_citations': patent_data.get('patent_num_times_cited_by_us_patents', 0),  # How many patents cite THIS one
+            'citations': patent_data.get('patent_num_times_cited_by_us_patents', 0),  # How many patents cite THIS one
             'backward_citations': patent_data.get('patent_num_us_patents_cited', 0),  # How many patents THIS one cites
-            'foreign_citations': patent_data.get('patent_num_foreign_documents_cited', 0),  # Foreign documents cited
-            'citation_count': patent_data.get('citation_count', 0),  # Legacy field (same as forward_citations)
             
             # LLM-Powered Relevance Assessment
             'relevance_score': Decimal(str(overall_relevance)),
@@ -918,7 +915,7 @@ patentview_search_agent = Agent(
         * Parses all keywords (detects multi-word phrases)
         * Searches each keyword (top 10 newest per keyword)
         * Deduplicates by patent_id
-        * Pre-filters to top 10 by citation_count
+        * Pre-filters to top 10 by citations
     - Returns: 10 patents ready for evaluation
 
     3. EVALUATE EACH PATENT:
