@@ -92,7 +92,7 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 
 ## Credits
 
-add credits here
+This application was architected and developed by <a href="https://www.linkedin.com/in/shaashvatm156/" target="_blank">Shaashvat Mittal</a>, <a href="https://www.linkedin.com/in/sahajpreet/" target="_blank">Sahajpreet Singh</a>, and <a href="https://www.linkedin.com/in/ashik-tharakan/" target="_blank">Ashik Tharakan</a>, with solutions architect <a href="https://www.linkedin.com/in/arunarunachalam/" target="_blank">Arun Arunachalam</a>, program manager <a href="https://www.linkedin.com/in/thomas-orr/" target="_blank">Thomas Orr</a>  and product manager <a href="https://www.linkedin.com/in/rachelhayden/" target="_blank">Rachel Hayden</a>. Thanks to the ASU Cloud Innovation Center Technical and Project Management teams for their guidance and support.
 
 ## License
 
