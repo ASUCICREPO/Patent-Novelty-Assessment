@@ -568,8 +568,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
             print(f"Patent {patent_id} lacks sufficient abstract content")
             return {
                 'overall_relevance_score': 0.2,
-                'key_differences': ['Insufficient patent abstract for analysis'],
-                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment'
+                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment. Unable to determine key differences or technical overlaps.'
             }
         
         # Create LLM prompt for patent relevance evaluation
@@ -615,9 +614,15 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         RESPOND IN THIS EXACT JSON FORMAT:
         {{
             "overall_relevance_score": 0.0-1.0,
-            "key_differences": ["list of differentiating features"],
-            "examiner_notes": "detailed analysis for patent examiner"
+            "examiner_notes": "detailed analysis for patent examiner including key technical differences and overlaps"
         }}
+
+        EXAMINER NOTES SHOULD INCLUDE:
+        - Overall relevance assessment
+        - Key technical overlaps with the invention
+        - Key differentiating features (what makes them different)
+        - Specific claims or features that could impact novelty
+        - Recommendation for examiner consideration
 
         Be precise and focus specifically on patent novelty implications."""
 
@@ -653,7 +658,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                     llm_evaluation = json.loads(json_str)
                     
                     # Validate required fields
-                    required_fields = ['overall_relevance_score', 'key_differences', 'examiner_notes']
+                    required_fields = ['overall_relevance_score', 'examiner_notes']
                     
                     if all(field in llm_evaluation for field in required_fields):
                         print(f"LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}")
@@ -710,16 +715,14 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
         if not keywords_string:
             return {
                 'overall_relevance_score': 0.0,
-                'key_differences': [],
-                'examiner_notes': 'Fallback scoring - no keywords available'
+                'examiner_notes': 'Fallback scoring - no keywords available. Unable to assess technical differences or relevance.'
             }
         
         keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
         if not keyword_list:
             return {
                 'overall_relevance_score': 0.0,
-                'key_differences': [],
-                'examiner_notes': 'Fallback scoring - no valid keywords'
+                'examiner_notes': 'Fallback scoring - no valid keywords. Unable to assess technical differences or relevance.'
             }
         
         # Count matches
@@ -741,16 +744,14 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
         
         return {
             'overall_relevance_score': final_score,
-            'key_differences': [],
-            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched'
+            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched. LLM evaluation unavailable - manual review recommended to identify key technical differences and assess novelty impact.'
         }
         
     except Exception as e:
         print(f"Fallback scoring error: {e}")
         return {
             'overall_relevance_score': 0.0,
-            'key_differences': [],
-            'examiner_notes': f'Fallback scoring failed: {str(e)}'
+            'examiner_notes': f'Fallback scoring failed: {str(e)}. Manual review required to assess relevance and identify key differences.'
         }
 
 @tool
@@ -837,7 +838,6 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         assignees_str = '; '.join(assignee_names) if assignee_names else "Data not available"
         
         # Extract LLM evaluation data
-        key_differences = llm_evaluation.get('key_differences', [])
         examiner_notes = llm_evaluation.get('examiner_notes', '')
         
         item = {
@@ -864,7 +864,6 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             
             # LLM-Powered Relevance Assessment
             'relevance_score': Decimal(str(overall_relevance)),
-            'key_differences': ', '.join(key_differences) if key_differences else 'None identified',
             'llm_examiner_notes': examiner_notes,
             
             # Search Metadata
