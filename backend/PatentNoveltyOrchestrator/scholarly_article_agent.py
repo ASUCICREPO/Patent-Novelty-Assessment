@@ -355,13 +355,13 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                             
                             # Add LLM assessment to article data
                             processed_article['llm_relevance_score'] = relevance_assessment.get('relevance_score', 0)
-                            processed_article['technical_overlaps'] = relevance_assessment['technical_overlaps']
-                            processed_article['novelty_impact_assessment'] = relevance_assessment['novelty_impact_assessment']
+                            processed_article['technical_overlaps'] = relevance_assessment.get('technical_overlaps', [])
+                            processed_article['novelty_impact_assessment'] = relevance_assessment.get('novelty_impact_assessment', '')
                             
                             # Add ALL evaluated papers (no filtering by decision)
                             all_relevant_papers.append(processed_article)
                             print(f"EVALUATED: {processed_article['title'][:60]}... (Score: {processed_article['llm_relevance_score']}/10)")
-                            print(f"Assessment: {relevance_assessment['novelty_impact_assessment'][:100]}...")
+                            print(f"Assessment: {processed_article['novelty_impact_assessment'][:100]}...")
                                 
                     except json.JSONDecodeError as je:
                         print(f"JSON decode error for query '{query_info['query']}': {je}")
