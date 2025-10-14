@@ -5,7 +5,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm ci --cache .npm --prefer-offline
+            - npm ci
         build:
           commands:
             - npm run build
@@ -15,7 +15,7 @@ applications:
           - '**/*'
       cache:
         paths:
-          - .next/cache/**/*
-          - .npm/**/*
           - node_modules/**/*
+          - .next/cache/**/*
+    platform: WEB_COMPUTE
 
