@@ -1,18 +1,34 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
   const isHomePage = pathname === "/";
+
+  const handleHomeNavigation = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    const confirmLeave = window.confirm(
+      "Going back to home will lose your current progress. Are you sure you want to continue?"
+    );
+    
+    if (confirmLeave) {
+      router.push("/");
+    }
+    // If cancelled, do nothing (stay on current page)
+  };
 
   return (
     <div className="box-border flex items-center justify-between px-16 py-6 relative shrink-0 w-full border-b border-slate-100">
       <div className="flex flex-1 items-center">
         <div className="flex flex-1 h-full items-center justify-between min-h-px min-w-px relative">
-          <Link href="/" className="h-9 relative shrink-0 w-[133.2px] cursor-pointer hover:opacity-80 transition-opacity">
+          <div 
+            onClick={!isHomePage ? handleHomeNavigation : undefined}
+            className={`h-9 relative shrink-0 w-[133.2px] ${!isHomePage ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+          >
             <Image
               src="/University_of_Minnesota_wordmark.png"
               alt="University of Minnesota"
@@ -21,7 +37,7 @@ export function Header() {
               className="object-contain"
               priority
             />
-          </Link>
+          </div>
           <div 
             className="absolute font-semibold text-lg text-center text-slate-950 top-[11px] whitespace-nowrap"
             style={{ left: "calc(50% + 0.5px)", transform: "translateX(-50%)" }}
@@ -29,8 +45,8 @@ export function Header() {
             Patent Search Tool
           </div>
           {!isHomePage && (
-            <Link 
-              href="/"
+            <button
+              onClick={handleHomeNavigation}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#7a0019] hover:bg-[#fff7f9] rounded-lg transition-colors"
             >
               <svg 
@@ -50,7 +66,7 @@ export function Header() {
                 />
               </svg>
               Home
-            </Link>
+            </button>
           )}
         </div>
       </div>
