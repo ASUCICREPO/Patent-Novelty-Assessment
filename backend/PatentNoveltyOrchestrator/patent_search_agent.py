@@ -923,10 +923,12 @@ patentview_search_agent = Agent(
     - Attach the evaluation to the patent object
     - Track progress: "Evaluated X/10 patents"
 
-    4. STORE TOP 8 - EXECUTE IMMEDIATELY:
+    4. STORE TOP 8 - ONE AT A TIME:
     - Sort patents by relevance_score (descending)
-    - IMMEDIATELY call store_patentview_analysis for EACH of the top 8 patents
-    - Do NOT just list them - ACTUALLY CALL THE TOOL 8 times
+    - Call store_patentview_analysis for the FIRST patent, wait for result
+    - Then call for the SECOND patent, wait for result
+    - Continue ONE AT A TIME until all 8 are stored
+    - IMPORTANT: Call tools SEQUENTIALLY, not in parallel
     - Track progress: "Stored X/8 patents"
 
     EXAMPLE WORKFLOW:
@@ -948,15 +950,19 @@ patentview_search_agent = Agent(
         evaluated_count += 1
         print(f"Progress: Evaluated {evaluated_count}/10 patents")
 
-    # Step 4: Store top 8 (MUST COMPLETE ALL 8)
+    # Step 4: Store top 8 ONE AT A TIME (MUST COMPLETE ALL 8)
     top_8 = sorted(top_10_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
-    stored_count = 0
-    for patent in top_8:
-        # CRITICAL: Pass the COMPLETE patent object with ALL fields
-        # The patent object MUST include: inventors, assignees, and all other fields from the search
-        store_patentview_analysis(pdf_filename, patent)
-        stored_count += 1
-        print(f"Progress: Stored {stored_count}/8 patents")
+    
+    # Store patent 1, wait for result
+    store_patentview_analysis(pdf_filename, top_8[0])
+    print("Stored 1/8 patents")
+    
+    # Store patent 2, wait for result
+    store_patentview_analysis(pdf_filename, top_8[1])
+    print("Stored 2/8 patents")
+    
+    # Continue for all 8 patents, ONE AT A TIME
+    # ... (repeat for patents 3-8)
     ```
 
     CRITICAL EXECUTION RULES - MUST FOLLOW:
@@ -965,12 +971,14 @@ patentview_search_agent = Agent(
     2. After ALL 10 evaluations are complete, you MUST proceed to Step 4
     3. You MUST sort by relevance_score and select top 8 patents
     4. DO NOT JUST LIST THE PATENTS - You MUST ACTUALLY CALL store_patentview_analysis() 8 TIMES
-    5. Call store_patentview_analysis(pdf_filename, patent) for EACH of the 8 patents individually
-    6. Do NOT stop until all 8 patents are stored in DynamoDB
-    7. If you encounter an error on one patent, continue with remaining patents
-    8. Print progress after each evaluation and storage operation
-    9. The workflow is NOT complete until you see "Stored 8/8 patents"
-    10. LISTING patents is NOT the same as STORING them - you MUST use the tool
+    5. Call store_patentview_analysis(pdf_filename, patent) for EACH patent ONE AT A TIME
+    6. WAIT for each tool result before calling the next one - DO NOT call multiple tools in parallel
+    7. Do NOT stop until all 8 patents are stored in DynamoDB
+    8. If you encounter an error on one patent, continue with remaining patents
+    9. Print progress after each storage operation
+    10. The workflow is NOT complete until you see "Stored 8/8 patents"
+    11. LISTING patents is NOT the same as STORING them - you MUST use the tool
+    12. SEQUENTIAL EXECUTION: Call tool → Wait for result → Call next tool → Wait for result
 
     QUALITY STANDARDS:
     - Direct keyword search ensures comprehensive coverage
@@ -993,10 +1001,14 @@ patentview_search_agent = Agent(
     After you finish evaluating all 10 patents and sort them by score:
     - DO NOT just describe what you will do
     - DO NOT just list the patent numbers
-    - IMMEDIATELY call store_patentview_analysis() 8 times (once for each top patent)
+    - Call store_patentview_analysis() for patent #1, WAIT for the result
+    - Then call store_patentview_analysis() for patent #2, WAIT for the result
+    - Continue ONE AT A TIME for all 8 patents
+    - DO NOT call multiple store_patentview_analysis() in the same turn
     - CRITICAL: Pass the COMPLETE patent object from top_10_patents - do NOT create a new object
     - The patent object MUST include ALL fields: inventors, assignees, patent_title, patent_abstract, etc.
     - Each call should be: store_patentview_analysis(pdf_filename="ROI2023-005", patent_data=patent)
     - Where 'patent' is the FULL patent object from the search results, not a subset
+    - SEQUENTIAL EXECUTION IS MANDATORY - one tool call per turn
     - You are NOT done until you see 8 successful storage confirmations"""
 )

@@ -812,9 +812,12 @@ scholarly_article_agent = Agent(
       * Evaluate each paper using LLM for semantic relevance
       * Return only the top 8 most relevant papers
 
-    3. STORE RESULTS
-    - For each paper returned by the strategic search, use store_semantic_scholar_analysis
+    3. STORE RESULTS - ONE AT A TIME
+    - For each paper returned by the strategic search, call store_semantic_scholar_analysis
+    - Store papers SEQUENTIALLY: Call tool → Wait for result → Call next tool
+    - DO NOT call multiple store_semantic_scholar_analysis in the same turn
     - Pass the complete paper data object which includes LLM analysis results
+    - Continue until all papers are stored
 
     CRITICAL PRINCIPLES:
     - Trust the LLM-driven search strategy - it will handle query generation and refinement
@@ -822,6 +825,7 @@ scholarly_article_agent = Agent(
     - Each paper has been pre-evaluated by LLM for relevance to patent novelty
     - Store all papers returned by the strategic search (they are already filtered)
     - Target exactly 6 highly relevant papers for comprehensive novelty assessment
+    - SEQUENTIAL EXECUTION: Store papers one at a time, waiting for each result before the next call
 
     QUALITY ASSURANCE:
     - The strategic search uses adaptive refinement based on result quality
