@@ -355,9 +355,8 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                             
                             # Add LLM assessment to article data
                             processed_article['llm_decision'] = relevance_assessment['decision']
-                            processed_article['llm_reasoning'] = relevance_assessment['reasoning']
                             processed_article['technical_overlaps'] = relevance_assessment['technical_overlaps']
-                            processed_article['novelty_impact_assessment'] = relevance_assessment['novelty_impact']
+                            processed_article['novelty_impact_assessment'] = relevance_assessment['novelty_impact_assessment']
                             
                             # Keep only papers that LLM determines are relevant
                             if relevance_assessment['decision'] == 'KEEP':
@@ -551,9 +550,8 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         if not paper_abstract or len(paper_abstract.strip()) < 50:
             return {
                 'decision': 'DISCARD',
-                'reasoning': 'Paper lacks sufficient abstract content for meaningful relevance assessment',
                 'technical_overlaps': [],
-                'novelty_impact': 'Cannot assess - insufficient content'
+                'novelty_impact_assessment': 'Paper lacks sufficient abstract content for meaningful relevance assessment. Cannot determine technical overlaps or assess impact on novelty claims.'
             }
         
         # Make LLM call for relevance evaluation - MUST WORK
@@ -584,10 +582,16 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         {{
             "decision": "KEEP" or "DISCARD",
             "relevance_score": 0-10,
-            "reasoning": "Detailed 2-3 sentence explanation of why this paper is/isn't relevant for novelty assessment",
             "technical_overlaps": ["list", "of", "specific", "technical", "overlaps"],
-            "novelty_impact": "Brief assessment of how this paper could affect the invention's novelty claims"
+            "novelty_impact_assessment": "Comprehensive assessment including: (1) Why this paper is/isn't relevant for novelty assessment, (2) Specific technical overlaps and similarities, (3) How this paper could affect the invention's novelty claims, (4) Key findings or methods that relate to the invention"
         }}
+
+        NOVELTY IMPACT ASSESSMENT SHOULD INCLUDE:
+        - Clear explanation of relevance (2-3 sentences)
+        - Specific technical overlaps identified
+        - Potential impact on novelty claims
+        - Key findings or methods from the paper that relate to the invention
+        - Recommendation for examiner consideration
 
         RELEVANCE SCORE GUIDELINES (0-10):
         - 9-10: Directly describes the same or very similar invention
@@ -632,30 +636,27 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                     llm_evaluation = json.loads(json_str)
                     
                     # Validate required fields
-                    if 'decision' in llm_evaluation and 'reasoning' in llm_evaluation:
+                    if 'decision' in llm_evaluation and 'novelty_impact_assessment' in llm_evaluation:
                         return {
                             'decision': llm_evaluation.get('decision', 'DISCARD'),
-                            'reasoning': llm_evaluation.get('reasoning', 'LLM evaluation completed'),
                             'technical_overlaps': llm_evaluation.get('technical_overlaps', []),
-                            'novelty_impact': llm_evaluation.get('novelty_impact', 'Impact assessment completed')
+                            'novelty_impact_assessment': llm_evaluation.get('novelty_impact_assessment', 'LLM evaluation completed but no detailed assessment provided.')
                         }
                     else:
                         print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
                         if attempt == max_retries - 1:
                             return {
                                 'decision': 'DISCARD',
-                                'reasoning': 'LLM response validation failed - missing required fields after all retries',
                                 'technical_overlaps': [],
-                                'novelty_impact': 'Unable to assess due to LLM validation error'
+                                'novelty_impact_assessment': 'LLM response validation failed - missing required fields after all retries. Unable to assess relevance or identify technical overlaps.'
                             }
                 else:
                     print(f"Could not find JSON in LLM response (attempt {attempt + 1}/{max_retries})")
                     if attempt == max_retries - 1:
                         return {
                             'decision': 'DISCARD',
-                            'reasoning': 'LLM response parsing failed - could not extract JSON after all retries',
                             'technical_overlaps': [],
-                            'novelty_impact': 'Unable to assess due to LLM parsing error'
+                            'novelty_impact_assessment': 'LLM response parsing failed - could not extract JSON after all retries. Unable to assess relevance or novelty impact.'
                         }
                         
             except json.JSONDecodeError as je:
@@ -663,9 +664,8 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                 if attempt == max_retries - 1:
                     return {
                         'decision': 'DISCARD',
-                        'reasoning': f'LLM JSON parsing failed after all retries: {str(je)}',
                         'technical_overlaps': [],
-                        'novelty_impact': 'Unable to assess due to JSON parsing error'
+                        'novelty_impact_assessment': f'LLM JSON parsing failed after all retries: {str(je)}. Unable to assess relevance or novelty impact.'
                     }
                     
             except Exception as e:
@@ -673,9 +673,8 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                 if attempt == max_retries - 1:
                     return {
                         'decision': 'DISCARD',
-                        'reasoning': f'LLM evaluation failed after all retries: {str(e)}',
                         'technical_overlaps': [],
-                        'novelty_impact': 'Unable to assess due to LLM failure'
+                        'novelty_impact_assessment': f'LLM evaluation failed after all retries: {str(e)}. Unable to assess relevance or novelty impact.'
                     }
             
             # Wait before retry
@@ -686,9 +685,8 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         print(f"Error in LLM paper relevance evaluation: {str(e)}")
         return {
             'decision': 'DISCARD',
-            'reasoning': f'Evaluation failed due to error: {str(e)}',
             'technical_overlaps': [],
-            'novelty_impact': 'Unable to assess due to evaluation error'
+            'novelty_impact_assessment': f'Evaluation failed due to error: {str(e)}. Unable to assess relevance, technical overlaps, or novelty impact.'
         }
 
 def calculate_recency_score(published_date: str) -> float:
@@ -766,15 +764,13 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'search_timestamp': timestamp,
             'article_url': article_data.get('url', ''),
             'citation_count': article_data.get('citation_count', 0),
-            'article_type': ', '.join(article_data.get('publication_types', [])) if article_data.get('publication_types') else 'Unknown',
             'fields_of_study': ', '.join(article_data.get('fields_of_study', [])) if article_data.get('fields_of_study') else '',
             'open_access_pdf_url': article_data.get('open_access_pdf', ''),
             'search_query_used': article_data.get('search_query_used', ''),
             'abstract': article_data.get('abstract', ''),
             
-            # Updated LLM Analysis Results (using new structure)
+            # Updated LLM Analysis Results (consolidated)
             'llm_decision': article_data.get('llm_decision', 'UNKNOWN'),
-            'llm_reasoning': article_data.get('llm_reasoning', ''),
             'key_technical_overlaps': ', '.join(article_data.get('technical_overlaps', [])) if article_data.get('technical_overlaps') else '',
             'novelty_impact_assessment': article_data.get('novelty_impact_assessment', ''),
             'matching_keywords': article_data.get('search_query_used', ''),
