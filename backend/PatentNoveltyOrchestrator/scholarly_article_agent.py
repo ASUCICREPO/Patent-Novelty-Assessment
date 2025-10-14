@@ -354,18 +354,14 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                             relevance_assessment = evaluate_paper_relevance_with_llm_internal(processed_article, keywords_data)
                             
                             # Add LLM assessment to article data
-                            processed_article['llm_decision'] = relevance_assessment['decision']
+                            processed_article['llm_relevance_score'] = relevance_assessment.get('relevance_score', 0)
                             processed_article['technical_overlaps'] = relevance_assessment['technical_overlaps']
                             processed_article['novelty_impact_assessment'] = relevance_assessment['novelty_impact_assessment']
                             
-                            # Keep only papers that LLM determines are relevant
-                            if relevance_assessment['decision'] == 'KEEP':
-                                all_relevant_papers.append(processed_article)
-                                print(f"KEPT: {processed_article['title'][:60]}...")
-                                print(f"Reason: {relevance_assessment['reasoning'][:100]}...")
-                            else:
-                                print(f"DISCARDED: {processed_article['title'][:60]}...")
-                                print(f"Reason: {relevance_assessment['reasoning'][:100]}...")
+                            # Add ALL evaluated papers (no filtering by decision)
+                            all_relevant_papers.append(processed_article)
+                            print(f"EVALUATED: {processed_article['title'][:60]}... (Score: {processed_article['llm_relevance_score']}/10)")
+                            print(f"Assessment: {relevance_assessment['novelty_impact_assessment'][:100]}...")
                                 
                     except json.JSONDecodeError as je:
                         print(f"JSON decode error for query '{query_info['query']}': {je}")
@@ -374,21 +370,31 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             else:
                 print(f"No result for query '{query_info['query']}'")
         
-        # Remove duplicates and select top 8 papers
+        # Remove duplicates
         unique_papers = {}
         for paper in all_relevant_papers:
             paper_id = paper['paperId']
             if paper_id not in unique_papers:
                 unique_papers[paper_id] = paper
         
-        # Sort by citation count and relevance, take top 8
-        final_papers = sorted(unique_papers.values(), key=lambda x: x['citation_count'], reverse=True)[:8]
+        # Calculate combined score for each paper: LLM score (60%) + Citation impact (40%)
+        for paper in unique_papers.values():
+            llm_score = paper.get('llm_relevance_score', 0) / 10.0  # Normalize to 0-1
+            citation_score = min(paper.get('citation_count', 0) / 100.0, 1.0)  # Normalize, cap at 100 citations = 1.0
+            paper['combined_score'] = (llm_score * 0.6) + (citation_score * 0.4)
         
-        print(f"Final selection: {len(final_papers)} highly relevant papers for patent novelty assessment")
+        # Sort by combined score and take top 8
+        final_papers = sorted(unique_papers.values(), key=lambda x: x['combined_score'], reverse=True)[:8]
+        
+        print(f"\n{'='*80}")
+        print(f"FINAL SELECTION: Top {len(final_papers)} papers for patent novelty assessment")
+        print(f"{'='*80}")
         for i, paper in enumerate(final_papers, 1):
-            print(f"{i}. {paper['title'][:70]}... (Citations: {paper['citation_count']})")
-            print(f"Impact: {paper['novelty_impact_assessment']}")
-            print()
+            print(f"\n{i}. {paper['title'][:70]}...")
+            print(f"   LLM Score: {paper.get('llm_relevance_score', 0)}/10 | Citations: {paper['citation_count']} | Combined: {paper['combined_score']:.3f}")
+            print(f"   Impact: {paper['novelty_impact_assessment'][:100]}...")
+        print(f"\n{'='*80}\n")
+        
         return final_papers
         
     except Exception as e:
@@ -549,7 +555,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         # Skip papers without abstracts
         if not paper_abstract or len(paper_abstract.strip()) < 50:
             return {
-                'decision': 'DISCARD',
+                'relevance_score': 0,
                 'technical_overlaps': [],
                 'novelty_impact_assessment': 'Paper lacks sufficient abstract content for meaningful relevance assessment. Cannot determine technical overlaps or assess impact on novelty claims.'
             }
@@ -580,7 +586,6 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
 
         RESPOND IN THIS EXACT JSON FORMAT:
         {{
-            "decision": "KEEP" or "DISCARD",
             "relevance_score": 0-10,
             "technical_overlaps": ["list", "of", "specific", "technical", "overlaps"],
             "novelty_impact_assessment": "Comprehensive assessment including: (1) Why this paper is/isn't relevant for novelty assessment, (2) Specific technical overlaps and similarities, (3) How this paper could affect the invention's novelty claims, (4) Key findings or methods that relate to the invention"
@@ -600,6 +605,8 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
         - 3-4: Tangentially related, minimal overlap
         - 0-2: Not relevant or very weak connection
 
+        IMPORTANT: Score ALL papers honestly - even low scores are valuable for examiners.
+        The top 8 papers by score will be stored regardless of absolute score values.
         Be precise and focus specifically on patent novelty implications."""
 
         # Make the LLM call with retry logic
@@ -636,9 +643,9 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                     llm_evaluation = json.loads(json_str)
                     
                     # Validate required fields
-                    if 'decision' in llm_evaluation and 'novelty_impact_assessment' in llm_evaluation:
+                    if 'relevance_score' in llm_evaluation and 'novelty_impact_assessment' in llm_evaluation:
                         return {
-                            'decision': llm_evaluation.get('decision', 'DISCARD'),
+                            'relevance_score': llm_evaluation.get('relevance_score', 0),
                             'technical_overlaps': llm_evaluation.get('technical_overlaps', []),
                             'novelty_impact_assessment': llm_evaluation.get('novelty_impact_assessment', 'LLM evaluation completed but no detailed assessment provided.')
                         }
@@ -646,7 +653,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                         print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
                         if attempt == max_retries - 1:
                             return {
-                                'decision': 'DISCARD',
+                                'relevance_score': 0,
                                 'technical_overlaps': [],
                                 'novelty_impact_assessment': 'LLM response validation failed - missing required fields after all retries. Unable to assess relevance or identify technical overlaps.'
                             }
@@ -654,7 +661,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                     print(f"Could not find JSON in LLM response (attempt {attempt + 1}/{max_retries})")
                     if attempt == max_retries - 1:
                         return {
-                            'decision': 'DISCARD',
+                            'relevance_score': 0,
                             'technical_overlaps': [],
                             'novelty_impact_assessment': 'LLM response parsing failed - could not extract JSON after all retries. Unable to assess relevance or novelty impact.'
                         }
@@ -663,7 +670,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                 print(f"JSON parsing error (attempt {attempt + 1}/{max_retries}): {je}")
                 if attempt == max_retries - 1:
                     return {
-                        'decision': 'DISCARD',
+                        'relevance_score': 0,
                         'technical_overlaps': [],
                         'novelty_impact_assessment': f'LLM JSON parsing failed after all retries: {str(je)}. Unable to assess relevance or novelty impact.'
                     }
@@ -672,7 +679,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
                 print(f"LLM call error (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt == max_retries - 1:
                     return {
-                        'decision': 'DISCARD',
+                        'relevance_score': 0,
                         'technical_overlaps': [],
                         'novelty_impact_assessment': f'LLM evaluation failed after all retries: {str(e)}. Unable to assess relevance or novelty impact.'
                     }
@@ -684,7 +691,7 @@ def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_conte
     except Exception as e:
         print(f"Error in LLM paper relevance evaluation: {str(e)}")
         return {
-            'decision': 'DISCARD',
+            'relevance_score': 0,
             'technical_overlaps': [],
             'novelty_impact_assessment': f'Evaluation failed due to error: {str(e)}. Unable to assess relevance, technical overlaps, or novelty impact.'
         }
@@ -719,39 +726,9 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         paper_id = article_data.get('paperId', 'unknown')
         article_title = article_data.get('title', 'Unknown Title')
 
-        # Calculate smart relevance score
-        llm_decision = article_data.get('llm_decision', 'UNKNOWN')
-        
-        if llm_decision == 'DISCARD':
-            # DISCARD articles always get 0.0
-            final_relevance_score = 0.0
-        else:
-            # Factor 1: LLM Semantic Score (40% weight)
-            llm_score_raw = article_data.get('relevance_score', 5)  # 0-10 from LLM, default 5
-            llm_semantic_score = llm_score_raw / 10.0  # Convert to 0.0-1.0
-            
-            # Factor 2: Technical Overlap Count (30% weight)
-            technical_overlaps = article_data.get('technical_overlaps', [])
-            overlap_count = len(technical_overlaps) if technical_overlaps else 0
-            technical_overlap_score = min(overlap_count / 5.0, 1.0)  # 5+ overlaps = 1.0
-            
-            # Factor 3: Citation Count (20% weight)
-            citation_count = article_data.get('citation_count', 0)
-            citation_score = min(citation_count / 100.0, 1.0)  # 100+ citations = 1.0
-            
-            # Factor 4: Publication Recency (10% weight)
-            published_date = article_data.get('published_date', '')
-            recency_score = calculate_recency_score(published_date)
-            
-            # Weighted combination
-            final_relevance_score = (
-                llm_semantic_score * 0.40 +
-                technical_overlap_score * 0.30 +
-                citation_score * 0.20 +
-                recency_score * 0.10
-            )
-            
-            final_relevance_score = round(final_relevance_score, 3)
+        # Use the combined score calculated during search (LLM 60% + Citations 40%)
+        # This is the final relevance score used for ranking
+        relevance_score = article_data.get('combined_score', 0.0)
         
         # Use paperId as the sort key
         item = {
@@ -769,20 +746,17 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'search_query_used': article_data.get('search_query_used', ''),
             'abstract': article_data.get('abstract', ''),
             
-            # Updated LLM Analysis Results (consolidated)
-            'llm_decision': article_data.get('llm_decision', 'UNKNOWN'),
+            # Final relevance score (LLM 60% + Citations 40%, normalized 0-1)
+            'relevance_score': Decimal(str(relevance_score)),
             'key_technical_overlaps': ', '.join(article_data.get('technical_overlaps', [])) if article_data.get('technical_overlaps') else '',
             'novelty_impact_assessment': article_data.get('novelty_impact_assessment', ''),
             'matching_keywords': article_data.get('search_query_used', ''),
-            
-            # Smart Relevance Score (calculated from multiple factors)
-            'relevance_score': Decimal(str(final_relevance_score)),
             
             # Report Control
             'add_to_report': 'No',  # Default to No - user must manually change to Yes
         }
         table.put_item(Item=item)
-        return f"Successfully stored LLM-analyzed article {paper_id}: {article_title} (Decision: {article_data.get('llm_decision', 'UNKNOWN')})"
+        return f"Successfully stored LLM-analyzed article {paper_id}: {article_title} (Relevance Score: {relevance_score:.3f})"
         
     except Exception as e:
         return f"Error storing Semantic Scholar article {article_data.get('paperId', 'unknown')}: {str(e)}"
@@ -822,16 +796,18 @@ scholarly_article_agent = Agent(
     CRITICAL PRINCIPLES:
     - Trust the LLM-driven search strategy - it will handle query generation and refinement
     - Focus on semantic relevance, not just keyword matching
-    - Each paper has been pre-evaluated by LLM for relevance to patent novelty
-    - Store all papers returned by the strategic search (they are already filtered)
-    - Target exactly 6 highly relevant papers for comprehensive novelty assessment
+    - Each paper is evaluated by LLM for relevance scoring and novelty impact
+    - Store all papers returned by the strategic search (top 8 by combined score)
+    - Target exactly 8 papers ranked by relevance for comprehensive novelty assessment
     - SEQUENTIAL EXECUTION: Store papers one at a time, waiting for each result before the next call
 
     QUALITY ASSURANCE:
     - The strategic search uses adaptive refinement based on result quality
     - LLM evaluates each paper's abstract for technical overlap and novelty impact
-    - Only papers with proven relevance are returned
-    - Detailed reasoning and technical overlaps are captured for transparency
+    - Papers are ranked by combined score (LLM 60% + Citations 40%)
+    - Top 8 papers are returned regardless of absolute scores
+    - Detailed novelty impact assessments and technical overlaps are captured for transparency
+    - Examiners can review all 8 papers with scores to make final relevance decisions
 
-    Your goal: Execute the intelligent search workflow to identify 6 semantically relevant academic papers that could meaningfully impact patent novelty assessment, with full LLM reasoning for each selection."""
+    Your goal: Execute the intelligent search workflow to identify and rank the top 8 academic papers by relevance, providing comprehensive LLM-powered novelty impact assessments for each paper to support patent examination."""
 )
