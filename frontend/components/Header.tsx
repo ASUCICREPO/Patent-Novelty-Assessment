@@ -9,8 +9,8 @@ export function Header() {
             <Image
               src="/University_of_Minnesota_wordmark.png"
               alt="University of Minnesota"
-              width={133}
-              height={36}
+              fill
+              sizes="133px"
               className="object-contain"
               priority
             />

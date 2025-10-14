@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import { reportGenerationService } from "@/lib/reportGeneration";
+import { statePersistence } from "@/lib/statePersistence";
 
 export default function ReportGenerationPage() {
   const searchParams = useSearchParams();
@@ -12,12 +13,48 @@ export default function ReportGenerationPage() {
   const [reportsReady, setReportsReady] = useState({ ptlsReady: false, ecaReady: false });
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reportStateKey = `report_${fileName}`;
 
   useEffect(() => {
-    if (fileName) {
+    if (!fileName) return;
+
+    // Check for existing report generation state on component mount
+    const existingState = statePersistence.getReportState(reportStateKey);
+    
+    if (existingState) {
+      // Restore state from localStorage
+      setReportsReady(existingState.reportsReady);
+      setError(existingState.error);
+      
+      if (existingState.isGenerating) {
+        setGenerating(true);
+      }
+      
+      // If report generation was in progress, resume polling
+      if (statePersistence.shouldResumeReportGeneration(reportStateKey)) {
+        console.log("Page refreshed - resuming report generation polling...");
+        startPolling();
+      }
+      
+      // Mark as initialized to prevent re-triggering
+      hasInitialized.current = true;
+    } else {
+      // No existing state, check if reports are already ready
       checkReportsStatus();
+      hasInitialized.current = true;
     }
-  }, [fileName]);
+  }, [fileName, reportStateKey]);
+
+  // Cleanup function to clear polling interval when component unmounts
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   const checkReportsStatus = async () => {
     if (!fileName) return;
@@ -25,9 +62,55 @@ export default function ReportGenerationPage() {
     try {
       const status = await reportGenerationService.checkReportsReady(fileName);
       setReportsReady(status);
+      
+      // Update state persistence
+      statePersistence.setReportState(reportStateKey, {
+        reportsReady: status,
+        lastPollTime: Date.now()
+      });
     } catch (err) {
       console.error("Error checking reports status:", err);
     }
+  };
+
+  const startPolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const status = await reportGenerationService.checkReportsReady(fileName!);
+        setReportsReady(status);
+        
+        // Update state persistence
+        statePersistence.setReportState(reportStateKey, {
+          reportsReady: status,
+          lastPollTime: Date.now()
+        });
+        
+        if (status.ptlsReady && status.ecaReady) {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setGenerating(false);
+          
+          // Update final state
+          statePersistence.setReportState(reportStateKey, {
+            isGenerating: false,
+            reportsReady: status
+          });
+        }
+      } catch (err) {
+        console.error("Error polling for reports:", err);
+        
+        // Update error in state
+        statePersistence.setReportState(reportStateKey, {
+          error: `Polling error: ${err instanceof Error ? err.message : 'Unknown error'}`
+        });
+      }
+    }, 5000); // Check every 5 seconds
   };
 
   const triggerReportGeneration = async () => {
@@ -37,35 +120,34 @@ export default function ReportGenerationPage() {
       setGenerating(true);
       setError(null);
       
+      // Save initial state
+      statePersistence.setReportState(reportStateKey, {
+        hasTriggered: true,
+        isGenerating: true,
+        generationStartTime: Date.now(),
+        lastPollTime: Date.now(),
+        error: null,
+        reportsReady: { ptlsReady: false, ecaReady: false }
+      });
+      
       await reportGenerationService.triggerReportGeneration(fileName);
       
       // Start polling for reports to be ready
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await reportGenerationService.checkReportsReady(fileName);
-          setReportsReady(status);
-          
-          if (status.ptlsReady && status.ecaReady) {
-            clearInterval(pollInterval);
-            setGenerating(false);
-          }
-        } catch (err) {
-          console.error("Error polling for reports:", err);
-        }
-      }, 5000); // Check every 5 seconds
-
-      // Clear interval after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setGenerating(false);
-      }, 300000);
+      startPolling();
 
     } catch (err) {
       console.error("Error generating reports:", err);
       setError("Failed to generate reports. Please try again.");
       setGenerating(false);
+      
+      // Update state with error
+      statePersistence.setReportState(reportStateKey, {
+        isGenerating: false,
+        error: `Failed to generate reports: ${err instanceof Error ? err.message : 'Unknown error'}`
+      });
     }
   };
+
 
   const handleDownload = async (reportType: 'ptls' | 'eca') => {
     if (!fileName) return;
@@ -194,20 +276,6 @@ export default function ReportGenerationPage() {
               </div>
             </div>
 
-            {/* Generate Button (when no reports ready) */}
-            {!reportsReady.ptlsReady && !reportsReady.ecaReady && !generating && (
-              <div className="flex justify-center w-full">
-                <button
-                  onClick={triggerReportGeneration}
-                  className="bg-[#7a0019] hover:bg-[#5d0013] text-white flex items-center gap-2 px-6 py-3 rounded-lg font-medium"
-                >
-                  Generate Reports
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4.16667 10H15.8333M15.8333 10L10 4.16667M15.8333 10L10 15.8333" stroke="currentColor" strokeWidth="1.67" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </div>
-            )}
 
             {/* Generating State */}
             {generating && (

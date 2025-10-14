@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { patentSearchService } from "@/lib/patentSearch";
+import { statePersistence } from "@/lib/statePersistence";
 import type { PatentSearchResult } from "@/types";
 
 interface PatentSearchResultsProps {
@@ -25,23 +26,134 @@ export function PatentSearchResults({
   const [retryCount, setRetryCount] = useState(0);
   const [updatingReports, setUpdatingReports] = useState<Set<string>>(new Set());
   const hasTriggeredSearch = useRef(false);
+  const hasInitialized = useRef(false);
+  const searchStateKey = useMemo(() => `patent_${fileName}`, [fileName]);
 
   useEffect(() => {
-    if (fileName && keywords.length > 0 && !hasTriggeredSearch.current) {
-      hasTriggeredSearch.current = true;
-      triggerSearch();
+    if (!fileName || keywords.length === 0) return;
+
+    // Check for existing search state on component mount
+    const existingState = statePersistence.getState(searchStateKey);
+    
+    if (existingState) {
+      // Check if cached state has results - if not, clear it and start fresh
+      if (existingState.results && existingState.results.length === 0 && !existingState.isSearching) {
+        console.log("Cached state has no results, clearing and starting fresh search");
+        statePersistence.clearState(searchStateKey);
+        hasTriggeredSearch.current = false;
+        hasInitialized.current = false;
+        // Fall through to trigger new search
+      } else {
+        // Restore state from localStorage
+        setSearchResults(existingState.results || []);
+        setError(existingState.error);
+        setRetryCount(existingState.retryCount || 0);
+        
+        if (existingState.isSearching) {
+          setSearching(true);
+          setLoading(true);
+        }
+        
+        // Mark as triggered to prevent duplicate triggers
+        hasTriggeredSearch.current = existingState.hasTriggered;
+        
+        // If search was in progress, just show the UI - don't restart the search
+        if (statePersistence.shouldResumeSearch(searchStateKey)) {
+          console.log("Page refreshed - resuming polling for existing search results...");
+          // Resume polling immediately on refresh (no retrigger, no 5-min wait)
+          checkForCompletedSearch();
+        }
+        
+        // Mark as initialized to prevent re-triggering
+        hasInitialized.current = true;
+      }
     }
-  }, [fileName]);
+    
+    // Trigger new search if no existing state or if we cleared empty cached state
+    if (!existingState || (existingState.results && existingState.results.length === 0 && !existingState.isSearching)) {
+      if (!hasTriggeredSearch.current && !hasInitialized.current && keywords.length > 0) {
+        hasTriggeredSearch.current = true;
+        hasInitialized.current = true;
+        executeSearch();
+      }
+    }
+  }, [fileName, keywords.length]);
 
+  // Cleanup function to clear state when component unmounts
+  useEffect(() => {
+    return () => {
+      // Only clear state if search is completed (not in progress)
+      const currentState = statePersistence.getState(searchStateKey);
+      if (currentState && !currentState.isSearching) {
+        statePersistence.clearState(searchStateKey);
+      }
+    };
+  }, [searchStateKey]);
 
-  const triggerSearch = async () => {
+  const checkForCompletedSearch = async () => {
+    // Check if search results are now available in the database
     try {
       setLoading(true);
       setSearching(true);
-      setError(null);
-      setRetryCount(0);
+      setError("Checking for search results...");
+      
+      console.log("Polling for search results...");
+      const results = await patentSearchService.pollForSearchResults(fileName);
+      
+      if (results.length > 0) {
+        setSearchResults(results);
+        setRetryCount(0);
+        setError(null);
+        
+        // Update state with results
+        statePersistence.setState(searchStateKey, {
+          results: results,
+          isSearching: false,
+          error: null,
+          lastPollTime: Date.now()
+        });
+        
+        console.log(`Found ${results.length} search results`);
+      } else {
+        setError("No patents found matching your keywords. Try refining your search terms.");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "No patents found matching your keywords. Try refining your search terms."
+        });
+      }
+    } catch (err) {
+      console.error("Error checking for search results:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Failed to get search results: ${errorMessage}`);
+      statePersistence.setState(searchStateKey, {
+        isSearching: false,
+        error: `Failed to get search results: ${errorMessage}`
+      });
+    } finally {
+      setLoading(false);
+      setSearching(false);
+    }
+  };
 
-      // First, trigger the patent search via Agent Core
+  const executeSearch = async () => {
+    // Single search execution function - no time calculations, no makeshift logic
+    try {
+      setLoading(true);
+      setSearching(true);
+      setError("Search initiated. This may take a few minutes to process...");
+      
+      // Persist initial search state
+      statePersistence.setState(searchStateKey, {
+        hasTriggered: true,
+        isSearching: true,
+        searchStartTime: Date.now(),
+        lastPollTime: Date.now(),
+        retryCount: 0,
+        error: "Search initiated. This may take a few minutes to process...",
+        results: []
+      });
+
+      // Trigger the patent search via Agent Core
       console.log("Triggering patent search via Agent Core...");
       patentSearchService.triggerPatentSearch(fileName);
       
@@ -49,32 +161,65 @@ export function PatentSearchResults({
       console.log("Waiting 5 minutes for search to complete...");
       setError("Search initiated. This may take a few minutes to process...");
       
+      // Update state during wait
+      statePersistence.setState(searchStateKey, {
+        error: "Search initiated. This may take a few minutes to process...",
+        lastPollTime: Date.now()
+      });
+      
       // Wait 5 minutes
       await new Promise(resolve => setTimeout(resolve, 300000));
       
       console.log("5 minutes elapsed, starting to poll for results...");
       setError("Search completed. Fetching results...");
       
-      // Start polling for results with 30-second intervals
-      // The polling mechanism will first wait for filename count to reach 8,
-      // then poll for actual results
+      // Update state before polling
+      statePersistence.setState(searchStateKey, {
+        error: "Search completed. Fetching results...",
+        lastPollTime: Date.now()
+      });
+      
+      // Start polling for results
       const results = await patentSearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
         setSearchResults(results);
         setRetryCount(0);
         setError(null);
+        
+        // Persist successful results
+        statePersistence.setState(searchStateKey, {
+          results: results,
+          isSearching: false,
+          error: null,
+          lastPollTime: Date.now()
+        });
       } else {
         setError("No patents found matching your keywords. Try refining your search terms.");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "No patents found matching your keywords. Try refining your search terms."
+        });
       }
     } catch (err) {
-      console.error("Error during patent search:", err);
+      console.error("Error during search process:", err);
       const errorMessage = err instanceof Error ? err.message : String(err);
       setError(`Failed to search patents: ${errorMessage}`);
+      
+      // Persist error state
+      statePersistence.setState(searchStateKey, {
+        isSearching: false,
+        error: `Failed to search patents: ${errorMessage}`
+      });
     } finally {
       setLoading(false);
       setSearching(false);
     }
+  };
+
+  const triggerSearch = async () => {
+    // Use the single search execution function
+    await executeSearch();
   };
 
   const removeKeyword = (keywordToRemove: string) => {
@@ -152,20 +297,46 @@ export function PatentSearchResults({
 
   if (loading || searching) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] w-full">
-        <div className="text-center max-w-md">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7a0019] mx-auto mb-4"></div>
-          <p className="text-slate-800 mb-2 text-lg font-medium">
-            Searching patents...
-          </p>
-          <p className="text-sm text-slate-600 mb-2">
-            This may take a few minutes to process while we search through patent databases.
-          </p>
-          {retryCount > 0 && (
-            <p className="text-xs text-slate-500">
-              Attempt {retryCount}/30
+      <div className="flex flex-col items-center justify-center min-h-[500px] w-full">
+        <div className="flex flex-col gap-10 items-center w-full max-w-[480px] px-8">
+          <div className="flex flex-col gap-2 items-center text-center">
+            <p className="font-semibold text-2xl text-slate-950">
+              Patent Database Search
             </p>
-          )}
+            <p className="text-base text-slate-800 w-[400px] whitespace-pre-wrap">
+              Searching patent databases for relevant patents and intellectual property
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-6 items-center w-full">
+            <div className="border border-dashed border-slate-200 rounded-2xl p-8 w-full">
+              <div className="flex flex-col gap-6 items-center w-full">
+                <div className="flex flex-col gap-4 items-center w-full">
+                  <div className="bg-[#fff7f9] flex items-center justify-center p-2 rounded-lg">
+                    <div className="w-10 h-10 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-[#7a0019]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <p className="font-semibold text-base text-center text-slate-950">
+                    Searching Patent Database
+                  </p>
+                </div>
+                
+                <div className="flex flex-col gap-4 items-center w-full">
+                  <div className="flex items-center justify-center w-full">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#7a0019]"></div>
+                  </div>
+                  <div className="flex items-center justify-center w-full">
+                    <p className="font-medium text-sm text-slate-600 text-center">
+                      Searching... Please wait
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -185,7 +356,12 @@ export function PatentSearchResults({
           </div>
           <p className="text-slate-800 mb-4 text-sm">{error}</p>
           <Button
-            onClick={triggerSearch}
+            onClick={() => {
+              // Clear existing state and start fresh
+              statePersistence.clearState(searchStateKey);
+              hasTriggeredSearch.current = false;
+              triggerSearch();
+            }}
             className="bg-[#7a0019] hover:bg-[#5d0013] text-white"
           >
             Retry Search
@@ -277,14 +453,14 @@ export function PatentSearchResults({
                       <button 
                         onClick={() => handleAddToReport(patent.patent_number, patent.add_to_report || "No")}
                         disabled={updatingReports.has(patent.patent_number)}
-                        className={`border flex gap-1 items-center justify-center px-2 py-1.5 rounded shrink-0 transition-colors ${
+                        className={`border flex gap-1 items-center justify-center px-2 py-1.5 rounded shrink-0 transition-colors w-36 ${
                           patent.add_to_report === "Yes" 
-                            ? "border-[#7a0019] bg-[#7a0019] text-white hover:bg-[#5d0013]" 
-                            : "border-slate-200 hover:bg-slate-50"
+                            ? "border-[#7a0019] hover:bg-slate-50" 
+                            : "border-[#7a0019] bg-[#7a0019] text-white hover:bg-[#5d0013]"
                         } ${updatingReports.has(patent.patent_number) ? "opacity-50 cursor-not-allowed" : ""}`}
                       >
                         <p className="font-medium text-sm">
-                          {patent.add_to_report === "Yes" ? "Remove from Report" : "Add to Report"}
+                          {patent.add_to_report === "Yes" ? "Remove" : "Add to Report"}
                         </p>
                         <svg
                           width="16"
@@ -294,7 +470,7 @@ export function PatentSearchResults({
                           xmlns="http://www.w3.org/2000/svg"
                         >
                           <path
-                            d={patent.add_to_report === "Yes" ? "M4 8H12" : "M8 1.33333V14.6667M8 1.33333L14.6667 8M8 1.33333L1.33333 8"}
+                            d={patent.add_to_report === "Yes" ? "M4 8H12" : "M8 4V12M4 8H12"}
                             stroke="currentColor"
                             strokeWidth="1.33"
                             strokeLinecap="round"
@@ -303,9 +479,11 @@ export function PatentSearchResults({
                         </svg>
                       </button>
                     </div>
-                    <p className="font-normal text-base text-slate-800 w-full whitespace-pre-wrap">
-                      {patent.patent_abstract || `${patent.patent_title} - Patent #${patent.patent_number}`}
-                    </p>
+                    <div className="h-48 overflow-y-auto w-full">
+                      <p className="font-normal text-base text-slate-800 whitespace-pre-wrap">
+                        {patent.patent_abstract || `${patent.patent_title} - Patent #${patent.patent_number}`}
+                      </p>
+                    </div>
                   </div>
                   
                   {/* Keyword highlighting section */}
@@ -322,6 +500,9 @@ export function PatentSearchResults({
                     <p>Patent: {patent.patent_number}</p>
                     <p>Citations: {patent.citation_count}</p>
                     <p>Published: {formatDate(patent.publication_date || "")}</p>
+                    {patent.relevance_score && (
+                      <p>Relevance: {patent.relevance_score}</p>
+                    )}
                   </div>
                 </div>
               ))}

@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: "Patent Search Tool - University of Minnesota",
   description: "Use AI to analyze invention disclosures for novelty and commercialization potential.",
   icons: {
-    icon: "/University_of_Minnesota_wordmark.png",
-    shortcut: "/University_of_Minnesota_wordmark.png",
-    apple: "/University_of_Minnesota_wordmark.png",
+    icon: "/University_of_Minnesota_wordmark.ico",
+    shortcut: "/University_of_Minnesota_wordmark.ico",
+    apple: "/University_of_Minnesota_wordmark.ico",
   },
 };
 
