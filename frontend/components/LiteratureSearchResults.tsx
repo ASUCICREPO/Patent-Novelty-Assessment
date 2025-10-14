@@ -11,13 +11,12 @@ import type { ScholarlyArticle } from "@/types";
 interface LiteratureSearchResultsProps {
   keywords: string[];
   fileName: string;
-  onKeywordsChange: (keywords: string[]) => void;
+  onKeywordsChange?: (keywords: string[]) => void;
 }
 
 export function LiteratureSearchResults({
   keywords,
   fileName,
-  onKeywordsChange,
 }: LiteratureSearchResultsProps) {
   const router = useRouter();
   const [searchResults, setSearchResults] = useState<ScholarlyArticle[]>([]);
@@ -45,7 +44,7 @@ export function LiteratureSearchResults({
         // Fall through to trigger new search
       } else {
         // Restore state from localStorage
-        setSearchResults(existingState.results || []);
+        setSearchResults((existingState.results as ScholarlyArticle[]) || []);
         setError(existingState.error);
         
         if (existingState.isSearching) {
@@ -76,6 +75,7 @@ export function LiteratureSearchResults({
         triggerSearch();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileName, keywords.length]);
 
   // Cleanup function to clear state when component unmounts
@@ -272,26 +272,6 @@ export function LiteratureSearchResults({
     }
   };
 
-  const highlightKeywords = (text: string) => {
-    if (!keywords.length) return text;
-    
-    const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'gi');
-    const parts = text.split(keywordRegex);
-    const matches = text.match(keywordRegex) || [];
-    
-    return parts.map((part, index) => {
-      if (index < matches.length) {
-        return (
-          <span key={index}>
-            {part}
-            <span className="font-medium text-[#7a0019]">{matches[index]}</span>
-          </span>
-        );
-      }
-      return part;
-    });
-  };
-
   if (loading || searching) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[500px] w-full">
@@ -400,7 +380,7 @@ export function LiteratureSearchResults({
             </div>
           ) : (
             <div className="flex flex-col gap-4 w-full">
-              {searchResults.map((article, index) => (
+              {searchResults.map((article) => (
                 <div
                   key={article.article_doi}
                   className="border border-slate-100 flex flex-col gap-4 items-end justify-end p-4 rounded-xl w-full"

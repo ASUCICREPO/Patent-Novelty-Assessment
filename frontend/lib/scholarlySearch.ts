@@ -75,7 +75,8 @@ export class ScholarlySearchService {
         throw new Error("No response received from Bedrock Agent Core");
       }
       
-      const textResponse = await response.response.transformToString();
+      // Response received successfully
+      await response.response.transformToString();
       
       // Return a search ID or session ID for tracking
       return input.runtimeSessionId;

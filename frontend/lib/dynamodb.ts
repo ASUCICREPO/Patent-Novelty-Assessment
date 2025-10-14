@@ -133,20 +133,20 @@ export async function updateKeywords(
     const item = queryResult.Items[0];
 
     // Build the key dynamically based on what we find
-    const key: any = {
-      pdf_filename: item.pdf_filename,
+    const key: Record<string, string | number> = {
+      pdf_filename: item.pdf_filename as string,
     };
 
     // Add any additional key fields that might exist
     // Common DynamoDB patterns: timestamp, id, sk (sort key), etc.
     if (item.timestamp) {
-      key.timestamp = item.timestamp;
+      key.timestamp = item.timestamp as string | number;
     }
     if (item.id) {
-      key.id = item.id;
+      key.id = item.id as string;
     }
     if (item.sk) {
-      key.sk = item.sk;
+      key.sk = item.sk as string;
     }
 
     // Update the keywords field using the full key structure

@@ -1,6 +1,6 @@
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 /**
  * Report generation service using Bedrock Agent Core
@@ -88,7 +88,8 @@ export class ReportGenerationService {
       throw new Error("No response received from Bedrock Agent Core");
     }
     
-    const textResponse = await response.response.transformToString();
+    // Response received successfully
+    await response.response.transformToString();
     
     // Return a search ID or session ID for tracking
     return input.runtimeSessionId;

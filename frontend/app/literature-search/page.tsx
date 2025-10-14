@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { LiteratureSearchResults } from "@/components/LiteratureSearchResults";
 import { fetchAnalysisResults } from "@/lib/dynamodb";
 import type { ParsedAnalysisResult } from "@/types";
 
-export default function LiteratureSearchPage() {
+function LiteratureSearchPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const fileName = searchParams.get("file");
@@ -25,6 +25,7 @@ export default function LiteratureSearchPage() {
     }
 
     loadAnalysisResults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileName]);
 
   const loadAnalysisResults = async () => {
@@ -119,5 +120,23 @@ export default function LiteratureSearchPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LiteratureSearchPage() {
+  return (
+    <Suspense fallback={
+      <main className="bg-white flex flex-col items-center justify-center min-h-screen w-full">
+        <Header />
+        <div className="flex flex-1 items-center justify-center p-16">
+          <div className="text-center max-w-md">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7a0019] mx-auto mb-4"></div>
+            <p className="text-slate-800">Loading...</p>
+          </div>
+        </div>
+      </main>
+    }>
+      <LiteratureSearchPageContent />
+    </Suspense>
   );
 }

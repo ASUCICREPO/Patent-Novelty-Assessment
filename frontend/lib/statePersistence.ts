@@ -10,7 +10,7 @@ export interface SearchState {
   lastPollTime: number;
   retryCount: number;
   error: string | null;
-  results: any[];
+  results: unknown[];
 }
 
 export interface ReportGenerationState {

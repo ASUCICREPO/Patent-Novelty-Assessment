@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import { reportGenerationService } from "@/lib/reportGeneration";
 import { statePersistence } from "@/lib/statePersistence";
 
-export default function ReportGenerationPage() {
+function ReportGenerationPageContent() {
   const searchParams = useSearchParams();
   const fileName = searchParams.get("file");
 
@@ -45,6 +45,7 @@ export default function ReportGenerationPage() {
       checkReportsStatus();
       hasInitialized.current = true;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileName, reportStateKey]);
 
   // Cleanup function to clear polling interval when component unmounts
@@ -113,40 +114,41 @@ export default function ReportGenerationPage() {
     }, 5000); // Check every 5 seconds
   };
 
-  const triggerReportGeneration = async () => {
-    if (!fileName) return;
+  // Function is defined but kept for potential future use
+  // const triggerReportGeneration = async () => {
+  //   if (!fileName) return;
 
-    try {
-      setGenerating(true);
-      setError(null);
+  //   try {
+  //     setGenerating(true);
+  //     setError(null);
       
-      // Save initial state
-      statePersistence.setReportState(reportStateKey, {
-        hasTriggered: true,
-        isGenerating: true,
-        generationStartTime: Date.now(),
-        lastPollTime: Date.now(),
-        error: null,
-        reportsReady: { ptlsReady: false, ecaReady: false }
-      });
+  //     // Save initial state
+  //     statePersistence.setReportState(reportStateKey, {
+  //       hasTriggered: true,
+  //       isGenerating: true,
+  //       generationStartTime: Date.now(),
+  //       lastPollTime: Date.now(),
+  //       error: null,
+  //       reportsReady: { ptlsReady: false, ecaReady: false }
+  //     });
       
-      await reportGenerationService.triggerReportGeneration(fileName);
+  //     await reportGenerationService.triggerReportGeneration(fileName);
       
-      // Start polling for reports to be ready
-      startPolling();
+  //     // Start polling for reports to be ready
+  //     startPolling();
 
-    } catch (err) {
-      console.error("Error generating reports:", err);
-      setError("Failed to generate reports. Please try again.");
-      setGenerating(false);
+  //   } catch (err) {
+  //     console.error("Error generating reports:", err);
+  //     setError("Failed to generate reports. Please try again.");
+  //     setGenerating(false);
       
-      // Update state with error
-      statePersistence.setReportState(reportStateKey, {
-        isGenerating: false,
-        error: `Failed to generate reports: ${err instanceof Error ? err.message : 'Unknown error'}`
-      });
-    }
-  };
+  //     // Update state with error
+  //     statePersistence.setReportState(reportStateKey, {
+  //       isGenerating: false,
+  //       error: `Failed to generate reports: ${err instanceof Error ? err.message : 'Unknown error'}`
+  //     });
+  //   }
+  // };
 
 
   const handleDownload = async (reportType: 'ptls' | 'eca') => {
@@ -295,5 +297,23 @@ export default function ReportGenerationPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ReportGenerationPage() {
+  return (
+    <Suspense fallback={
+      <main className="bg-white flex flex-col items-center justify-center min-h-screen w-full">
+        <Header />
+        <div className="flex flex-1 items-center justify-center p-16">
+          <div className="text-center max-w-md">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7a0019] mx-auto mb-4"></div>
+            <p className="text-slate-800">Loading...</p>
+          </div>
+        </div>
+      </main>
+    }>
+      <ReportGenerationPageContent />
+    </Suspense>
   );
 }

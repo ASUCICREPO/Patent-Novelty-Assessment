@@ -16,14 +16,12 @@ interface PatentSearchResultsProps {
 export function PatentSearchResults({
   keywords,
   fileName,
-  onKeywordsChange,
 }: PatentSearchResultsProps) {
   const router = useRouter();
   const [searchResults, setSearchResults] = useState<PatentSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
   const [updatingReports, setUpdatingReports] = useState<Set<string>>(new Set());
   const hasTriggeredSearch = useRef(false);
   const hasInitialized = useRef(false);
@@ -45,9 +43,8 @@ export function PatentSearchResults({
         // Fall through to trigger new search
       } else {
         // Restore state from localStorage
-        setSearchResults(existingState.results || []);
+        setSearchResults((existingState.results as PatentSearchResult[]) || []);
         setError(existingState.error);
-        setRetryCount(existingState.retryCount || 0);
         
         if (existingState.isSearching) {
           setSearching(true);
@@ -77,6 +74,7 @@ export function PatentSearchResults({
         executeSearch();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileName, keywords.length]);
 
   // Cleanup function to clear state when component unmounts
@@ -102,7 +100,6 @@ export function PatentSearchResults({
       
       if (results.length > 0) {
         setSearchResults(results);
-        setRetryCount(0);
         setError(null);
         
         // Update state with results
@@ -184,7 +181,6 @@ export function PatentSearchResults({
       
       if (results.length > 0) {
         setSearchResults(results);
-        setRetryCount(0);
         setError(null);
         
         // Persist successful results
@@ -220,11 +216,6 @@ export function PatentSearchResults({
   const triggerSearch = async () => {
     // Use the single search execution function
     await executeSearch();
-  };
-
-  const removeKeyword = (keywordToRemove: string) => {
-    const updatedKeywords = keywords.filter(k => k !== keywordToRemove);
-    onKeywordsChange(updatedKeywords);
   };
 
   const handleProceedToLiteratureSearch = () => {
@@ -271,29 +262,6 @@ export function PatentSearchResults({
       return dateString;
     }
   };
-
-  const highlightKeywords = (text: string) => {
-    if (!keywords.length) return text;
-    
-    const keywordRegex = new RegExp(`(${keywords.join("|")})`, "gi");
-    const parts = text.split(keywordRegex);
-    
-    return parts.map((part, index) => {
-      const isKeyword = keywords.some(k => 
-        part.toLowerCase() === k.toLowerCase()
-      );
-      
-      if (isKeyword) {
-        return (
-          <span key={index} className="font-medium text-[#7a0019]">
-            {part}
-          </span>
-        );
-      }
-      return part;
-    });
-  };
-
 
   if (loading || searching) {
     return (
@@ -411,7 +379,7 @@ export function PatentSearchResults({
             </div>
           ) : (
             <div className="flex flex-col gap-4 w-full">
-              {searchResults.map((patent, index) => (
+              {searchResults.map((patent) => (
                 <div
                   key={patent.patent_number}
                   className="border border-slate-100 flex flex-col gap-4 items-end justify-end p-4 rounded-xl w-full"
@@ -489,9 +457,7 @@ export function PatentSearchResults({
                   {/* Keyword highlighting section */}
                   <div className="bg-[#fff7f9] flex gap-2 items-center justify-center p-3 rounded-lg w-full">
                     <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
-                      {highlightKeywords(
-                        `The invention relates to ${patent.patent_title || "this patent"} and involves ${patent.matching_keywords || "patent technology"}.`
-                      )}
+                      The invention relates to {patent.patent_title || "this patent"} and involves {patent.matching_keywords || "patent technology"}.
                     </p>
                   </div>
                   
