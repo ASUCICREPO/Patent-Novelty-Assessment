@@ -43,8 +43,14 @@ export function LiteratureSearchResults({
         hasInitialized.current = false;
         // Fall through to trigger new search
       } else {
-        // Restore state from localStorage
-        setSearchResults((existingState.results as ScholarlyArticle[]) || []);
+        // Restore state from localStorage and sort by relevance
+        const restoredResults = (existingState.results as ScholarlyArticle[]) || [];
+        const sortedResults = [...restoredResults].sort((a, b) => {
+          const scoreA = a.relevance_score || 0;
+          const scoreB = b.relevance_score || 0;
+          return scoreB - scoreA;
+        });
+        setSearchResults(sortedResults);
         setError(existingState.error);
         
         if (existingState.isSearching) {
@@ -100,12 +106,19 @@ export function LiteratureSearchResults({
       const results = await scholarlySearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
-        setSearchResults(results);
+        // Sort by relevance score (highest first)
+        const sortedResults = [...results].sort((a, b) => {
+          const scoreA = a.relevance_score || 0;
+          const scoreB = b.relevance_score || 0;
+          return scoreB - scoreA; // Descending order
+        });
+        
+        setSearchResults(sortedResults);
         setError(null);
         
-        // Update state with results
+        // Update state with sorted results
         statePersistence.setState(searchStateKey, {
-          results: results,
+          results: sortedResults,
           isSearching: false,
           error: null,
           lastPollTime: Date.now()
@@ -181,12 +194,19 @@ export function LiteratureSearchResults({
       const results = await scholarlySearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
-        setSearchResults(results);
+        // Sort by relevance score (highest first)
+        const sortedResults = [...results].sort((a, b) => {
+          const scoreA = a.relevance_score || 0;
+          const scoreB = b.relevance_score || 0;
+          return scoreB - scoreA; // Descending order
+        });
+        
+        setSearchResults(sortedResults);
         setError(null);
         
         // Persist successful results
         statePersistence.setState(searchStateKey, {
-          results: results,
+          results: sortedResults,
           isSearching: false,
           error: null,
           lastPollTime: Date.now()
