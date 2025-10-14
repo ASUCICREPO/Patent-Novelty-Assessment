@@ -125,7 +125,7 @@ def store_commercial_assessment(pdf_filename: str, assessment_data: Dict[str, An
 # =============================================================================
 
 commercial_assessment_agent = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[read_bda_results, store_commercial_assessment],
     system_prompt="""You are a Technology Commercialization Analyst with deep expertise in:
 - Market research and competitive intelligence

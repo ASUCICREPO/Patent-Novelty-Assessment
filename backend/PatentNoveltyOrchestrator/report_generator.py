@@ -3,6 +3,7 @@
 Patent Novelty Report Generator. Generates professional PDF reports from DynamoDB data using ReportLab.
 """
 import os
+import re
 import boto3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -709,6 +710,11 @@ class PatentNoveltyReportGenerator:
             text = text.replace('<', '&lt;')
             text = text.replace('>', '&gt;')
             text = text.replace('|||BR|||', '<br/>')  # Restore breaks
+            
+            # Make URLs blue colored (not clickable, just blue text)
+            # Find all URLs (http:// or https://)
+            url_pattern = r'(https?://[^\s<>]+)'
+            text = re.sub(url_pattern, r'<font color="#0000FF">\1</font>', text)
             
             return text
         

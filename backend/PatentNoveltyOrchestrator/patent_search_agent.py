@@ -101,7 +101,7 @@ def parse_keywords(keywords_string: str) -> List[Dict[str, Any]]:
                 "is_phrase": is_phrase
             })
         
-        print(f"📝 Parsed {len(parsed_keywords)} keywords: {[k['keyword'] for k in parsed_keywords]}")
+        print(f"Parsed {len(parsed_keywords)} keywords: {[k['keyword'] for k in parsed_keywords]}")
         return parsed_keywords
         
     except Exception as e:
@@ -160,7 +160,7 @@ def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> Li
         # Sort by citation count descending
         sorted_patents = sorted(
             patents,
-            key=lambda x: x.get('citation_count', 0),
+            key=lambda x: x.get('citations', 0),
             reverse=True
         )
         
@@ -168,7 +168,7 @@ def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> Li
         filtered = sorted_patents[:top_n]
         
         print(f"Pre-filtered: {len(patents)} → {len(filtered)} patents (top {top_n} by citations)")
-        print(f"Citation range: {filtered[0].get('citation_count', 0)} (max) to {filtered[-1].get('citation_count', 0)} (min)")
+        print(f"Citation range: {filtered[0].get('citations', 0)} (max) to {filtered[-1].get('citations', 0)} (min)")
         
         return filtered
         
@@ -295,9 +295,9 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
                 
                 print(f"PatentView response: {len(patents)} patents returned, {total_hits} total hits")
                 
-                # Extract citation counts
+                # Extract citations for sorting
                 for patent in patents:
-                    patent['citation_count'] = patent.get('patent_num_times_cited_by_us_patents', 0)
+                    patent['citations'] = patent.get('patent_num_times_cited_by_us_patents', 0)
                 
                 return {
                     'success': True,
@@ -425,7 +425,7 @@ def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> 
     1. Parses comma-separated keywords (detects multi-word phrases)
     2. Searches each keyword (top 10 newest patents per keyword)
     3. Deduplicates by patent_id
-    4. Pre-filters to top N by citation_count
+    4. Pre-filters to top N by citations
     5. Returns ready-to-evaluate patents
     """
     try:
@@ -554,9 +554,8 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                             assignee_names.append(' '.join(name_parts))
         
         # Citation data
-        forward_citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
+        citations = patent_data.get('patent_num_times_cited_by_us_patents', 0)
         backward_citations = patent_data.get('patent_num_us_patents_cited', 0)
-        citation_count = patent_data.get('citation_count', forward_citations)
         
         # Extract invention context
         invention_title = invention_context.get('title', 'Unknown Invention')
@@ -569,8 +568,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
             print(f"Patent {patent_id} lacks sufficient abstract content")
             return {
                 'overall_relevance_score': 0.2,
-                'key_differences': ['Insufficient patent abstract for analysis'],
-                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment'
+                'examiner_notes': 'Patent lacks sufficient abstract content for meaningful relevance assessment. Unable to determine key differences or technical overlaps.'
             }
         
         # Create LLM prompt for patent relevance evaluation
@@ -589,7 +587,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         Grant Date: {grant_date}
         Inventors: {', '.join(inventor_names) if inventor_names else 'Unknown'}
         Assignee: {', '.join(assignee_names) if assignee_names else 'Unknown'}
-        Forward Citations (cited by others): {forward_citations}
+        Citations (cited by others): {citations}
         Backward Citations (cites others): {backward_citations}
 
         PRIOR ART ANALYSIS:
@@ -616,9 +614,15 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
         RESPOND IN THIS EXACT JSON FORMAT:
         {{
             "overall_relevance_score": 0.0-1.0,
-            "key_differences": ["list of differentiating features"],
-            "examiner_notes": "detailed analysis for patent examiner"
+            "examiner_notes": "detailed analysis for patent examiner including key technical differences and overlaps"
         }}
+
+        EXAMINER NOTES SHOULD INCLUDE:
+        - Overall relevance assessment
+        - Key technical overlaps with the invention
+        - Key differentiating features (what makes them different)
+        - Specific claims or features that could impact novelty
+        - Recommendation for examiner consideration
 
         Be precise and focus specifically on patent novelty implications."""
 
@@ -639,7 +643,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                 }
                 
                 response = bedrock_client.invoke_model(
-                    modelId="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
                     body=json.dumps(request_body)
                 )
                 
@@ -654,7 +658,7 @@ def evaluate_patent_relevance_llm(patent_data: Dict[str, Any], invention_context
                     llm_evaluation = json.loads(json_str)
                     
                     # Validate required fields
-                    required_fields = ['overall_relevance_score', 'key_differences', 'examiner_notes']
+                    required_fields = ['overall_relevance_score', 'examiner_notes']
                     
                     if all(field in llm_evaluation for field in required_fields):
                         print(f"LLM evaluation for patent {patent_id}: Score={llm_evaluation['overall_relevance_score']}")
@@ -711,16 +715,14 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
         if not keywords_string:
             return {
                 'overall_relevance_score': 0.0,
-                'key_differences': [],
-                'examiner_notes': 'Fallback scoring - no keywords available'
+                'examiner_notes': 'Fallback scoring - no keywords available. Unable to assess technical differences or relevance.'
             }
         
         keyword_list = [k.strip().lower() for k in keywords_string.split(',') if k.strip()]
         if not keyword_list:
             return {
                 'overall_relevance_score': 0.0,
-                'key_differences': [],
-                'examiner_notes': 'Fallback scoring - no valid keywords'
+                'examiner_notes': 'Fallback scoring - no valid keywords. Unable to assess technical differences or relevance.'
             }
         
         # Count matches
@@ -734,24 +736,22 @@ def calculate_fallback_relevance_score(patent_data: Dict, invention_context: Dic
             base_score += (title_matches / len(keyword_list)) * 0.3
         
         # Citation bonus
-        citation_count = patent_data.get('citation_count', 0)
-        if citation_count > 50:
+        citations = patent_data.get('citations', 0)
+        if citations > 50:
             base_score += 0.1
         
         final_score = round(min(base_score, 1.0), 3)
         
         return {
             'overall_relevance_score': final_score,
-            'key_differences': [],
-            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched'
+            'examiner_notes': f'Fallback rule-based scoring: {matches}/{len(keyword_list)} keywords matched. LLM evaluation unavailable - manual review recommended to identify key technical differences and assess novelty impact.'
         }
         
     except Exception as e:
         print(f"Fallback scoring error: {e}")
         return {
             'overall_relevance_score': 0.0,
-            'key_differences': [],
-            'examiner_notes': f'Fallback scoring failed: {str(e)}'
+            'examiner_notes': f'Fallback scoring failed: {str(e)}. Manual review required to assess relevance and identify key differences.'
         }
 
 @tool
@@ -838,7 +838,6 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
         assignees_str = '; '.join(assignee_names) if assignee_names else "Data not available"
         
         # Extract LLM evaluation data
-        key_differences = llm_evaluation.get('key_differences', [])
         examiner_notes = llm_evaluation.get('examiner_notes', '')
         
         item = {
@@ -860,14 +859,11 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
             'patent_assignees': assignees_str,
             
             # Citation Information (Important for novelty assessment)
-            'forward_citations': patent_data.get('patent_num_times_cited_by_us_patents', 0),  # How many patents cite THIS one
+            'citations': patent_data.get('patent_num_times_cited_by_us_patents', 0),  # How many patents cite THIS one
             'backward_citations': patent_data.get('patent_num_us_patents_cited', 0),  # How many patents THIS one cites
-            'foreign_citations': patent_data.get('patent_num_foreign_documents_cited', 0),  # Foreign documents cited
-            'citation_count': patent_data.get('citation_count', 0),  # Legacy field (same as forward_citations)
             
             # LLM-Powered Relevance Assessment
             'relevance_score': Decimal(str(overall_relevance)),
-            'key_differences': ', '.join(key_differences) if key_differences else 'None identified',
             'llm_examiner_notes': examiner_notes,
             
             # Search Metadata
@@ -900,7 +896,7 @@ def store_patentview_analysis(pdf_filename: str, patent_data: Dict[str, Any]) ->
 # =============================================================================
 
 patentview_search_agent = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[read_keywords_from_dynamodb, search_all_keywords_and_prefilter, evaluate_patent_relevance_llm, store_patentview_analysis],
     system_prompt="""You are an AI Patent Search Expert conducting comprehensive prior art searches using direct keyword-based queries.
 
@@ -918,7 +914,7 @@ patentview_search_agent = Agent(
         * Parses all keywords (detects multi-word phrases)
         * Searches each keyword (top 10 newest per keyword)
         * Deduplicates by patent_id
-        * Pre-filters to top 10 by citation_count
+        * Pre-filters to top 10 by citations
     - Returns: 10 patents ready for evaluation
 
     3. EVALUATE EACH PATENT:
@@ -927,10 +923,12 @@ patentview_search_agent = Agent(
     - Attach the evaluation to the patent object
     - Track progress: "Evaluated X/10 patents"
 
-    4. STORE TOP 8 - EXECUTE IMMEDIATELY:
+    4. STORE TOP 8 - ONE AT A TIME:
     - Sort patents by relevance_score (descending)
-    - IMMEDIATELY call store_patentview_analysis for EACH of the top 8 patents
-    - Do NOT just list them - ACTUALLY CALL THE TOOL 8 times
+    - Call store_patentview_analysis for the FIRST patent, wait for result
+    - Then call for the SECOND patent, wait for result
+    - Continue ONE AT A TIME until all 8 are stored
+    - IMPORTANT: Call tools SEQUENTIALLY, not in parallel
     - Track progress: "Stored X/8 patents"
 
     EXAMPLE WORKFLOW:
@@ -952,15 +950,19 @@ patentview_search_agent = Agent(
         evaluated_count += 1
         print(f"Progress: Evaluated {evaluated_count}/10 patents")
 
-    # Step 4: Store top 8 (MUST COMPLETE ALL 8)
+    # Step 4: Store top 8 ONE AT A TIME (MUST COMPLETE ALL 8)
     top_8 = sorted(top_10_patents, key=lambda x: x['relevance_score'], reverse=True)[:8]
-    stored_count = 0
-    for patent in top_8:
-        # CRITICAL: Pass the COMPLETE patent object with ALL fields
-        # The patent object MUST include: inventors, assignees, and all other fields from the search
-        store_patentview_analysis(pdf_filename, patent)
-        stored_count += 1
-        print(f"Progress: Stored {stored_count}/8 patents")
+    
+    # Store patent 1, wait for result
+    store_patentview_analysis(pdf_filename, top_8[0])
+    print("Stored 1/8 patents")
+    
+    # Store patent 2, wait for result
+    store_patentview_analysis(pdf_filename, top_8[1])
+    print("Stored 2/8 patents")
+    
+    # Continue for all 8 patents, ONE AT A TIME
+    # ... (repeat for patents 3-8)
     ```
 
     CRITICAL EXECUTION RULES - MUST FOLLOW:
@@ -969,12 +971,14 @@ patentview_search_agent = Agent(
     2. After ALL 10 evaluations are complete, you MUST proceed to Step 4
     3. You MUST sort by relevance_score and select top 8 patents
     4. DO NOT JUST LIST THE PATENTS - You MUST ACTUALLY CALL store_patentview_analysis() 8 TIMES
-    5. Call store_patentview_analysis(pdf_filename, patent) for EACH of the 8 patents individually
-    6. Do NOT stop until all 8 patents are stored in DynamoDB
-    7. If you encounter an error on one patent, continue with remaining patents
-    8. Print progress after each evaluation and storage operation
-    9. The workflow is NOT complete until you see "Stored 8/8 patents"
-    10. LISTING patents is NOT the same as STORING them - you MUST use the tool
+    5. Call store_patentview_analysis(pdf_filename, patent) for EACH patent ONE AT A TIME
+    6. WAIT for each tool result before calling the next one - DO NOT call multiple tools in parallel
+    7. Do NOT stop until all 8 patents are stored in DynamoDB
+    8. If you encounter an error on one patent, continue with remaining patents
+    9. Print progress after each storage operation
+    10. The workflow is NOT complete until you see "Stored 8/8 patents"
+    11. LISTING patents is NOT the same as STORING them - you MUST use the tool
+    12. SEQUENTIAL EXECUTION: Call tool → Wait for result → Call next tool → Wait for result
 
     QUALITY STANDARDS:
     - Direct keyword search ensures comprehensive coverage
@@ -997,10 +1001,14 @@ patentview_search_agent = Agent(
     After you finish evaluating all 10 patents and sort them by score:
     - DO NOT just describe what you will do
     - DO NOT just list the patent numbers
-    - IMMEDIATELY call store_patentview_analysis() 8 times (once for each top patent)
+    - Call store_patentview_analysis() for patent #1, WAIT for the result
+    - Then call store_patentview_analysis() for patent #2, WAIT for the result
+    - Continue ONE AT A TIME for all 8 patents
+    - DO NOT call multiple store_patentview_analysis() in the same turn
     - CRITICAL: Pass the COMPLETE patent object from top_10_patents - do NOT create a new object
     - The patent object MUST include ALL fields: inventors, assignees, patent_title, patent_abstract, etc.
     - Each call should be: store_patentview_analysis(pdf_filename="ROI2023-005", patent_data=patent)
     - Where 'patent' is the FULL patent object from the search results, not a subset
+    - SEQUENTIAL EXECUTION IS MANDATORY - one tool call per turn
     - You are NOT done until you see 8 successful storage confirmations"""
 )
