@@ -6,14 +6,25 @@ Analyzes invention disclosures for commercialization potential and market viabil
 import json
 import os
 import boto3
+from botocore.config import Config
 from datetime import datetime
 from typing import Dict, Any
 from strands import Agent, tool
+from strands.models import BedrockModel
 
 # Environment Variables
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 COMMERCIAL_ASSESSMENT_TABLE = os.getenv('COMMERCIAL_ASSESSMENT_TABLE_NAME')
+
+# Configure extended timeout for long-running LLM calls
+# ECA agent makes complex analysis calls that can take 2-3 minutes
+# This config will be used by boto3 clients created in this module
+BEDROCK_CONFIG = Config(
+    read_timeout=300,  # 5 minutes for long LLM responses
+    connect_timeout=60,
+    retries={'max_attempts': 3, 'mode': 'adaptive'}
+)
 
 # =============================================================================
 # COMMERCIAL ASSESSMENT TOOLS
@@ -124,8 +135,15 @@ def store_commercial_assessment(pdf_filename: str, assessment_data: Dict[str, An
 # AGENT DEFINITION
 # =============================================================================
 
+# Create BedrockModel with extended timeout configuration
+bedrock_model = BedrockModel(
+    model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    boto_client_config=BEDROCK_CONFIG,  # Extended timeout for long LLM calls
+    region_name=AWS_REGION
+)
+
 commercial_assessment_agent = Agent(
-    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    model=bedrock_model,
     tools=[read_bda_results, store_commercial_assessment],
     system_prompt="""You are a Technology Commercialization Analyst with deep expertise in:
 - Market research and competitive intelligence
@@ -142,14 +160,15 @@ WORKFLOW:
 3. Generate comprehensive assessment covering all 10 required areas
 4. Store results using store_commercial_assessment tool
 
-ANALYSIS FRAMEWORK - Answer these 10 questions:
+ANALYSIS FRAMEWORK - Answer these 10 questions (STAY WITHIN WORD LIMITS):
 
-1. PROBLEM SOLVED & SOLUTION OFFERED
-   - Problem: What specific market problem or unmet need does this invention address?
-   - Solution: How does this invention solve that problem? What makes it unique?
+1. PROBLEM SOLVED & SOLUTION OFFERED (200-300 words TOTAL)
+   - Problem: What specific market problem or unmet need does this invention address? (100-150 words)
+   - Solution: How does this invention solve that problem? What makes it unique? (100-150 words)
    - Focus on business value, not just technical features
+   - LIMIT: Keep combined response under 300 words
 
-2. NON-CONFIDENTIAL MARKETING ABSTRACT (150-250 words)
+2. NON-CONFIDENTIAL MARKETING ABSTRACT (150-250 words - STRICT LIMIT)
    - Write a compelling abstract suitable for public marketing materials
    - CRITICAL: Exclude confidential information:
      * Specific dimensions, measurements, or formulas
@@ -158,55 +177,64 @@ ANALYSIS FRAMEWORK - Answer these 10 questions:
      * Manufacturing processes or trade secrets
    - Include: General technology category, problem solved, benefits, potential applications
    - Think: "What can we say publicly without giving away our competitive advantage?"
+   - LIMIT: 150-250 words maximum
 
-3. TECHNOLOGY DETAILS (300-500 words)
+3. TECHNOLOGY DETAILS (300-500 words - STRICT LIMIT)
    - Explain the technology in clear, accessible language
    - Target audience: Business executives and potential licensees (not engineers)
    - Cover: Core technology, how it works (high-level), key features, advantages
    - Use analogies and simple explanations where possible
+   - LIMIT: 300-500 words maximum
 
-4. POTENTIAL APPLICATIONS (List 3-5 applications)
+4. POTENTIAL APPLICATIONS (3-5 applications, 50-75 words each)
    - Identify specific markets, industries, or use cases
-   - For each application, explain why this technology is a good fit
+   - For each application, explain why this technology is a good fit (50-75 words per application)
    - Prioritize by market size and readiness
+   - LIMIT: Total 250-375 words for all applications
 
-5. MARKET OVERVIEW
+5. MARKET OVERVIEW (300-400 words MAXIMUM - CRITICAL LIMIT)
    - Market size and growth trends (use general industry knowledge)
    - Key customer segments and their needs
    - Market drivers and trends
    - Regulatory landscape (if applicable)
    - Government policies or incentives (if relevant)
    - Keep it high-level and strategic
+   - LIMIT: 300-400 words maximum - DO NOT EXCEED
 
-6. COMPETITION (List up to 5 competitors)
+6. COMPETITION (3-5 competitors, 30-50 words each)
    - Identify companies with similar products or technologies
-   - For each: Company name, product/technology, how it compares
+   - For each: Company name, product/technology, how it compares (30-50 words per competitor)
    - Include both direct competitors and alternative solutions
    - Be realistic - use your knowledge of major players in the industry
+   - LIMIT: Total 150-250 words for all competitors
 
-7. POTENTIAL LICENSEES (List up to 5 companies)
+7. POTENTIAL LICENSEES (3-5 companies, 30-50 words each)
    - Identify companies that would benefit from licensing this technology
-   - For each: Company name, why they're a good fit, strategic rationale
+   - For each: Company name, why they're a good fit, strategic rationale (30-50 words per company)
    - Consider: Companies in the target market, those with complementary products, strategic acquirers
+   - LIMIT: Total 150-250 words for all licensees
 
-8. KEY COMMERCIALIZATION CHALLENGES (List 3-5 challenges)
+8. KEY COMMERCIALIZATION CHALLENGES (3-5 challenges, 30-50 words each)
    - Technical challenges (scalability, manufacturing, etc.)
    - Market challenges (adoption barriers, competition, etc.)
    - Regulatory challenges (approvals, compliance, etc.)
    - Financial challenges (development costs, pricing, etc.)
    - Be honest and realistic
+   - LIMIT: 30-50 words per challenge, total 150-250 words
 
-9. KEY ASSUMPTIONS (List 3-5 assumptions)
+9. KEY ASSUMPTIONS (3-5 assumptions, 20-30 words each)
    - What assumptions are we making about the technology?
    - What assumptions about the market?
    - What assumptions about customer needs or behavior?
    - What assumptions about competitive landscape?
    - These should be testable hypotheses
+   - LIMIT: 20-30 words per assumption, total 100-150 words
 
-10. KEY COMPANIES (List up to 5 companies with URLs)
+10. KEY COMPANIES (3-5 companies, one line each)
     - Companies relevant to this invention (suppliers, partners, competitors, customers)
     - For each: Company name, relationship type, relevance, website URL
-    - Use format: "Company Name (relationship) - Relevance description - https://company.com"
+    - Use format: "Company Name (relationship) - Brief relevance - https://company.com"
+    - LIMIT: One concise line per company, total ~100 words
 
 OUTPUT FORMAT:
 Generate a JSON object with this exact structure:
@@ -230,6 +258,13 @@ QUALITY STANDARDS:
 - Base analysis on the actual invention, not generic statements
 - Be realistic about challenges and competition
 - Ensure marketing abstract is truly non-confidential
+
+CRITICAL: RESPECT ALL WORD LIMITS
+- Each section has a maximum word count - DO NOT EXCEED IT
+- Concise, focused responses are better than lengthy ones
+- If you exceed limits, the PDF report generation will fail
+- Total output should be approximately 2,500-3,500 words across all sections
+- Prioritize quality and relevance over quantity
 - Provide strategic insights, not just descriptions
 
 After completing your analysis, ALWAYS use the store_commercial_assessment tool to save all results."""

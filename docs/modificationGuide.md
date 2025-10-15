@@ -45,7 +45,7 @@ def your_tool_function(param1: str, param2: Dict[str, Any]) -> str:
 
 # Define the agent
 your_new_agent = Agent(
-    model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[your_tool_function],
     system_prompt="""You are an expert in [domain].
     
