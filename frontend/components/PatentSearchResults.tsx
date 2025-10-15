@@ -467,7 +467,7 @@ export function PatentSearchResults({
                         </svg>
                       </button>
                     </div>
-                    <div className="h-36 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
+                    <div className="h-40 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
                       <p className="font-normal text-base text-slate-800 whitespace-pre-wrap">
                         {patent.patent_abstract || `${patent.patent_title} - Patent #${patent.patent_number}`}
                       </p>
@@ -475,7 +475,7 @@ export function PatentSearchResults({
                   </div>
                   
                   {/* LLM Notes section */}
-                  <div className="bg-[#fff7f9] flex gap-2 items-start p-3 rounded-lg w-full h-32 overflow-y-auto">
+                  <div className="bg-[#fff7f9] flex gap-2 items-start p-3 rounded-lg w-full h-40 overflow-y-auto">
                     <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
                       {patent.llm_examiner_notes || "No examiner notes provided for this patent."}
                     </p>
