@@ -6,14 +6,25 @@ Analyzes invention disclosures for commercialization potential and market viabil
 import json
 import os
 import boto3
+from botocore.config import Config
 from datetime import datetime
 from typing import Dict, Any
 from strands import Agent, tool
+from strands.models import BedrockModel
 
 # Environment Variables
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 COMMERCIAL_ASSESSMENT_TABLE = os.getenv('COMMERCIAL_ASSESSMENT_TABLE_NAME')
+
+# Configure extended timeout for long-running LLM calls
+# ECA agent makes complex analysis calls that can take 2-3 minutes
+# This config will be used by boto3 clients created in this module
+BEDROCK_CONFIG = Config(
+    read_timeout=300,  # 5 minutes for long LLM responses
+    connect_timeout=60,
+    retries={'max_attempts': 3, 'mode': 'adaptive'}
+)
 
 # =============================================================================
 # COMMERCIAL ASSESSMENT TOOLS
@@ -124,8 +135,15 @@ def store_commercial_assessment(pdf_filename: str, assessment_data: Dict[str, An
 # AGENT DEFINITION
 # =============================================================================
 
+# Create BedrockModel with extended timeout configuration
+bedrock_model = BedrockModel(
+    model_id="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    boto_client_config=BEDROCK_CONFIG,  # Extended timeout for long LLM calls
+    region_name=AWS_REGION
+)
+
 commercial_assessment_agent = Agent(
-    model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    model=bedrock_model,
     tools=[read_bda_results, store_commercial_assessment],
     system_prompt="""You are a Technology Commercialization Analyst with deep expertise in:
 - Market research and competitive intelligence
