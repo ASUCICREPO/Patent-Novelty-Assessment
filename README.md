@@ -53,7 +53,6 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 │   ├── semantic_scholar_openapi_spec.json     # Semantic Scholar API specification
 │   └── media/                                 # Images and diagrams for documentation
 ├── deploy.sh                                  # Automated deployment script
-├── DOCUMENTATION_TEMPLATE_PROMPT.md           # Documentation template
 ├── LICENSE                                    # Project license
 └── README.md                                  # This file
 ```
