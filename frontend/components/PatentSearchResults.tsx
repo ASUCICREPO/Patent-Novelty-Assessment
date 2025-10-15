@@ -467,7 +467,7 @@ export function PatentSearchResults({
                         </svg>
                       </button>
                     </div>
-                    <div className="h-40 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
+                    <div className="h-48 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
                       <p className="font-normal text-base text-slate-800 whitespace-pre-wrap">
                         {patent.patent_abstract || `${patent.patent_title} - Patent #${patent.patent_number}`}
                       </p>
@@ -475,7 +475,7 @@ export function PatentSearchResults({
                   </div>
                   
                   {/* LLM Notes section */}
-                  <div className="bg-[#fff7f9] flex gap-2 items-start p-3 rounded-lg w-full h-40 overflow-y-auto">
+                  <div className="bg-[#fff7f9] flex gap-2 items-start p-3 rounded-lg w-full h-56 overflow-y-auto">
                     <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
                       {patent.llm_examiner_notes || "No examiner notes provided for this patent."}
                     </p>
@@ -485,10 +485,8 @@ export function PatentSearchResults({
                   <div className="flex flex-col font-normal gap-1 items-start text-sm text-slate-600 w-full whitespace-pre-wrap">
                     <p>Patent: {patent.patent_number}</p>
                     <p>Inventors: {patent.patent_inventors}</p>
-                    <p>Filing Date: {formatDate(patent.filing_date || "")}</p>
-                    <p>Grant Date: {formatDate(patent.grant_date || "")}</p>
                     <p>Publication Date: {formatDate(patent.publication_date || "")}</p>
-                    <p>Citations: {patent.citation_count}</p>
+                    <p>Citations: {patent.citations}</p>
                     <p>Backward Citations: {patent.backward_citations}</p>
                     {patent.relevance_score && (
                       <p>Relevance: {patent.relevance_score}</p>

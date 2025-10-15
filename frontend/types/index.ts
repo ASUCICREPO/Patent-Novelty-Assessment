@@ -43,7 +43,7 @@ export interface PatentSearchResult {
   patent_number: string;
   add_to_report?: string;
   backward_citations?: number;
-  citation_count?: number;
+  citations?: number;
   filing_date?: string;
   foreign_citations?: number;
   forward_citations?: number;
@@ -60,9 +60,6 @@ export interface PatentSearchResult {
   publication_number?: string;
   relevance_score?: number;
   search_timestamp?: string;
-  // Legacy fields for backward compatibility
-  application_status?: string;
-  uspto_url?: string;
 }
 
 // Scholarly Article Types
@@ -72,15 +69,15 @@ export interface ScholarlyArticle {
   add_to_report?: string;
   abstract: string;
   article_title: string;
-  article_type: string;
+  article_type?: string;
   article_url: string;
   authors: string;
   citation_count: number;
   fields_of_study: string;
   journal: string;
   key_technical_overlaps: string;
-  llm_decision: string;
-  llm_reasoning: string;
+  llm_decision?: string;
+  llm_reasoning?: string;
   matching_keywords: string;
   novelty_impact_assessment: string;
   open_access_pdf_url: string;
