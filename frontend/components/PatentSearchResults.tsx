@@ -488,9 +488,7 @@ export function PatentSearchResults({
                     <p>Publication Date: {formatDate(patent.publication_date || "")}</p>
                     <p>Citations: {patent.citations}</p>
                     <p>Backward Citations: {patent.backward_citations}</p>
-                    {patent.relevance_score && (
-                      <p>Relevance: {patent.relevance_score}</p>
-                    )}
+                    <p>Relevance: {patent.relevance_score}</p>
                   </div>
                 </div>
               ))}
