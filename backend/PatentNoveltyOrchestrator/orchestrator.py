@@ -336,16 +336,16 @@ async def handle_report_generation(payload):
             # Novelty report status
             if result.get('novelty_report'):
                 if result['novelty_report'].get('success'):
-                    messages.append(f"✅ Novelty Report: {result['novelty_report']['report_path']}")
+                    messages.append(f"Novelty Report: {result['novelty_report']['report_path']}")
                 else:
-                    messages.append(f"❌ Novelty Report: {result['novelty_report'].get('error', 'Failed')}")
+                    messages.append(f"Novelty Report: {result['novelty_report'].get('error', 'Failed')}")
             
             # ECA report status
             if result.get('eca_report'):
                 if result['eca_report'].get('success'):
-                    messages.append(f"✅ ECA Report: {result['eca_report']['report_path']}")
+                    messages.append(f"ECA Report: {result['eca_report']['report_path']}")
                 else:
-                    messages.append(f"❌ ECA Report: {result['eca_report'].get('error', 'Failed')}")
+                    messages.append(f"ECA Report: {result['eca_report'].get('error', 'Failed')}")
             
             message = "Report Generation Complete:\n" + "\n".join(messages)
         else:
