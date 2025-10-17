@@ -122,10 +122,10 @@ async def handle_patentview_search(payload):
     2. Analyze the invention's technical aspects
     3. Execute multiple strategic PatentView searches via Gateway
     4. Score and rank results by relevance using PatentView data
-    5. Select top 6 most relevant patents
+    5. Select top 8 most relevant patents
     6. Store results with comprehensive metadata including abstracts
 
-    Focus on granted patents that could impact novelty assessment using PatentView's rich database."""
+    Focus on patents that could impact novelty assessment using PatentView's rich database."""
     
     try:
         full_response = ""
