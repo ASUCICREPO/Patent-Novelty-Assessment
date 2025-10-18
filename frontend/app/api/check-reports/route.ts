@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     console.log(`- Bucket: ${bucketName}`);
     console.log(`- PTLS: ${ptlsKey}`);
     console.log(`- ECA: ${ecaKey}`);
-    console.log(`- AWS Credentials: ${!!process.env.AWS_ACCESS_KEY_ID}`);
+    console.log(`- AWS Credentials: ${!!process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID}`);
 
     const [ptlsResponse, ecaResponse] = await Promise.allSettled([
       s3Client.send(new HeadObjectCommand({
