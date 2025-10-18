@@ -50,7 +50,7 @@ export class ReportGenerationService {
       throw new Error("NEXT_PUBLIC_PATENT_SEARCH_RESULTS_TABLE environment variable is required");
     }
     if (!s3BucketName) {
-      throw new Error("NEXT_PUBLIC_S3_BUCKET_NAME environment variable is required");
+      throw new Error("NEXT_PUBLIC_S3_BUCKET environment variable is required");
     }
     
     this.agentRuntimeArn = agentRuntimeArn;
