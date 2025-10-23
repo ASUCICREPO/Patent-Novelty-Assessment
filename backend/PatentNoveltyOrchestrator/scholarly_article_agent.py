@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Any, List
+from botocore.config import Config
 from strands import Agent, tool
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
@@ -19,6 +20,13 @@ from patent_search_agent import read_keywords_from_dynamodb, create_streamable_h
 # Environment Variables
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 ARTICLES_TABLE = os.getenv('ARTICLES_TABLE_NAME')
+
+# Bedrock client configuration with extended timeout for batch evaluation
+BEDROCK_CONFIG = Config(
+    read_timeout=600,  # 10 minutes for large batch LLM calls
+    connect_timeout=60,
+    retries={'max_attempts': 3, 'mode': 'adaptive'}
+)
 
 # Gateway Configuration for Semantic Scholar Search
 SEMANTIC_SCHOLAR_CLIENT_ID = os.environ.get('SEMANTIC_SCHOLAR_CLIENT_ID')
@@ -338,7 +346,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         for paper in top_cited_papers:
             llm_score = paper.get('llm_relevance_score', 0) / 10.0  # Normalize to 0-1
             citation_score = min(paper.get('citation_count', 0) / 100.0, 1.0)  # Normalize, cap at 100 citations = 1.0
-            paper['combined_score'] = (llm_score * 0.8) + (citation_score * 0.2)
+            paper['combined_score'] = round((llm_score * 0.8) + (citation_score * 0.2), 3)  # Round to 3 decimals
         
         # Sort by combined score and take top 8
         final_papers = sorted(top_cited_papers, key=lambda x: x['combined_score'], reverse=True)[:8]
@@ -437,8 +445,8 @@ def evaluate_papers_batch_llm(papers_list: List[Dict], invention_context: Dict) 
 
         IMPORTANT: Provide assessment for ALL {len(papers_list)} papers in order. Be concise but specific."""
 
-        # Make single LLM call for all papers
-        bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+        # Make single LLM call for all papers (with extended timeout)
+        bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION, config=BEDROCK_CONFIG)
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 10000,  # Increased for batch response
