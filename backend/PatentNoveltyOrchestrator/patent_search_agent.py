@@ -147,7 +147,7 @@ def deduplicate_patents(all_patents: List[Dict[str, Any]]) -> List[Dict[str, Any
         print(f"Error deduplicating patents: {e}")
         return all_patents
 
-def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 50) -> List[Dict[str, Any]]:
+def prefilter_by_citations(patents: List[Dict[str, Any]], top_n: int = 30) -> List[Dict[str, Any]]:
     """
     Pre-filter patents by citation count to reduce LLM evaluation load.
     Keeps top N most cited patents (most impactful prior art).
@@ -416,7 +416,7 @@ def search_patents_by_keyword(keyword: str, is_phrase: bool, limit: int = 10) ->
         }
 
 @tool
-def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 50) -> Dict[str, Any]:
+def search_all_keywords_and_prefilter(keywords_string: str, top_n: int = 30) -> Dict[str, Any]:
     """
     Intelligent tool: Parse keywords, search each one, deduplicate, and pre-filter.
     Returns top N patents by citation count, ready for LLM evaluation.
