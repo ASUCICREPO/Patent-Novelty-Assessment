@@ -145,7 +145,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                 "rationale": "Focus on the specific deployment mechanism"
             }}
         ]
-        Generate 3-5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
+        Generate 5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
 
         # Generate search queries (LLM + fallback)
         search_queries = []
@@ -229,8 +229,8 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                         "rationale": f"Diverse combination search"
                     })
             
-            # Limit to 8 queries max
-            search_queries = search_queries[:8]
+            # Limit to 5 queries max
+            search_queries = search_queries[:5]
         
         if not search_queries:
             print("No search queries generated")
@@ -240,7 +240,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         for i, query in enumerate(search_queries, 1):
             print(f"  {i}. '{query['query']}' - {query['rationale']}")
         
-        # PHASE 2: Execute searches (no refinement)
+        # PHASE 2: Execute searches
         print("Phase 2: Executing searches...")
         all_relevant_papers = []
         
@@ -250,7 +250,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             # Execute search with rate limiting
             result = run_semantic_scholar_search_clean(
                 search_query=query_info['query'],
-                limit=10  # OPTIMIZATION: Reduced from 20 to 10
+                limit=10  # 10 papers per search query are returned
             )
             
             if result and isinstance(result, dict) and 'content' in result:
@@ -265,11 +265,10 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                         
                         print(f"Query '{query_info['query']}': Found {len(articles)} papers (total: {total_results})")
                         
-                        # OPTIMIZATION: Removed quality assessment and refinement logic
                         # Proceed directly with articles
                         current_articles = articles
                         
-                        # Collect papers for batch processing (no individual evaluation yet)
+                        # Collect papers for batch processing
                         for article in current_articles:
                             processed_article = {
                                 'paperId': article.get('paperId', 'unknown'),
@@ -288,7 +287,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                                 'matching_keywords': query_info['query']
                             }
                             
-                            # OPTIMIZATION: Just collect papers, no evaluation yet
+                            # Just collect papers, no evaluation yet
                             all_relevant_papers.append(processed_article)
                             print(f"COLLECTED: {processed_article['title'][:60]}...")
                                 
@@ -319,7 +318,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         top_cited_papers = papers_sorted_by_citations[:30]
         print(f"After citation pre-filtering: {len(top_cited_papers)} papers (top 30 by citations)")
         
-        # OPTIMIZATION 3: Batch LLM evaluation (1 call instead of 30)
+        # OPTIMIZATION 3: Batch LLM evaluation
         print(f"\nBatch evaluating {len(top_cited_papers)} papers with LLM...")
         evaluations = evaluate_papers_batch_llm(top_cited_papers, keywords_data)
         
@@ -335,11 +334,11 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                 paper['technical_overlaps'] = []
                 paper['novelty_impact_assessment'] = 'Evaluation not available'
         
-        # Calculate combined score for each paper: LLM score (60%) + Citation impact (40%)
+        # Calculate combined score for each paper: LLM score (80%) + Citation impact (20%)
         for paper in top_cited_papers:
             llm_score = paper.get('llm_relevance_score', 0) / 10.0  # Normalize to 0-1
             citation_score = min(paper.get('citation_count', 0) / 100.0, 1.0)  # Normalize, cap at 100 citations = 1.0
-            paper['combined_score'] = (llm_score * 0.6) + (citation_score * 0.4)
+            paper['combined_score'] = (llm_score * 0.8) + (citation_score * 0.2)
         
         # Sort by combined score and take top 8
         final_papers = sorted(top_cited_papers, key=lambda x: x['combined_score'], reverse=True)[:8]
@@ -363,8 +362,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
 
 def evaluate_papers_batch_llm(papers_list: List[Dict], invention_context: Dict) -> List[Dict]:
     """
-    OPTIMIZATION: Evaluate multiple papers in ONE LLM call instead of individual calls.
-    This reduces LLM calls from 30+ to 1.
+    Evaluate multiple papers in ONE LLM call instead of individual calls.
     """
     try:
         if not papers_list:
@@ -443,7 +441,7 @@ def evaluate_papers_batch_llm(papers_list: List[Dict], invention_context: Dict) 
         bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 4000,  # Increased for batch response
+            "max_tokens": 10000,  # Increased for batch response
             "messages": [
                 {
                     "role": "user",
@@ -551,7 +549,6 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         paper_id = article_data.get('paperId', 'unknown')
         article_title = article_data.get('title', 'Unknown Title')
 
-        # Use the combined score calculated during search (LLM 60% + Citations 40%)
         # This is the final relevance score used for ranking
         relevance_score = article_data.get('combined_score', 0.0)
         
