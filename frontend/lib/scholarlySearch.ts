@@ -1,85 +1,38 @@
-import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { ScholarlyArticle } from "@/types";
-
-// Configure DynamoDB v3
-const ddbClient = new DynamoDBClient({
-  region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
-  credentials: {
-    accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
-  },
-});
-const docClient = DynamoDBDocumentClient.from(ddbClient);
-const bedrockClient = new BedrockAgentCoreClient({
-  region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
-  credentials: {
-    accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY!,
-  },
-});
+import { getAgentInvokeApiUrl, getDynamoDBApiUrl } from "@/lib/config";
 
 export class ScholarlySearchService {
-  private resultsTableName: string;
-  private agentRuntimeArn: string;
-
   constructor() {
-    this.resultsTableName = process.env.NEXT_PUBLIC_SCHOLARLY_RESULTS_TABLE_NAME!;
-    this.agentRuntimeArn = process.env.NEXT_PUBLIC_BEDROCK_AGENT_RUNTIME_ARN!;
-    
-    if (!this.resultsTableName) {
-      throw new Error("NEXT_PUBLIC_SCHOLARLY_RESULTS_TABLE_NAME environment variable is required");
-    }
-    
-    if (!this.agentRuntimeArn) {
-      throw new Error("NEXT_PUBLIC_BEDROCK_AGENT_RUNTIME_ARN environment variable is required");
-    }
+    // No AWS SDK initialization needed - using API Gateway
   }
 
   /**
-   * Generate a unique session ID
-   */
-  private generateSessionId(): string {
-    return `scholarly-search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Trigger scholarly article search via Agent Core
+   * Trigger scholarly article search via unified agent endpoint
    */
   async triggerScholarlySearch(pdfFilename: string): Promise<string> {
     if (!pdfFilename) {
       throw new Error("PDF filename is required");
     }
 
-    const cleanFilename = this.cleanFilename(pdfFilename);
-    
     try {
-      const payload = {
-        action: "search_articles",
-        pdf_filename: cleanFilename,
-      };
+      const response = await fetch(getAgentInvokeApiUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          action: 'search_articles',
+          pdfFilename 
+        }),
+      });
 
-      const input = {
-        runtimeSessionId: this.generateSessionId(),
-        agentRuntimeArn: this.agentRuntimeArn,
-        qualifier: "DEFAULT",
-        payload: new Uint8Array(Buffer.from(JSON.stringify(payload))),
-      };
-
-      const command = new InvokeAgentRuntimeCommand(input);
-      const response = await bedrockClient.send(command);
-      
-      // Convert response to string
-      if (!response.response) {
-        throw new Error("No response received from Bedrock Agent Core");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to trigger scholarly search');
       }
-      
-      // Response received successfully
-      await response.response.transformToString();
-      
-      // Return a search ID or session ID for tracking
-      return input.runtimeSessionId;
+
+      const result = await response.json();
+      return result.sessionId;
     } catch (error) {
       console.error("Error triggering scholarly search:", error);
       throw error;
@@ -87,28 +40,19 @@ export class ScholarlySearchService {
   }
 
   /**
-   * Fetch scholarly article search results from DynamoDB
+   * Fetch scholarly article search results using unified DynamoDB endpoint
    */
   async fetchSearchResults(pdfFilename: string): Promise<ScholarlyArticle[]> {
     try {
-      const cleanFilename = this.cleanFilename(pdfFilename);
+      const response = await fetch(`${getDynamoDBApiUrl()}?tableType=scholarly-results&pdfFilename=${encodeURIComponent(pdfFilename)}`);
       
-      const params = new QueryCommand({
-        TableName: this.resultsTableName,
-        KeyConditionExpression: "pdf_filename = :filename",
-        ExpressionAttributeValues: {
-          ":filename": cleanFilename,
-        },
-        ScanIndexForward: false, // Get most recent first
-      });
-
-      const result = await docClient.send(params);
-      
-      if (!result.Items || result.Items.length === 0) {
-        return [];
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch scholarly search results');
       }
 
-      return result.Items as ScholarlyArticle[];
+      const result = await response.json();
+      return result.results as ScholarlyArticle[];
     } catch (error) {
       console.error("Error fetching scholarly search results:", error);
       throw error;
@@ -120,21 +64,17 @@ export class ScholarlySearchService {
    */
   async checkFilenameCount(pdfFilename: string, expectedCount: number = 8): Promise<boolean> {
     try {
-      const cleanFilename = this.cleanFilename(pdfFilename);
+      const response = await fetch(`${getDynamoDBApiUrl()}?tableType=scholarly-results&pdfFilename=${encodeURIComponent(pdfFilename)}`);
       
-      const params = new QueryCommand({
-        TableName: this.resultsTableName,
-        KeyConditionExpression: "pdf_filename = :filename",
-        ExpressionAttributeValues: {
-          ":filename": cleanFilename,
-        },
-        Select: "COUNT", // Only get count, not full items
-      });
+      if (!response.ok) {
+        console.error("Error checking filename count:", response.statusText);
+        return false;
+      }
 
-      const result = await docClient.send(params);
-      const count = result.Count || 0;
+      const result = await response.json();
+      const count = result.count || 0;
       
-      console.log(`Filename count for ${cleanFilename}: ${count}/${expectedCount}`);
+      console.log(`Filename count for ${pdfFilename}: ${count}/${expectedCount}`);
       return count >= expectedCount;
     } catch (error) {
       console.error("Error checking filename count:", error);
@@ -185,38 +125,35 @@ export class ScholarlySearchService {
   }
 
   /**
-   * Update add_to_report field for a scholarly article
+   * Update add_to_report field for a scholarly article using unified DynamoDB endpoint
    */
   async updateAddToReport(pdfFilename: string, articleDoi: string, addToReport: boolean): Promise<void> {
     try {
-      const cleanFilename = this.cleanFilename(pdfFilename);
-      
-      const params = new UpdateCommand({
-        TableName: this.resultsTableName,
-        Key: {
-          pdf_filename: cleanFilename,
-          article_doi: articleDoi,
+      const response = await fetch(getDynamoDBApiUrl(), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        UpdateExpression: "SET add_to_report = :addToReport",
-        ExpressionAttributeValues: {
-          ":addToReport": addToReport ? "Yes" : "No",
-        },
-        ReturnValues: "UPDATED_NEW",
+        body: JSON.stringify({
+          operation: 'update_add_to_report',
+          tableType: 'scholarly-results',
+          pdfFilename,
+          articleDoi,
+          addToReport,
+        }),
       });
 
-      await docClient.send(params);
-      console.log(`Updated add_to_report for article ${articleDoi} to ${addToReport ? "Yes" : "No"}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update add_to_report');
+      }
+
+      const result = await response.json();
+      console.log(result.message);
     } catch (error) {
       console.error("Error updating add_to_report:", error);
       throw error;
     }
-  }
-
-  /**
-   * Clean filename by removing PDF extension
-   */
-  private cleanFilename(filename: string): string {
-    return filename.replace(/\.pdf$/i, "");
   }
 
   /**
@@ -225,6 +162,6 @@ export class ScholarlySearchService {
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-} 
+}
 
 export const scholarlySearchService = new ScholarlySearchService();

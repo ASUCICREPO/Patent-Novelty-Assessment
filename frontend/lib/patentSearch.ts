@@ -1,57 +1,12 @@
-import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { PatentSearchResult } from "@/types";
-
+import { getAgentInvokeApiUrl, getDynamoDBApiUrl } from "@/lib/config";
 
 /**
- * Patent search service using Bedrock Agent Core
+ * Patent search service using API Gateway
  */
 export class PatentSearchService {
-  private bedrockClient: BedrockAgentCoreClient;
-  private docClient: DynamoDBDocumentClient;
-  private agentRuntimeArn: string;
-  private resultsTableName: string;
-
   constructor() {
-
-    // Validate required environment variables
-    if (!process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || !process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY) {
-      console.warn("AWS credentials not found in environment variables");
-    }
-
-    // Initialize Bedrock Agent Core client
-    this.bedrockClient = new BedrockAgentCoreClient({
-      region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
-      credentials: {
-        accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
-        secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
-      },
-    });
-
-    // Initialize DynamoDB v3 Document client
-    const ddbClient = new DynamoDBClient({
-      region: process.env.NEXT_PUBLIC_AWS_REGION || "us-west-2",
-      credentials: {
-        accessKeyId: process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || "",
-        secretAccessKey: process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || "",
-      },
-    });
-    this.docClient = DynamoDBDocumentClient.from(ddbClient);
-
-    // Validate and assign environment variables
-    const agentRuntimeArn = process.env.NEXT_PUBLIC_BEDROCK_AGENT_RUNTIME_ARN;
-    const resultsTableName = process.env.NEXT_PUBLIC_PATENT_SEARCH_RESULTS_TABLE;
-    
-    if (!agentRuntimeArn) {
-      throw new Error("NEXT_PUBLIC_BEDROCK_AGENT_RUNTIME_ARN environment variable is required");
-    }
-    if (!resultsTableName) {
-      throw new Error("NEXT_PUBLIC_PATENT_SEARCH_RESULTS_TABLE environment variable is required");
-    }
-    
-    this.agentRuntimeArn = agentRuntimeArn;
-    this.resultsTableName = resultsTableName;
+    // No AWS SDK initialization needed - using API Gateway
   }
 
   /**
@@ -62,67 +17,60 @@ export class PatentSearchService {
   }
 
   /**
-   * Trigger patent search using Bedrock Agent Core
+   * Trigger patent search using unified agent endpoint
    */
   async triggerPatentSearch(pdfFilename: string): Promise<string> {
     if (!pdfFilename) {
       throw new Error("PDF filename is required");
     }
 
-    const cleanFilename = this.cleanFilename(pdfFilename);
-    
-    const payload = {
-      action: "search_patents",
-      pdf_filename: cleanFilename,
-    };
+    try {
+      const response = await fetch(getAgentInvokeApiUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          action: 'search_patents',
+          pdfFilename 
+        }),
+      });
 
-    const input = {
-      runtimeSessionId: this.generateSessionId(),
-      agentRuntimeArn: this.agentRuntimeArn,
-      qualifier: "DEFAULT",
-      payload: new Uint8Array(Buffer.from(JSON.stringify(payload))),
-    };
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to trigger patent search');
+      }
 
-    const command = new InvokeAgentRuntimeCommand(input);
-    const response = await this.bedrockClient.send(command);
-    
-    // Convert response to string
-    if (!response.response) {
-      throw new Error("No response received from Bedrock Agent Core");
+      const result = await response.json();
+      return result.sessionId;
+    } catch (error) {
+      console.error("Error triggering patent search:", error);
+      throw error;
     }
-    
-    // Response received successfully
-    await response.response.transformToString();
-    
-    // Return a search ID or session ID for tracking
-    return input.runtimeSessionId;
   }
 
   /**
-   * Fetch patent search results from DynamoDB
+   * Fetch patent search results using unified DynamoDB endpoint
    */
   async fetchSearchResults(pdfFilename: string): Promise<PatentSearchResult[]> {
     if (!pdfFilename) {
       throw new Error("PDF filename is required");
     }
 
-    const cleanFilename = this.cleanFilename(pdfFilename);
+    try {
+      const response = await fetch(`${getDynamoDBApiUrl()}?tableType=patent-results&pdfFilename=${encodeURIComponent(pdfFilename)}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch patent search results');
+      }
 
-    const params = new QueryCommand({
-      TableName: this.resultsTableName,
-      KeyConditionExpression: "pdf_filename = :filename",
-      ExpressionAttributeValues: {
-        ":filename": cleanFilename,
-      },
-      ScanIndexForward: false, // Get most recent first
-    });
-
-    const result = await this.docClient.send(params);
-    
-    if (!result.Items || result.Items.length === 0) {
-      return [];
+      const result = await response.json();
+      return result.results as PatentSearchResult[];
+    } catch (error) {
+      console.error("Error fetching patent search results:", error);
+      throw error;
     }
-    return result.Items as PatentSearchResult[];
   }
 
   /**
@@ -130,21 +78,17 @@ export class PatentSearchService {
    */
   async checkFilenameCount(pdfFilename: string, expectedCount: number = 8): Promise<boolean> {
     try {
-      const cleanFilename = this.cleanFilename(pdfFilename);
+      const response = await fetch(`${getDynamoDBApiUrl()}?tableType=patent-results&pdfFilename=${encodeURIComponent(pdfFilename)}`);
       
-      const params = new QueryCommand({
-        TableName: this.resultsTableName,
-        KeyConditionExpression: "pdf_filename = :filename",
-        ExpressionAttributeValues: {
-          ":filename": cleanFilename,
-        },
-        Select: "COUNT", // Only get count, not full items
-      });
+      if (!response.ok) {
+        console.error("Error checking filename count:", response.statusText);
+        return false;
+      }
 
-      const result = await this.docClient.send(params);
-      const count = result.Count || 0;
+      const result = await response.json();
+      const count = result.count || 0;
       
-      console.log(`Filename count for ${cleanFilename}: ${count}/${expectedCount}`);
+      console.log(`Filename count for ${pdfFilename}: ${count}/${expectedCount}`);
       return count >= expectedCount;
     } catch (error) {
       console.error("Error checking filename count:", error);
@@ -195,53 +139,37 @@ export class PatentSearchService {
   }
 
   /**
-   * Update add_to_report field for a patent
+   * Update add_to_report field for a patent using unified DynamoDB endpoint
    */
   async updateAddToReport(pdfFilename: string, patentNumber: string, addToReport: boolean): Promise<void> {
     try {
-      const cleanFilename = this.cleanFilename(pdfFilename);
-      
-      const params = new UpdateCommand({
-        TableName: this.resultsTableName,
-        Key: {
-          pdf_filename: cleanFilename,
-          patent_number: patentNumber,
+      const response = await fetch(getDynamoDBApiUrl(), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        UpdateExpression: "SET add_to_report = :addToReport",
-        ExpressionAttributeValues: {
-          ":addToReport": addToReport ? "Yes" : "No",
-        },
-        ReturnValues: "UPDATED_NEW",
+        body: JSON.stringify({
+          operation: 'update_add_to_report',
+          tableType: 'patent-results',
+          pdfFilename,
+          patentNumber,
+          addToReport,
+        }),
       });
 
-      await this.docClient.send(params);
-      console.log(`Updated add_to_report for patent ${patentNumber} to ${addToReport ? "Yes" : "No"}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update add_to_report');
+      }
+
+      const result = await response.json();
+      console.log(result.message);
     } catch (error) {
       console.error("Error updating add_to_report:", error);
       throw error;
     }
   }
 
-  /**
-   * Clean filename by removing PDF extension
-   */
-  private cleanFilename(filename: string): string {
-    return filename.replace(/\.pdf$/i, "");
-  }
-
-
-
-  /**
-   * Generate a unique session ID for Bedrock Agent Core
-   */
-  private generateSessionId(): string {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < 33; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  }
 }
 
 // Export a singleton instance

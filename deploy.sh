@@ -68,15 +68,38 @@ npm install
 echo "Deploying CDK stack..."
 npx cdk deploy --require-approval never --context bdaProjectArn="$BDA_PROJECT_ARN"
 
+# Get the API Gateway URL
+echo "Getting API Gateway URL..."
+API_URL=$(aws cloudformation describe-stacks \
+    --stack-name PatentNoveltyStack \
+    --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
+    --output text)
+
 # Return to root directory
 cd ..
 
-echo "Deployment completed!"
 echo ""
-echo "Next steps:"
+echo "✅ Deployment completed successfully!"
+echo ""
+echo "🌐 API Gateway URL: $API_URL"
+echo ""
+echo "📚 Available endpoints:"
+echo "   POST $API_URL/s3          - File upload"
+echo "   GET  $API_URL/s3          - Get signed URLs / Check reports"
+echo "   GET  $API_URL/dynamodb    - Query DynamoDB"
+echo "   PUT  $API_URL/dynamodb    - Update DynamoDB"
+echo "   POST $API_URL/agent-invoke - Invoke Bedrock Agent"
+echo ""
+echo "🔧 Frontend Configuration:"
+echo "   Add to your frontend .env.local file:"
+echo "   NEXT_PUBLIC_API_BASE_URL=$API_URL"
+echo ""
+echo "📋 Next steps:"
 echo "1. Go to AWS Console > Bedrock > Agent Core"
 echo "2. Create new Agent Runtime using the Patent Orchestrator Docker image URI from the output"
 echo "3. Use the Patent Orchestrator IAM Role ARN from the output"
 echo "4. Configure environment variables for USPTO and Crossref gateways in Agent Core"
 echo "5. Update the AGENT_RUNTIME_ARN in the CDK stack with the correct runtime ARN"
 echo "6. Redeploy: npx cdk deploy"
+echo ""
+echo "📖 For more information, see API_GATEWAY_SETUP.md"
