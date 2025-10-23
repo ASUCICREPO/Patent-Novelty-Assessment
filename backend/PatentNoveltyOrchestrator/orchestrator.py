@@ -189,7 +189,6 @@ async def handle_scholarly_search(payload):
     3. The strategic search will automatically:
        - Execute 4-5 intelligent search strategies
        - Apply LLM analysis to each paper's abstract for semantic relevance
-       - Keep only papers with LLM score ≥ 7 and decision = "KEEP"
        - Return top 8 semantically relevant papers with detailed LLM reasoning
 
     LLM-POWERED ANALYSIS:
@@ -207,7 +206,7 @@ async def handle_scholarly_search(payload):
     - Focus on semantic understanding, not just keyword matching
     - Each stored paper has LLM-verified relevance for patent novelty assessment
     - Detailed explanations provide transparency in selection process
-    - Target 5-8 highly relevant papers with proven technical overlap
+    - Target 8 highly relevant papers with proven technical overlap
 
     Your goal: Use LLM intelligence to identify truly relevant academic research that could meaningfully impact patent novelty assessment, with full reasoning and technical overlap analysis."""
         
