@@ -31,22 +31,12 @@ phases:
       - echo "🚀 Deploying frontend to Amplify..."
       - echo $AMPLIFY_APP_ID
       - echo "Creating Amplify deployment..."
-      - >-
-        aws amplify create-deployment \
-          --app-id $AMPLIFY_APP_ID \
-          --branch-name frontend-deployment-integration \
-          --output json > deployment_response.json
+      - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name frontend-deployment-integration --output json > deployment_response.json
       - echo "Extracting upload URL and job ID..."
-      - >-
-        export UPLOAD_URL=$(python3 -c "import json; data=json.load(open('deployment_response.json')); print(data['zipUploadUrl'])")
-      - >-
-        export JOB_ID=$(python3 -c "import json; data=json.load(open('deployment_response.json')); print(data['jobId'])")
+      - export UPLOAD_URL=$(python3 -c "import json; data=json.load(open('deployment_response.json')); print(data['zipUploadUrl'])")
+      - export JOB_ID=$(python3 -c "import json; data=json.load(open('deployment_response.json')); print(data['jobId'])")
       - echo "Uploading build.zip to Amplify..."
       - curl -X PUT -T build.zip "$UPLOAD_URL"
       - echo "Starting deployment..."
-      - >-
-        aws amplify start-deployment \
-          --app-id $AMPLIFY_APP_ID \
-          --branch-name frontend-deployment-integration \
-          --job-id $JOB_ID
+      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name frontend-deployment-integration --job-id $JOB_ID
       - echo "✅ Frontend deployment initiated successfully!"
