@@ -5,6 +5,7 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ecrAssets from "aws-cdk-lib/aws-ecr-assets";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as os from "os";
 import * as path from "path";
 import { Construct } from "constructs";
@@ -183,6 +184,130 @@ export class PatentNoveltyStack extends cdk.Stack {
       })
     );
 
+    // Create API Gateway Lambda functions
+    const apiRole = new iam.Role(this, "ApiLambdaRole", {
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole"
+        ),
+      ],
+      inlinePolicies: {
+        ApiAccessPolicy: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket",
+                "s3:HeadObject",
+              ],
+              resources: [
+                processingBucket.bucketArn,
+                `${processingBucket.bucketArn}/*`,
+              ],
+            }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                "dynamodb:PutItem",
+                "dynamodb:GetItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:Query",
+                "dynamodb:Scan",
+              ],
+              resources: [
+                keywordsTable.tableArn,
+                patentResultsTable.tableArn,
+                scholarlyArticlesTable.tableArn,
+                commercialAssessmentTable.tableArn,
+              ],
+            }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ["bedrock-agentcore:InvokeAgentRuntime"],
+              resources: ["*"],
+            }),
+          ],
+        }),
+      },
+    });
+
+    // S3 API Lambda function
+    const s3ApiFunction = new lambda.Function(this, "S3ApiFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "s3_api.lambda_handler",
+      code: lambda.Code.fromAsset("lambda"),
+      role: apiRole,
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      environment: {
+        BUCKET_NAME: processingBucket.bucketName,
+      },
+    });
+
+    // DynamoDB API Lambda function
+    const dynamodbApiFunction = new lambda.Function(this, "DynamoDBApiFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "dynamodb_api.lambda_handler",
+      code: lambda.Code.fromAsset("lambda"),
+      role: apiRole,
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      environment: {
+        KEYWORDS_TABLE: keywordsTable.tableName,
+        PATENT_RESULTS_TABLE: patentResultsTable.tableName,
+        SCHOLARLY_ARTICLES_TABLE: scholarlyArticlesTable.tableName,
+        COMMERCIAL_ASSESSMENT_TABLE: commercialAssessmentTable.tableName,
+      },
+    });
+
+    // Agent Invoke API Lambda function
+    const agentInvokeApiFunction = new lambda.Function(this, "AgentInvokeApiFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "agent_invoke_api.lambda_handler",
+      code: lambda.Code.fromAsset("lambda"),
+      role: apiRole,
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      environment: {
+        AGENT_RUNTIME_ARN: "arn:aws:bedrock-agentcore:us-west-2:216989103356:runtime/PatentNovelty-dTEUy8Ar35",
+      },
+    });
+
+    // Create API Gateway
+    const api = new apigateway.RestApi(this, "PatentNoveltyApi", {
+      restApiName: "Patent Novelty Assessment API",
+      description: "API for Patent Novelty Assessment application",
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: [
+          "Content-Type",
+          "X-Amz-Date",
+          "Authorization",
+          "X-Api-Key",
+          "X-Amz-Security-Token",
+        ],
+      },
+    });
+
+    // S3 API endpoints
+    const s3Resource = api.root.addResource("s3");
+    s3Resource.addMethod("POST", new apigateway.LambdaIntegration(s3ApiFunction));
+    s3Resource.addMethod("GET", new apigateway.LambdaIntegration(s3ApiFunction));
+
+    // DynamoDB API endpoints
+    const dynamodbResource = api.root.addResource("dynamodb");
+    dynamodbResource.addMethod("GET", new apigateway.LambdaIntegration(dynamodbApiFunction));
+    dynamodbResource.addMethod("PUT", new apigateway.LambdaIntegration(dynamodbApiFunction));
+
+    // Agent Invoke API endpoints
+    const agentInvokeResource = api.root.addResource("agent-invoke");
+    agentInvokeResource.addMethod("POST", new apigateway.LambdaIntegration(agentInvokeApiFunction));
+
     // S3 event notification to trigger Lambda for PDF processing
     processingBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
@@ -327,6 +452,26 @@ export class PatentNoveltyStack extends cdk.Stack {
         "Set these environment variables in Agent Core console: PATENTVIEW_CLIENT_ID, PATENTVIEW_CLIENT_SECRET, PATENTVIEW_TOKEN_URL, PATENTVIEW_GATEWAY_URL, SEMANTIC_SCHOLAR_CLIENT_ID, SEMANTIC_SCHOLAR_CLIENT_SECRET, SEMANTIC_SCHOLAR_TOKEN_URL, SEMANTIC_SCHOLAR_GATEWAY_URL",
       description:
         "Required environment variables for Agent Runtime Gateway configuration (PatentView OAuth and Semantic Scholar)",
+    });
+
+    new cdk.CfnOutput(this, "ApiGatewayUrl", {
+      value: api.url,
+      description: "API Gateway URL for the Patent Novelty Assessment API",
+    });
+
+    new cdk.CfnOutput(this, "S3ApiFunctionName", {
+      value: s3ApiFunction.functionName,
+      description: "Lambda function for S3 API operations",
+    });
+
+    new cdk.CfnOutput(this, "DynamoDBApiFunctionName", {
+      value: dynamodbApiFunction.functionName,
+      description: "Lambda function for DynamoDB API operations",
+    });
+
+    new cdk.CfnOutput(this, "AgentInvokeApiFunctionName", {
+      value: agentInvokeApiFunction.functionName,
+      description: "Lambda function for Agent Invoke API operations",
     });
   }
 }

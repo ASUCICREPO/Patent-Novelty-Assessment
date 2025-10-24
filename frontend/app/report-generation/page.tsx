@@ -115,43 +115,6 @@ function ReportGenerationPageContent() {
     }, 5000); // Check every 5 seconds
   };
 
-  // Function is defined but kept for potential future use
-  // const triggerReportGeneration = async () => {
-  //   if (!fileName) return;
-
-  //   try {
-  //     setGenerating(true);
-  //     setError(null);
-      
-  //     // Save initial state
-  //     statePersistence.setReportState(reportStateKey, {
-  //       hasTriggered: true,
-  //       isGenerating: true,
-  //       generationStartTime: Date.now(),
-  //       lastPollTime: Date.now(),
-  //       error: null,
-  //       reportsReady: { ptlsReady: false, ecaReady: false }
-  //     });
-      
-  //     await reportGenerationService.triggerReportGeneration(fileName);
-      
-  //     // Start polling for reports to be ready
-  //     startPolling();
-
-  //   } catch (err) {
-  //     console.error("Error generating reports:", err);
-  //     setError("Failed to generate reports. Please try again.");
-  //     setGenerating(false);
-      
-  //     // Update state with error
-  //     statePersistence.setReportState(reportStateKey, {
-  //       isGenerating: false,
-  //       error: `Failed to generate reports: ${err instanceof Error ? err.message : 'Unknown error'}`
-  //     });
-  //   }
-  // };
-
-
   const handleDownload = async (reportType: 'ptls' | 'eca') => {
     if (!fileName) return;
     
