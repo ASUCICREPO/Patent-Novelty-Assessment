@@ -248,7 +248,6 @@ FRONTEND_SOURCE='{
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
-SOURCE_VERSION="main"
 
 print_status "Creating Frontend CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
 aws codebuild create-project \
