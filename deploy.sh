@@ -1,8 +1,8 @@
 #!/bin/bash
 # Complete End-to-End Deployment Pipeline
-# Based on PDF_accessability_UI working approach: CodeBuild + Amplify integration
+# Based on PDF_accessability_UI working approach: CodeBuild + Amplify zip deployment
 
-set -e  # Exit on any error
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -13,13 +13,20 @@ PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Configuration
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+PROJECT_NAME="patent-novelty-${TIMESTAMP}"
 STACK_NAME="PatentNoveltyStack"
 BDA_PROJECT_ARN="arn:aws:bedrock:us-west-2:216989103356:data-automation-project/97146aaabae2"
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
-AMPLIFY_BRANCH_NAME="main"
-REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git"
-CODEBUILD_PROJECT_NAME="patent-novelty-frontend"
+CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-frontend"
+REPOSITORY_URL="https://github.com/your-username/patent-novelty-assessment.git" # IMPORTANT: Replace with your GitHub repository URL
+
+# Global variables to store IDs/URLs
+API_GATEWAY_URL=""
+AMPLIFY_APP_ID=""
+AMPLIFY_URL=""
+ROLE_ARN=""
 
 # Function to print colored output
 print_status() {
@@ -39,8 +46,8 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-print_amplify() {
-    echo -e "${PURPLE}[AMPLIFY]${NC} $1"
+print_codebuild() {
+    echo -e "${PURPLE}[CODEBUILD]${NC} $1"
 }
 
 # --- Phase 1: Backend Deployment (CDK) ---
@@ -66,77 +73,123 @@ print_success "API Gateway URL: $API_GATEWAY_URL"
 
 cd .. # Go back to root directory
 
-# --- Phase 2: Create CodeBuild Project ---
-print_status "🔨 Phase 2: Setting up CodeBuild Project..."
+# --- Phase 2: Create IAM Service Role ---
+print_status "🔐 Phase 2: Creating IAM Service Role..."
 
-# Check if CodeBuild project exists
-EXISTING_PROJECT=$(aws codebuild list-projects --query "projects[?contains(@, '$CODEBUILD_PROJECT_NAME')]" --output text --no-cli-pager)
+ROLE_NAME="${PROJECT_NAME}-service-role"
+print_status "Checking for IAM role: $ROLE_NAME"
 
-if [ -n "$EXISTING_PROJECT" ]; then
-    print_warning "CodeBuild project '$CODEBUILD_PROJECT_NAME' already exists"
-    print_status "Updating CodeBuild project to use frontend-deployment-integration branch..."
-    
-    # Update the existing project to use the correct branch
-    aws codebuild update-project \
-        --name "$CODEBUILD_PROJECT_NAME" \
-        --source-version refs/heads/frontend-deployment-integration \
-        --no-cli-pager || print_warning "Failed to update CodeBuild project branch"
+if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+    print_success "IAM role exists"
+    ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)
 else
-    print_status "Creating CodeBuild project for frontend deployment..."
-    
-    # Create CodeBuild project
-    aws codebuild create-project \
-        --name "$CODEBUILD_PROJECT_NAME" \
-        --description "Frontend build and deployment for Patent Novelty Assessment" \
-        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml" \
-        --source-version refs/heads/frontend-deployment-integration \
-        --artifacts type=NO_ARTIFACTS \
-        --environment type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_SMALL \
-        --service-role arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/CodeBuildServiceRole \
-        --no-cli-pager || print_warning "Failed to create CodeBuild project. You may need to create it manually."
-    
-    print_success "CodeBuild project created: $CODEBUILD_PROJECT_NAME"
+    print_status "Creating IAM role: $ROLE_NAME"
+    TRUST_DOC='{
+      "Version":"2012-10-17",
+      "Statement":[{
+        "Effect":"Allow",
+        "Principal":{"Service":"codebuild.amazonaws.com"},
+        "Action":"sts:AssumeRole"
+      }]
+    }'
+
+    ROLE_ARN=$(aws iam create-role \
+      --role-name "$ROLE_NAME" \
+      --assume-role-policy-document "$TRUST_DOC" \
+      --query 'Role.Arn' --output text)
+
+    print_status "Attaching custom deployment policy..."
+    CUSTOM_POLICY='{
+      "Version": "2012-10-17",
+      "Statement": [
+          {
+              "Sid": "AmplifyFullAccess",
+              "Effect": "Allow",
+              "Action": ["amplify:*"],
+              "Resource": "*"
+          },
+          {
+              "Sid": "S3FullAccess",
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Resource": "*"
+          },
+          {
+              "Sid": "IAMFullAccess",
+              "Effect": "Allow",
+              "Action": ["iam:*"],
+              "Resource": "*"
+          },
+          {
+              "Sid": "CloudFormationFullAccess",
+              "Effect": "Allow",
+              "Action": ["cloudformation:*"],
+              "Resource": "*"
+          },
+          {
+              "Sid": "CloudWatchLogsFullAccess",
+              "Effect": "Allow",
+              "Action": ["logs:*"],
+              "Resource": "*"
+          },
+          {
+              "Sid": "STSAccess",
+              "Effect": "Allow",
+              "Action": ["sts:GetCallerIdentity", "sts:AssumeRole"],
+              "Resource": "*"
+          }
+      ]
+    }'
+
+    aws iam put-role-policy \
+      --role-name "$ROLE_NAME" \
+      --policy-name "DeploymentPolicy" \
+      --policy-document "$CUSTOM_POLICY"
+
+    print_success "IAM role created"
+    print_status "Waiting for IAM role to propagate for 10 seconds..."
+    sleep 10
 fi
 
-# --- Phase 3: Create Amplify App ---
-print_amplify "Phase 3: Creating Amplify Application..."
+# --- Phase 3: Create Amplify App (Static Hosting) ---
+print_amplify "🌐 Phase 3: Creating Amplify Application for Static Hosting..."
 
 # Check if app already exists
-EXISTING_APP=$(aws amplify list-apps --query "apps[?name=='$AMPLIFY_APP_NAME'].appId" --output text --no-cli-pager)
+EXISTING_APP_ID=$(aws amplify list-apps --query "apps[?name=='$AMPLIFY_APP_NAME'].appId" --output text --region "$AWS_REGION" --no-cli-pager)
 
-if [ -n "$EXISTING_APP" ] && [ "$EXISTING_APP" != "None" ]; then
-    print_warning "Amplify app '$AMPLIFY_APP_NAME' already exists with ID: $EXISTING_APP"
-    AMPLIFY_APP_ID=$EXISTING_APP
+if [ -n "$EXISTING_APP_ID" ] && [ "$EXISTING_APP_ID" != "None" ]; then
+    print_warning "Amplify app '$AMPLIFY_APP_NAME' already exists with ID: $EXISTING_APP_ID"
+    AMPLIFY_APP_ID=$EXISTING_APP_ID
 else
-    # Create Amplify app
-    print_status "Creating Amplify app: $AMPLIFY_APP_NAME"
-    
+    # Create Amplify app for static hosting (no repository connection needed)
+    print_status "Creating Amplify app for static hosting: $AMPLIFY_APP_NAME"
+
     AMPLIFY_APP_ID=$(aws amplify create-app \
         --name "$AMPLIFY_APP_NAME" \
         --description "Patent Novelty Assessment Application" \
         --platform WEB_COMPUTE \
-        --environment-variables NEXT_PUBLIC_API_BASE_URL="$API_GATEWAY_URL" \
         --query 'app.appId' \
         --output text \
+        --region "$AWS_REGION" \
         --no-cli-pager)
-    
+
     if [ -z "$AMPLIFY_APP_ID" ] || [ "$AMPLIFY_APP_ID" = "None" ]; then
         print_error "Failed to create Amplify app"
         exit 1
     fi
-    
     print_success "Amplify app created with ID: $AMPLIFY_APP_ID"
 fi
 
 # --- Phase 4: Create Amplify Branch ---
-print_amplify "Phase 4: Creating Amplify Branch..."
+print_amplify "🌿 Phase 4: Creating Amplify Branch..."
 
 # Check if main branch exists
 EXISTING_BRANCH=$(aws amplify get-branch \
-    --app-id $AMPLIFY_APP_ID \
+    --app-id "$AMPLIFY_APP_ID" \
     --branch-name main \
     --query 'branch.branchName' \
     --output text \
+    --region "$AWS_REGION" \
     --no-cli-pager 2>/dev/null || echo "None")
 
 if [ "$EXISTING_BRANCH" = "main" ]; then
@@ -144,160 +197,135 @@ if [ "$EXISTING_BRANCH" = "main" ]; then
 else
     # Create main branch
     print_status "Creating main branch..."
-    
+
     aws amplify create-branch \
-        --app-id $AMPLIFY_APP_ID \
+        --app-id "$AMPLIFY_APP_ID" \
         --branch-name main \
         --description "Main production branch" \
         --stage PRODUCTION \
-        --no-cli-pager
-    
+        --region "$AWS_REGION" \
+        --no-cli-pager || print_error "Failed to create Amplify branch."
     print_success "Main branch created"
 fi
 
-# --- Phase 5: Deploy Frontend using CodeBuild ---
-print_status "🚀 Phase 5: Deploying Frontend using CodeBuild..."
+# --- Phase 5: Create CodeBuild Project ---
+print_codebuild "🏗️ Phase 5: Creating CodeBuild Project..."
 
-# Start CodeBuild job
-print_status "Starting CodeBuild job for frontend deployment..."
+# Build environment variables array for frontend
+FRONTEND_ENV_VARS_ARRAY='{
+    "name": "API_GATEWAY_URL",
+    "value": "'"$API_GATEWAY_URL"'",
+    "type": "PLAINTEXT"
+  },{
+    "name": "AMPLIFY_APP_ID",
+    "value": "'"$AMPLIFY_APP_ID"'",
+    "type": "PLAINTEXT"
+  }'
+
+FRONTEND_ENVIRONMENT='{
+  "type": "LINUX_CONTAINER",
+  "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
+  "computeType": "BUILD_GENERAL1_MEDIUM",
+  "environmentVariables": ['"$FRONTEND_ENV_VARS_ARRAY"']
+}'
+
+FRONTEND_SOURCE='{
+  "type":"GITHUB",
+  "location":"'$REPOSITORY_URL'",
+  "buildspec":"buildspec-frontend.yml"
+}'
+
+ARTIFACTS='{"type":"NO_ARTIFACTS"}'
+SOURCE_VERSION="main"
+
+print_status "Creating Frontend CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
+aws codebuild create-project \
+  --name "$CODEBUILD_PROJECT_NAME" \
+  --source "$FRONTEND_SOURCE" \
+  --source-version "$SOURCE_VERSION" \
+  --artifacts "$ARTIFACTS" \
+  --environment "$FRONTEND_ENVIRONMENT" \
+  --service-role "$ROLE_ARN" \
+  --output json \
+  --no-cli-pager || print_error "Failed to create CodeBuild project."
+
+print_success "CodeBuild project '$CODEBUILD_PROJECT_NAME' created."
+
+# --- Phase 6: Start CodeBuild Job ---
+print_codebuild "🚀 Phase 6: Starting CodeBuild Job for Frontend Build and Deploy..."
+
+print_status "Starting frontend build for project '$CODEBUILD_PROJECT_NAME'..."
 BUILD_ID=$(aws codebuild start-build \
-    --project-name "$CODEBUILD_PROJECT_NAME" \
-    --source-version refs/heads/frontend-deployment-integration \
-    --environment-variables-override \
-        name=API_GATEWAY_URL,value="$API_GATEWAY_URL" \
-    --query 'build.id' \
-    --output text \
-    --no-cli-pager)
+  --project-name "$CODEBUILD_PROJECT_NAME" \
+  --query 'build.id' \
+  --output text \
+  --no-cli-pager)
 
-if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "None" ]; then
-    print_error "Failed to start CodeBuild job"
-    exit 1
+if [ $? -ne 0 ]; then
+  print_error "Failed to start the frontend build"
 fi
 
-print_success "CodeBuild job started with ID: $BUILD_ID"
+print_success "Frontend build started successfully. Build ID: $BUILD_ID"
 
-# Wait for build to complete
-print_status "Waiting for CodeBuild to complete (this may take 5-10 minutes)..."
+# Wait for frontend build to complete
+print_status "Waiting for frontend build to complete..."
+BUILD_STATUS="IN_PROGRESS"
 
-while true; do
-    STATUS=$(aws codebuild batch-get-builds \
-        --ids "$BUILD_ID" \
-        --query 'builds[0].buildStatus' \
-        --output text \
-        --no-cli-pager)
-    
-    case $STATUS in
-        "SUCCEEDED")
-            print_success "CodeBuild completed successfully!"
-            break
-            ;;
-        "FAILED"|"STOPPED"|"TIMED_OUT")
-            print_error "CodeBuild failed with status: $STATUS"
-            exit 1
-            ;;
-        "IN_PROGRESS")
-            print_status "CodeBuild in progress... (Status: $STATUS)"
-            sleep 30
-            ;;
-        *)
-            print_warning "Unknown status: $STATUS"
-            sleep 30
-            ;;
-    esac
+while [ "$BUILD_STATUS" = "IN_PROGRESS" ]; do
+  sleep 15
+  BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text --no-cli-pager)
+  print_status "Frontend build status: $BUILD_STATUS"
 done
 
-# --- Phase 6: Deploy to Amplify ---
-print_amplify "Phase 6: Deploying to Amplify..."
+if [ "$BUILD_STATUS" != "SUCCEEDED" ]; then
+  print_error "Frontend build failed with status: $BUILD_STATUS"
+  print_status "Check CodeBuild logs for details: https://console.aws.amazon.com/codesuite/codebuild/projects/$CODEBUILD_PROJECT_NAME/build/$BUILD_ID/"
+  exit 1
+fi
 
-# Start Amplify deployment
-print_status "Starting Amplify deployment..."
-DEPLOYMENT_ID=$(aws amplify start-deployment \
-    --app-id $AMPLIFY_APP_ID \
+print_success "Frontend build and deployment completed successfully!"
+
+# Get Amplify URL
+print_status "Getting Amplify application URL..."
+AMPLIFY_URL=$(aws amplify get-branch \
+    --app-id "$AMPLIFY_APP_ID" \
     --branch-name main \
-    --source-url "s3://$(aws codebuild batch-get-builds --ids $BUILD_ID --query 'builds[0].artifacts.location' --output text --no-cli-pager)" \
-    --query 'jobSummary.jobId' \
+    --query 'branch.associatedResource.defaultDomain' \
     --output text \
+    --region "$AWS_REGION" \
     --no-cli-pager)
 
-if [ -z "$DEPLOYMENT_ID" ] || [ "$DEPLOYMENT_ID" = "None" ]; then
-    print_error "Failed to start Amplify deployment"
-    exit 1
+if [ -z "$AMPLIFY_URL" ] || [ "$AMPLIFY_URL" = "None" ]; then
+    print_error "Failed to retrieve Amplify Application URL."
 fi
 
-print_success "Amplify deployment started with ID: $DEPLOYMENT_ID"
-
-# Wait for Amplify deployment to complete
-print_status "Waiting for Amplify deployment to complete (this may take 5-10 minutes)..."
-
-while true; do
-    STATUS=$(aws amplify get-job \
-        --app-id $AMPLIFY_APP_ID \
-        --branch-name main \
-        --job-id $DEPLOYMENT_ID \
-        --query 'job.summary.status' \
-        --output text \
-        --no-cli-pager)
-    
-    case $STATUS in
-        "SUCCEED")
-            print_success "Amplify deployment completed successfully!"
-            break
-            ;;
-        "FAILED"|"CANCELLED")
-            print_error "Amplify deployment failed with status: $STATUS"
-            exit 1
-            ;;
-        "PENDING"|"RUNNING"|"IN_PROGRESS")
-            print_status "Amplify deployment in progress... (Status: $STATUS)"
-            sleep 30
-            ;;
-        *)
-            print_warning "Unknown status: $STATUS"
-            sleep 30
-            ;;
-    esac
-done
-
-# --- Phase 7: Get Amplify URL ---
-print_amplify "Phase 7: Getting Amplify Application URL..."
-
-# Get the app details
-APP_DOMAIN=$(aws amplify get-app \
-    --app-id $AMPLIFY_APP_ID \
-    --query 'app.defaultDomain' \
-    --output text \
-    --no-cli-pager)
-
-if [ -n "$APP_DOMAIN" ] && [ "$APP_DOMAIN" != "None" ]; then
-    AMPLIFY_URL="https://main.$APP_DOMAIN"
-    print_success "Amplify Application URL: $AMPLIFY_URL"
-else
-    print_warning "Could not retrieve Amplify URL. Check the Amplify console."
-fi
+print_success "Frontend deployed to Amplify successfully!"
 
 # --- Final Summary ---
-print_success "🎉 COMPLETE DEPLOYMENT SUCCESSFUL!"
+print_success "🎉 COMPLETE DEPLOYMENT SUCCESSFUL! 🎉"
 echo ""
 echo "📊 Deployment Summary:"
 echo "   🌐 API Gateway URL: $API_GATEWAY_URL"
+echo "   🪣 S3 Bucket: $S3_BUCKET_NAME"
 echo "   🚀 Amplify App ID: $AMPLIFY_APP_ID"
-echo "   🌍 Amplify URL: $AMPLIFY_URL"
+echo "   🌍 Frontend URL: https://main.$AMPLIFY_URL"
 echo "   🏗️  CDK Stack: $STACK_NAME"
 echo "   🌍 AWS Region: $AWS_REGION"
 echo ""
 echo "✅ What was deployed:"
 echo "   ✓ CDK backend infrastructure"
 echo "   ✓ API Gateway with Lambda functions"
+echo "   ✓ S3 bucket for CodeBuild artifacts"
 echo "   ✓ CodeBuild project for frontend"
 echo "   ✓ Amplify application"
-echo "   ✓ Frontend deployed via CodeBuild + Amplify"
+echo "   ✓ Frontend built and deployed to Amplify"
 echo "   ✓ Environment variables configured"
 echo ""
 echo "🔗 Access your application:"
-echo "   $AMPLIFY_URL"
+echo "   https://main.$AMPLIFY_URL"
 echo ""
 echo "📱 Next steps:"
 echo "   1. Visit the application URL above"
 echo "   2. Test file upload functionality"
-echo "   3. Monitor in AWS Amplify Console"
+echo "   3. Monitor in AWS Amplify Console and AWS CodeBuild Console"
 echo "   4. Set up custom domain if needed"
