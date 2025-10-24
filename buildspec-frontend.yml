@@ -33,12 +33,12 @@ phases:
       - echo "Deploying frontend to Amplify..."
       - echo $AMPLIFY_APP_ID
       - echo "Creating Amplify deployment..."
-      - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name frontend-deployment-integration --output json | tee deployment_response.json
+      - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name main --output json | tee deployment_response.json
       - echo "Extracting upload URL and job ID..."
       - export UPLOAD_URL=$(node -e "const data=require('./deployment_response.json'); console.log(data.zipUploadUrl)")
       - export JOB_ID=$(node -e "const data=require('./deployment_response.json'); console.log(data.jobId)")
       - echo "Uploading build.zip to Amplify..."
       - curl -X PUT -T build.zip "$UPLOAD_URL"
       - echo "Starting deployment..."
-      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name frontend-deployment-integration --job-id $JOB_ID
+      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name main --job-id $JOB_ID
       - echo "Frontend deployment initiated successfully!"

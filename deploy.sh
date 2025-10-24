@@ -187,29 +187,29 @@ fi
 # --- Phase 4: Create Amplify Branch ---
 print_amplify "🌿 Phase 4: Creating Amplify Branch..."
 
-# Check if frontend-deployment-integration branch exists
+# Check if main branch exists
 EXISTING_BRANCH=$(aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
-    --branch-name frontend-deployment-integration \
+    --branch-name main \
     --query 'branch.branchName' \
     --output text \
     --region "$AWS_REGION" \
     --no-cli-pager 2>/dev/null || echo "None")
 
-if [ "$EXISTING_BRANCH" = "frontend-deployment-integration" ]; then
-    print_warning "frontend-deployment-integration branch already exists"
+if [ "$EXISTING_BRANCH" = "main" ]; then
+    print_warning "main branch already exists"
 else
-    # Create frontend-deployment-integration branch
-    print_status "Creating frontend-deployment-integration branch..."
+    # Create main branch
+    print_status "Creating main branch..."
 
     aws amplify create-branch \
         --app-id "$AMPLIFY_APP_ID" \
-        --branch-name frontend-deployment-integration \
-        --description "Frontend deployment integration branch" \
+        --branch-name main \
+        --description "Main production branch" \
         --stage PRODUCTION \
         --region "$AWS_REGION" \
         --no-cli-pager || print_error "Failed to create Amplify branch."
-    print_success "frontend-deployment-integration branch created"
+    print_success "main branch created"
 fi
 
 # --- Phase 5: Create CodeBuild Project ---
@@ -240,7 +240,7 @@ FRONTEND_SOURCE='{
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
-SOURCE_VERSION="frontend-deployment-integration"
+SOURCE_VERSION="main"
 
 print_status "Creating Frontend CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
 aws codebuild create-project \
@@ -311,7 +311,7 @@ echo ""
 echo "📊 Deployment Summary:"
 echo "   🌐 API Gateway URL: $API_GATEWAY_URL"
 echo "   🚀 Amplify App ID: $AMPLIFY_APP_ID"
-echo "   🌍 Frontend URL: https://frontend-deployment-integration.$AMPLIFY_URL"
+echo "   🌍 Frontend URL: https://main.$AMPLIFY_URL"
 echo "   🏗️  CDK Stack: $STACK_NAME"
 echo "   🌍 AWS Region: $AWS_REGION"
 echo ""
