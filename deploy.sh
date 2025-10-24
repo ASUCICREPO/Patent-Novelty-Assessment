@@ -20,6 +20,7 @@ BDA_PROJECT_ARN="arn:aws:bedrock:us-west-2:216989103356:data-automation-project/
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-frontend"
+REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment" # IMPORTANT: Replace with your GitHub repository URL
 
 # Global variables to store IDs/URLs
 API_GATEWAY_URL=""
@@ -47,10 +48,6 @@ print_warning() {
 
 print_codebuild() {
     echo -e "${PURPLE}[CODEBUILD]${NC} $1"
-}
-
-print_amplify() {
-    echo -e "${PURPLE}[AMPLIFY]${NC} $1"
 }
 
 # --- Phase 1: Backend Deployment (CDK) ---
@@ -186,29 +183,29 @@ fi
 # --- Phase 4: Create Amplify Branch ---
 print_amplify "🌿 Phase 4: Creating Amplify Branch..."
 
-# Check if main branch exists
+# Check if frontend-deployment-integration branch exists
 EXISTING_BRANCH=$(aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
-    --branch-name main \
+    --branch-name frontend-deployment-integration \
     --query 'branch.branchName' \
     --output text \
     --region "$AWS_REGION" \
     --no-cli-pager 2>/dev/null || echo "None")
 
-if [ "$EXISTING_BRANCH" = "main" ]; then
-    print_warning "Main branch already exists"
+if [ "$EXISTING_BRANCH" = "frontend-deployment-integration" ]; then
+    print_warning "frontend-deployment-integration branch already exists"
 else
-    # Create main branch
-    print_status "Creating main branch..."
+    # Create frontend-deployment-integration branch
+    print_status "Creating frontend-deployment-integration branch..."
 
     aws amplify create-branch \
         --app-id "$AMPLIFY_APP_ID" \
-        --branch-name main \
-        --description "Main production branch" \
+        --branch-name frontend-deployment-integration \
+        --description "Frontend deployment integration branch" \
         --stage PRODUCTION \
         --region "$AWS_REGION" \
         --no-cli-pager || print_error "Failed to create Amplify branch."
-    print_success "Main branch created"
+    print_success "frontend-deployment-integration branch created"
 fi
 
 # --- Phase 5: Create CodeBuild Project ---
@@ -232,22 +229,14 @@ FRONTEND_ENVIRONMENT='{
   "environmentVariables": ['"$FRONTEND_ENV_VARS_ARRAY"']
 }'
 
-# Create local source zip for CodeBuild
-print_status "Creating source zip for CodeBuild..."
-zip -r source.zip . -x "node_modules/*" ".git/*" "*.log" "*.tmp" "*.tsbuildinfo" "backend/node_modules/*" "frontend/node_modules/*" "backend/cdk.out/*" "source.zip"
-
-# Upload to S3 for CodeBuild to use
-S3_SOURCE_BUCKET="patent-novelty-source-$(date +%s)"
-aws s3 mb s3://$S3_SOURCE_BUCKET --region $AWS_REGION --no-cli-pager
-aws s3 cp source.zip s3://$S3_SOURCE_BUCKET/source.zip --no-cli-pager
-
 FRONTEND_SOURCE='{
-  "type":"S3",
-  "location":"'$S3_SOURCE_BUCKET'/source.zip",
+  "type":"GITHUB",
+  "location":"'$REPOSITORY_URL'",
   "buildspec":"buildspec-frontend.yml"
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
+SOURCE_VERSION="frontend-deployment-integration"
 
 print_status "Creating Frontend CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
 aws codebuild create-project \
@@ -300,7 +289,7 @@ print_success "Frontend build and deployment completed successfully!"
 print_status "Getting Amplify application URL..."
 AMPLIFY_URL=$(aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
-    --branch-name main \
+    --branch-name frontend-deployment-integration \
     --query 'branch.associatedResource.defaultDomain' \
     --output text \
     --region "$AWS_REGION" \
@@ -312,19 +301,14 @@ fi
 
 print_success "Frontend deployed to Amplify successfully!"
 
-# --- Cleanup ---
-print_status "🧹 Cleaning up temporary resources..."
-rm -f source.zip
-aws s3 rb s3://$S3_SOURCE_BUCKET --force --no-cli-pager
-print_success "Cleanup completed"
-
 # --- Final Summary ---
 print_success "🎉 COMPLETE DEPLOYMENT SUCCESSFUL! 🎉"
 echo ""
 echo "📊 Deployment Summary:"
 echo "   🌐 API Gateway URL: $API_GATEWAY_URL"
+echo "   🪣 S3 Bucket: $S3_BUCKET_NAME"
 echo "   🚀 Amplify App ID: $AMPLIFY_APP_ID"
-echo "   🌍 Frontend URL: https://main.$AMPLIFY_URL"
+echo "   🌍 Frontend URL: https://frontend-deployment-integration.$AMPLIFY_URL"
 echo "   🏗️  CDK Stack: $STACK_NAME"
 echo "   🌍 AWS Region: $AWS_REGION"
 echo ""
