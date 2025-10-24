@@ -236,7 +236,7 @@ FRONTEND_ENVIRONMENT='{
 FRONTEND_SOURCE='{
   "type":"GITHUB",
   "location":"'$REPOSITORY_URL'",
-  "buildspec":"buildspec-frontend-simple.yml"
+  "buildspec":"buildspec-frontend.yml"
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
