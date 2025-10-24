@@ -69,6 +69,10 @@ cd .. # Go back to root directory
 # --- Phase 2: Create CodeBuild Project ---
 print_status "🔨 Phase 2: Setting up CodeBuild Project..."
 
+# GitHub connection ARN for private repository access
+GITHUB_CONNECTION_ARN="arn:aws:codeconnections:us-west-2:216989103356:connection/ece308cd-1bf5-49c3-bc4c-c6516fda1dcb"
+print_status "Using GitHub connection: $GITHUB_CONNECTION_ARN"
+
 # Check if CodeBuild project exists
 EXISTING_PROJECT=$(aws codebuild list-projects --query "projects[?contains(@, '$CODEBUILD_PROJECT_NAME')]" --output text --no-cli-pager)
 
@@ -76,11 +80,12 @@ if [ -n "$EXISTING_PROJECT" ]; then
     print_warning "CodeBuild project '$CODEBUILD_PROJECT_NAME' already exists"
     print_status "Updating CodeBuild project to use frontend-deployment-integration branch..."
     
-    # Update the existing project to use the correct branch
+    # Update the existing project to use the correct branch and connection
     aws codebuild update-project \
         --name "$CODEBUILD_PROJECT_NAME" \
+        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml",connectionArn="$GITHUB_CONNECTION_ARN" \
         --source-version refs/heads/frontend-deployment-integration \
-        --no-cli-pager || print_warning "Failed to update CodeBuild project branch"
+        --no-cli-pager || print_warning "Failed to update CodeBuild project"
 else
     print_status "Creating CodeBuild project for frontend deployment..."
     
@@ -88,7 +93,7 @@ else
     aws codebuild create-project \
         --name "$CODEBUILD_PROJECT_NAME" \
         --description "Frontend build and deployment for Patent Novelty Assessment" \
-        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml" \
+        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml",connectionArn="$GITHUB_CONNECTION_ARN" \
         --source-version refs/heads/frontend-deployment-integration \
         --artifacts type=NO_ARTIFACTS \
         --environment type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_SMALL \
