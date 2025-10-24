@@ -15,7 +15,7 @@ phases:
       - echo "Installing frontend dependencies..."
       - npm ci
       - echo "Creating .env.local with API Gateway URL..."
-      - echo "NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL" > .env.local
+      - echo "NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL" | tee .env.local
       - echo "Environment configured with API Gateway URL: $API_GATEWAY_URL"
       - echo "Contents of .env.local file:"
       - cat .env.local
