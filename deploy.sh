@@ -65,10 +65,10 @@ print_status "Deploying CDK stack (this may take a few minutes)..."
 npx cdk deploy --require-approval never --context bdaProjectArn="$BDA_PROJECT_ARN" || print_error "CDK deployment failed."
 
 print_status "Extracting API Gateway URL from CDK outputs..."
-API_GATEWAY_URL=$(aws cloudformation describe-stacks \
+API_GATEWAY_URL=$(AWS_PAGER="" aws cloudformation describe-stacks \
   --stack-name "$STACK_NAME" \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
-  --output text --region "$AWS_REGION" --no-cli-pager)
+  --output text --region "$AWS_REGION")
 
 if [ -z "$API_GATEWAY_URL" ] || [ "$API_GATEWAY_URL" = "None" ]; then
   print_error "Failed to extract API Gateway URL from CDK outputs. Please check CloudFormation stack: $STACK_NAME"
@@ -159,7 +159,7 @@ fi
 print_amplify "🌐 Phase 3: Creating Amplify Application for Static Hosting..."
 
 # Check if app already exists
-EXISTING_APP_ID=$(aws amplify list-apps --query "apps[?name=='$AMPLIFY_APP_NAME'].appId" --output text --region "$AWS_REGION" --no-cli-pager)
+EXISTING_APP_ID=$(AWS_PAGER="" aws amplify list-apps --query "apps[?name=='$AMPLIFY_APP_NAME'].appId" --output text --region "$AWS_REGION")
 
 if [ -n "$EXISTING_APP_ID" ] && [ "$EXISTING_APP_ID" != "None" ]; then
     print_warning "Amplify app '$AMPLIFY_APP_NAME' already exists with ID: $EXISTING_APP_ID"
@@ -168,14 +168,13 @@ else
     # Create Amplify app for static hosting (no repository connection needed)
     print_status "Creating Amplify app for static hosting: $AMPLIFY_APP_NAME"
 
-    AMPLIFY_APP_ID=$(aws amplify create-app \
+    AMPLIFY_APP_ID=$(AWS_PAGER="" aws amplify create-app \
         --name "$AMPLIFY_APP_NAME" \
         --description "Patent Novelty Assessment Application" \
         --platform WEB_COMPUTE \
         --query 'app.appId' \
         --output text \
-        --region "$AWS_REGION" \
-        --no-cli-pager)
+        --region "$AWS_REGION")
 
     if [ -z "$AMPLIFY_APP_ID" ] || [ "$AMPLIFY_APP_ID" = "None" ]; then
         print_error "Failed to create Amplify app"
@@ -188,13 +187,12 @@ fi
 print_amplify "🌿 Phase 4: Creating Amplify Branch..."
 
 # Check if main branch exists
-EXISTING_BRANCH=$(aws amplify get-branch \
+EXISTING_BRANCH=$(AWS_PAGER="" aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
     --branch-name main \
     --query 'branch.branchName' \
     --output text \
-    --region "$AWS_REGION" \
-    --no-cli-pager 2>/dev/null || echo "None")
+    --region "$AWS_REGION" 2>/dev/null || echo "None")
 
 if [ "$EXISTING_BRANCH" = "main" ]; then
     print_warning "main branch already exists"
@@ -202,13 +200,12 @@ else
     # Create main branch
     print_status "Creating main branch..."
 
-    aws amplify create-branch \
+    AWS_PAGER="" aws amplify create-branch \
         --app-id "$AMPLIFY_APP_ID" \
         --branch-name main \
         --description "Main production branch" \
         --stage PRODUCTION \
-        --region "$AWS_REGION" \
-        --no-cli-pager || print_error "Failed to create Amplify branch."
+        --region "$AWS_REGION" || print_error "Failed to create Amplify branch."
     print_success "main branch created"
 fi
 
@@ -243,15 +240,14 @@ ARTIFACTS='{"type":"NO_ARTIFACTS"}'
 SOURCE_VERSION="main"
 
 print_status "Creating Frontend CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
-aws codebuild create-project \
+AWS_PAGER="" aws codebuild create-project \
   --name "$CODEBUILD_PROJECT_NAME" \
   --source "$FRONTEND_SOURCE" \
   --source-version "$SOURCE_VERSION" \
   --artifacts "$ARTIFACTS" \
   --environment "$FRONTEND_ENVIRONMENT" \
   --service-role "$ROLE_ARN" \
-  --output json \
-  --no-cli-pager || print_error "Failed to create CodeBuild project."
+  --output json || print_error "Failed to create CodeBuild project."
 
 print_success "CodeBuild project '$CODEBUILD_PROJECT_NAME' created."
 
@@ -259,11 +255,10 @@ print_success "CodeBuild project '$CODEBUILD_PROJECT_NAME' created."
 print_codebuild "🚀 Phase 6: Starting CodeBuild Job for Frontend Build and Deploy..."
 
 print_status "Starting frontend build for project '$CODEBUILD_PROJECT_NAME'..."
-BUILD_ID=$(aws codebuild start-build \
+BUILD_ID=$(AWS_PAGER="" aws codebuild start-build \
   --project-name "$CODEBUILD_PROJECT_NAME" \
   --query 'build.id' \
-  --output text \
-  --no-cli-pager)
+  --output text)
 
 if [ $? -ne 0 ]; then
   print_error "Failed to start the frontend build"
@@ -277,7 +272,7 @@ BUILD_STATUS="IN_PROGRESS"
 
 while [ "$BUILD_STATUS" = "IN_PROGRESS" ]; do
   sleep 15
-  BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text --no-cli-pager)
+  BUILD_STATUS=$(AWS_PAGER="" aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
   print_status "Frontend build status: $BUILD_STATUS"
 done
 
@@ -291,12 +286,11 @@ print_success "Frontend build and deployment completed successfully!"
 
 # Get Amplify URL
 print_status "Getting Amplify application URL..."
-AMPLIFY_URL=$(aws amplify get-app \
+AMPLIFY_URL=$(AWS_PAGER="" aws amplify get-app \
     --app-id "$AMPLIFY_APP_ID" \
     --query 'app.defaultDomain' \
     --output text \
-    --region "$AWS_REGION" \
-    --no-cli-pager)
+    --region "$AWS_REGION")
 
 if [ -z "$AMPLIFY_URL" ] || [ "$AMPLIFY_URL" = "None" ]; then
     print_warning "Could not retrieve Amplify URL, using app ID instead"
