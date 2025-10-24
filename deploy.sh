@@ -50,6 +50,10 @@ print_codebuild() {
     echo -e "${PURPLE}[CODEBUILD]${NC} $1"
 }
 
+print_amplify() {
+    echo -e "${PURPLE}[AMPLIFY]${NC} $1"
+}
+
 # --- Phase 1: Backend Deployment (CDK) ---
 print_status "🚀 Phase 1: Deploying CDK Infrastructure..."
 cd backend || print_error "Failed to change to backend directory."
