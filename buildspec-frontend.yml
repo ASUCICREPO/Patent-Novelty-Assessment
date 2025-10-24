@@ -1,0 +1,24 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo "Installing frontend dependencies..."
+      - cd frontend
+      - npm ci
+      - echo "Creating .env.local with API Gateway URL..."
+      - echo "NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL" > .env.local
+      - echo "✅ Environment configured with API Gateway URL: $API_GATEWAY_URL"
+  build:
+    commands:
+      - echo "Building Next.js application..."
+      - npm run build
+      - echo "✅ Next.js build completed successfully"
+  post_build:
+    commands:
+      - echo "Frontend build completed successfully"
+      - echo "Build artifacts ready for deployment"
+artifacts:
+  files:
+    - 'frontend/out/**/*'
+    - 'frontend/public/**/*'
+  base-directory: frontend
