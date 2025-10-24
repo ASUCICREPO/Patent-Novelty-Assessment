@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Any, List
+from botocore.config import Config
 from strands import Agent, tool
 from strands.tools.mcp.mcp_client import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
@@ -19,6 +20,13 @@ from patent_search_agent import read_keywords_from_dynamodb, create_streamable_h
 # Environment Variables
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 ARTICLES_TABLE = os.getenv('ARTICLES_TABLE_NAME')
+
+# Bedrock client configuration with extended timeout for batch evaluation
+BEDROCK_CONFIG = Config(
+    read_timeout=600,  # 10 minutes for large batch LLM calls
+    connect_timeout=60,
+    retries={'max_attempts': 3, 'mode': 'adaptive'}
+)
 
 # Gateway Configuration for Semantic Scholar Search
 SEMANTIC_SCHOLAR_CLIENT_ID = os.environ.get('SEMANTIC_SCHOLAR_CLIENT_ID')
@@ -30,7 +38,7 @@ SEMANTIC_SCHOLAR_GATEWAY_URL = os.environ.get('SEMANTIC_SCHOLAR_GATEWAY_URL')
 # SEMANTIC SCHOLAR SEARCH TOOLS
 # =============================================================================
 
-def run_semantic_scholar_search_clean(search_query: str, limit: int = 30):
+def run_semantic_scholar_search_clean(search_query: str, limit: int = 10):
     """Run clean Semantic Scholar search with rate limiting (1 request per second)."""
     try:
         time.sleep(1.5)  # Slightly more conservative for refinement scenarios  
@@ -145,7 +153,7 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                 "rationale": "Focus on the specific deployment mechanism"
             }}
         ]
-        Generate 3-5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
+        Generate 5 queries that cover different aspects of the invention for comprehensive prior art discovery."""
 
         # Generate search queries (LLM + fallback)
         search_queries = []
@@ -229,8 +237,8 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                         "rationale": f"Diverse combination search"
                     })
             
-            # Limit to 8 queries max
-            search_queries = search_queries[:8]
+            # Limit to 5 queries max
+            search_queries = search_queries[:5]
         
         if not search_queries:
             print("No search queries generated")
@@ -240,19 +248,17 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         for i, query in enumerate(search_queries, 1):
             print(f"  {i}. '{query['query']}' - {query['rationale']}")
         
-        # PHASE 2: Execute adaptive search with refinement
-        print("Phase 2: Executing adaptive searches...")
+        # PHASE 2: Execute searches
+        print("Phase 2: Executing searches...")
         all_relevant_papers = []
         
         for query_info in search_queries:
-            query_refinement_attempts = 0
-            max_query_refinements = 3  # Per query limit
             print(f"Executing search: '{query_info['query']}'")
             
-            # Execute initial search with rate limiting
+            # Execute search with rate limiting
             result = run_semantic_scholar_search_clean(
                 search_query=query_info['query'],
-                limit=20  # Reduced limit to manage rate limiting
+                limit=10  # 10 papers per search query are returned
             )
             
             if result and isinstance(result, dict) and 'content' in result:
@@ -267,71 +273,10 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                         
                         print(f"Query '{query_info['query']}': Found {len(articles)} papers (total: {total_results})")
                         
-                        # Quality assessment with refinement enabled
-                        quality_assessment = assess_search_result_quality(articles, total_results, query_info, keywords_data)
-                        print(f"Quality assessment: {quality_assessment['reason']}")
-
-                        if quality_assessment['action'] == 'refine' and query_refinement_attempts < max_query_refinements:
-                            print(f"Refining query (attempt {query_refinement_attempts + 1}/{max_query_refinements})")
-                            
-                            # Generate refined query
-                            refined_query = generate_refined_query(query_info, quality_assessment, keywords_data)
-                            print(f"Original query: '{query_info['query']}'")
-                            
-                            # Check if refinement failed
-                            if refined_query == "REFINEMENT_FAILED":
-                                print("LLM refinement failed, proceeding with original results")
-                                current_articles = articles
-                                query_refinement_attempts += 1  # Count as attempt
-                            else:
-                                print(f"Refined query: '{refined_query}'")
-                                refined_result = run_semantic_scholar_search_clean(
-                                    search_query=refined_query,
-                                    limit=20
-                                )
-                                
-                                if refined_result and isinstance(refined_result, dict) and 'content' in refined_result:
-                                    refined_content = refined_result['content']
-                                    if isinstance(refined_content, list) and len(refined_content) > 0:
-                                        refined_text_content = refined_content[0].get('text', '') if isinstance(refined_content[0], dict) else str(refined_content[0])
-                                        
-                                        try:
-                                            refined_data = json.loads(refined_text_content)
-                                            refined_articles = refined_data.get("data", [])
-                                            refined_total = refined_data.get("total", 0)
-                                            
-                                            print(f"Refined query '{refined_query}': Found {len(refined_articles)} papers (total: {refined_total})")
-                                            
-                                            # Use refined results if they're better
-                                            if len(refined_articles) > len(articles) or refined_total < total_results:
-                                                current_articles = refined_articles
-                                                query_info['query'] = refined_query  # Update for tracking
-                                                print("Using refined results")
-                                            else:
-                                                current_articles = articles
-                                                print("Keeping original results (refinement didn't improve)")
-                                                
-                                            query_refinement_attempts += 1
-                                            
-                                        except json.JSONDecodeError:
-                                            print("Failed to parse refined search results, using original")
-                                            current_articles = articles
-                                    else:
-                                        print("No content in refined results, using original")
-                                        current_articles = articles
-                                else:
-                                    print("Refined search failed, using original results")
-                                    current_articles = articles
-                        else:
-                            current_articles = articles
-                            if quality_assessment['action'] == 'refine':
-                                print(f"Max refinements ({max_query_refinements}) reached, proceeding with current results")
+                        # Proceed directly with articles
+                        current_articles = articles
                         
-                        # Track refinement statistics
-                        if query_refinement_attempts > 0:
-                            print(f"Refinement summary for '{query_info['query']}': {query_refinement_attempts} attempts made")
-                        
-                        # Evaluate each paper for relevance using LLM
+                        # Collect papers for batch processing
                         for article in current_articles:
                             processed_article = {
                                 'paperId': article.get('paperId', 'unknown'),
@@ -350,18 +295,9 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
                                 'matching_keywords': query_info['query']
                             }
                             
-                            # LLM-powered relevance evaluation
-                            relevance_assessment = evaluate_paper_relevance_with_llm_internal(processed_article, keywords_data)
-                            
-                            # Add LLM assessment to article data
-                            processed_article['llm_relevance_score'] = relevance_assessment.get('relevance_score', 0)
-                            processed_article['technical_overlaps'] = relevance_assessment.get('technical_overlaps', [])
-                            processed_article['novelty_impact_assessment'] = relevance_assessment.get('novelty_impact_assessment', '')
-                            
-                            # Add ALL evaluated papers (no filtering by decision)
+                            # Just collect papers, no evaluation yet
                             all_relevant_papers.append(processed_article)
-                            print(f"EVALUATED: {processed_article['title'][:60]}... (Score: {processed_article['llm_relevance_score']}/10)")
-                            print(f"Assessment: {processed_article['novelty_impact_assessment'][:100]}...")
+                            print(f"COLLECTED: {processed_article['title'][:60]}...")
                                 
                     except json.JSONDecodeError as je:
                         print(f"JSON decode error for query '{query_info['query']}': {je}")
@@ -370,21 +306,50 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
             else:
                 print(f"No result for query '{query_info['query']}'")
         
-        # Remove duplicates
+        print(f"\n{'='*80}")
+        print(f"OPTIMIZATION PHASE: Deduplication and Pre-filtering")
+        print(f"{'='*80}")
+        print(f"Total papers collected: {len(all_relevant_papers)}")
+        
+        # OPTIMIZATION 1: Remove duplicates BEFORE evaluation
         unique_papers = {}
         for paper in all_relevant_papers:
             paper_id = paper['paperId']
             if paper_id not in unique_papers:
                 unique_papers[paper_id] = paper
         
-        # Calculate combined score for each paper: LLM score (60%) + Citation impact (40%)
-        for paper in unique_papers.values():
+        papers_list = list(unique_papers.values())
+        print(f"After deduplication: {len(papers_list)} unique papers")
+        
+        # OPTIMIZATION 2: Pre-filter by citations (top 30) BEFORE LLM evaluation
+        papers_sorted_by_citations = sorted(papers_list, key=lambda x: x.get('citation_count', 0), reverse=True)
+        top_cited_papers = papers_sorted_by_citations[:30]
+        print(f"After citation pre-filtering: {len(top_cited_papers)} papers (top 30 by citations)")
+        
+        # OPTIMIZATION 3: Batch LLM evaluation
+        print(f"\nBatch evaluating {len(top_cited_papers)} papers with LLM...")
+        evaluations = evaluate_papers_batch_llm(top_cited_papers, keywords_data)
+        
+        # Attach evaluations to papers
+        for i, paper in enumerate(top_cited_papers):
+            if i < len(evaluations):
+                paper['llm_relevance_score'] = evaluations[i].get('relevance_score', 0)
+                paper['technical_overlaps'] = evaluations[i].get('technical_overlaps', [])
+                paper['novelty_impact_assessment'] = evaluations[i].get('novelty_impact_assessment', '')
+            else:
+                # Fallback if evaluation missing
+                paper['llm_relevance_score'] = 0
+                paper['technical_overlaps'] = []
+                paper['novelty_impact_assessment'] = 'Evaluation not available'
+        
+        # Calculate combined score for each paper: LLM score (80%) + Citation impact (20%)
+        for paper in top_cited_papers:
             llm_score = paper.get('llm_relevance_score', 0) / 10.0  # Normalize to 0-1
             citation_score = min(paper.get('citation_count', 0) / 100.0, 1.0)  # Normalize, cap at 100 citations = 1.0
-            paper['combined_score'] = (llm_score * 0.6) + (citation_score * 0.4)
+            paper['combined_score'] = round((llm_score * 0.8) + (citation_score * 0.2), 3)  # Round to 3 decimals
         
         # Sort by combined score and take top 8
-        final_papers = sorted(unique_papers.values(), key=lambda x: x['combined_score'], reverse=True)[:8]
+        final_papers = sorted(top_cited_papers, key=lambda x: x['combined_score'], reverse=True)[:8]
         
         print(f"\n{'='*80}")
         print(f"FINAL SELECTION: Top {len(final_papers)} papers for patent novelty assessment")
@@ -402,6 +367,143 @@ def search_semantic_scholar_articles_strategic(keywords_data: Dict[str, Any]) ->
         import traceback
         traceback.print_exc()
         return []
+
+def evaluate_papers_batch_llm(papers_list: List[Dict], invention_context: Dict) -> List[Dict]:
+    """
+    Evaluate multiple papers in ONE LLM call instead of individual calls.
+    """
+    try:
+        if not papers_list:
+            return []
+        
+        # Extract invention context
+        invention_title = invention_context.get('title', 'Unknown Invention')
+        tech_description = invention_context.get('technology_description', '')
+        tech_applications = invention_context.get('technology_applications', '')
+        keywords = invention_context.get('keywords', '')
+        
+        # Build prompt with all papers
+        papers_text = ""
+        for i, paper in enumerate(papers_list, 1):
+            paper_title = paper.get('title', 'Unknown Title')
+            paper_abstract = paper.get('abstract', 'No abstract available')
+            paper_authors = paper.get('authors', 'Unknown Authors')
+            paper_venue = paper.get('venue', 'Unknown Venue')
+            paper_year = paper.get('published_date', 'Unknown')
+            paper_id = paper.get('paperId', 'unknown')
+            
+            # Skip papers without sufficient abstract
+            if not paper_abstract or len(paper_abstract.strip()) < 50:
+                paper_abstract = "Abstract too short or missing - cannot evaluate"
+            
+            papers_text += f"""
+            Paper {i}:
+            ID: {paper_id}
+            Title: {paper_title}
+            Authors: {paper_authors}
+            Venue: {paper_venue}
+            Year: {paper_year}
+            Abstract: {paper_abstract}
+            """
+        
+        batch_prompt = f"""You are a patent novelty assessment expert. Evaluate ALL {len(papers_list)} research papers for relevance to the invention.
+
+        INVENTION TO ASSESS:
+        Title: {invention_title}
+        Technical Description: {tech_description}
+        Applications: {tech_applications}
+        Key Technologies: {keywords}
+
+        PAPERS TO EVALUATE:
+        {papers_text}
+
+        TASK: Evaluate each paper's relevance for patent novelty assessment (0-10 scale).
+
+        For each paper, analyze:
+        1. TECHNICAL OVERLAP: Similar technologies, methods, or mechanisms?
+        2. PROBLEM DOMAIN: Same or related problems?
+        3. APPLICATION SIMILARITY: Similar use cases or applications?
+        4. PRIOR ART POTENTIAL: Could affect novelty?
+
+        RESPOND WITH A JSON ARRAY (one object per paper, in order):
+        [
+        {{
+            "paper_id": "paper_id_here",
+            "relevance_score": 8,
+            "technical_overlaps": ["overlap1", "overlap2"],
+            "novelty_impact_assessment": "Brief assessment (2-3 sentences) explaining relevance, overlaps, and potential impact on novelty claims"
+        }},
+        ...
+        ]
+
+        SCORING GUIDELINES:
+        - 9-10: Directly describes same/very similar invention
+        - 7-8: Highly relevant, significant technical overlap
+        - 5-6: Moderately relevant, some overlap
+        - 3-4: Tangentially related, minimal overlap
+        - 0-2: Not relevant or very weak connection
+
+        IMPORTANT: Provide assessment for ALL {len(papers_list)} papers in order. Be concise but specific."""
+
+        # Make single LLM call for all papers (with extended timeout)
+        bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION, config=BEDROCK_CONFIG)
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 10000,  # Increased for batch response
+            "messages": [
+                {
+                    "role": "user",
+                    "content": batch_prompt
+                }
+            ]
+        }
+        
+        print(f"Making batch LLM call for {len(papers_list)} papers...")
+        response = bedrock_client.invoke_model(
+            modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            body=json.dumps(request_body)
+        )
+        
+        # Parse response
+        response_body = json.loads(response['body'].read())
+        llm_response = response_body['content'][0]['text']
+        
+        # Extract JSON array
+        json_start = llm_response.find('[')
+        json_end = llm_response.rfind(']') + 1
+        
+        if json_start != -1 and json_end != -1:
+            json_str = llm_response[json_start:json_end]
+            evaluations = json.loads(json_str)
+            print(f"✓ Batch evaluation successful: {len(evaluations)} papers evaluated")
+            return evaluations
+        else:
+            print("⚠ Could not parse JSON from batch LLM response")
+            # Return default evaluations
+            return [
+                {
+                    'paper_id': paper.get('paperId', 'unknown'),
+                    'relevance_score': 0,
+                    'technical_overlaps': [],
+                    'novelty_impact_assessment': 'Batch evaluation parsing failed'
+                }
+                for paper in papers_list
+            ]
+            
+    except Exception as e:
+        print(f"Error in batch LLM evaluation: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return default evaluations
+        return [
+            {
+                'paper_id': paper.get('paperId', 'unknown'),
+                'relevance_score': 0,
+                'technical_overlaps': [],
+                'novelty_impact_assessment': f'Batch evaluation failed: {str(e)}'
+            }
+            for paper in papers_list
+        ]
 
 def extract_semantic_scholar_authors(authors_list: List[Dict]) -> str:
     """Extract author names from Semantic Scholar author list."""
@@ -445,277 +547,6 @@ def extract_open_access_pdf(open_access_info: Dict) -> str:
     except Exception:
         return ''
 
-def assess_search_result_quality(articles: List[Dict], total_results: int, query_info: Dict, keywords_data: Dict) -> Dict[str, str]:
-    """Assess the quality of search results and determine if refinement is needed."""
-    try:
-        # Quality assessment logic
-        if total_results == 0:
-            return {
-                'action': 'refine',
-                'reason': 'No results found - query may be too specific or use uncommon terms'
-            }
-        elif total_results > 10000:
-            return {
-                'action': 'refine', 
-                'reason': 'Too many results - query is too broad, need more specific terms'
-            }
-        elif len(articles) < 5:
-            return {
-                'action': 'refine',
-                'reason': 'Very few results returned - try broader or alternative terms'
-            }
-        else:
-            # Check if articles have abstracts (important for relevance assessment)
-            articles_with_abstracts = sum(1 for article in articles if article.get('abstract') and article.get('abstract').strip())
-            if articles_with_abstracts < len(articles) * 0.3:  # Less than 30% have abstracts
-                return {
-                    'action': 'refine',
-                    'reason': 'Most papers lack abstracts - try different query to get better quality papers'
-                }
-            else:
-                return {
-                    'action': 'proceed',
-                    'reason': 'Good result quality - proceeding with relevance evaluation'
-                }
-                
-    except Exception as e:
-        print(f"Error assessing search quality: {e}")
-        return {
-            'action': 'proceed',
-            'reason': 'Assessment failed - proceeding with current results'
-        }
-
-def generate_refined_query(original_query_info: Dict, quality_assessment: Dict, keywords_data: Dict) -> str:
-    """Use LLM to intelligently refine search query based on quality issues."""
-    try:
-        # Extract context
-        original_query = original_query_info['query']
-        problem_reason = quality_assessment['reason']
-        invention_title = keywords_data.get('title', '')
-        keywords_string = keywords_data.get('keywords', '')
-        
-        # Create LLM refinement prompt
-        refinement_prompt = f"""You are a scholarly article search expert. The previous search query had issues and needs refinement.
-
-        INVENTION CONTEXT:
-        Title: {invention_title}
-        Available Keywords: {keywords_string}
-
-        PREVIOUS QUERY PROBLEM:
-        Original Query: "{original_query}"
-        Issue: {problem_reason}
-
-        TASK: Generate ONE improved search query that fixes this specific issue.
-
-        REFINEMENT STRATEGIES:
-        - If "no results" or "too specific": Make broader, use fewer/different terms
-        - If "too many results" or "too broad": Make more specific, add constraining terms  
-        - If "few results": Try alternative keywords or synonyms
-        - If "lack abstracts": Use more academic/research-focused terms
-
-        RESPOND WITH ONLY THE NEW QUERY (no explanation):"""
-
-        # Call Claude to generate refined query
-        bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
-        request_body = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 100,
-            "messages": [{"role": "user", "content": refinement_prompt}]
-        }
-        response = bedrock_client.invoke_model(
-            modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            body=json.dumps(request_body)
-        )
-        response_body = json.loads(response['body'].read())
-        refined_query = response_body['content'][0]['text'].strip()
-        refined_query = refined_query.strip('"').strip("'")
-        return refined_query
-        
-    except Exception as e:
-        print(f"Error generating LLM-refined query: {e}")
-        return "REFINEMENT_FAILED"  # Special marker
-
-def evaluate_paper_relevance_with_llm_internal(paper_data: Dict, invention_context: Dict) -> Dict[str, str]:
-    """Internal LLM evaluation function (not a tool)"""
-    try:
-        # Extract paper information
-        paper_title = paper_data.get('title', 'Unknown Title')
-        paper_abstract = paper_data.get('abstract', '')
-        paper_authors = paper_data.get('authors', '')
-        paper_venue = paper_data.get('venue', '')
-        paper_year = paper_data.get('published_date', '')
-        fields_of_study = paper_data.get('fields_of_study', [])
-        
-        # Extract invention context
-        invention_title = invention_context.get('title', 'Unknown Invention')
-        tech_description = invention_context.get('technology_description', '')
-        tech_applications = invention_context.get('technology_applications', '')
-        keywords = invention_context.get('keywords', '')
-        
-        # Skip papers without abstracts
-        if not paper_abstract or len(paper_abstract.strip()) < 50:
-            return {
-                'relevance_score': 0,
-                'technical_overlaps': [],
-                'novelty_impact_assessment': 'Paper lacks sufficient abstract content for meaningful relevance assessment. Cannot determine technical overlaps or assess impact on novelty claims.'
-            }
-        
-        # Make LLM call for relevance evaluation - MUST WORK
-        evaluation_prompt = f"""You are a patent novelty assessment expert. Evaluate if this research paper is relevant for assessing the novelty of the given invention.
-
-        INVENTION TO ASSESS:
-        Title: {invention_title}
-        Technical Description: {tech_description}
-        Applications: {tech_applications}
-        Key Technologies: {keywords}
-
-        RESEARCH PAPER TO EVALUATE:
-        Title: {paper_title}
-        Abstract: {paper_abstract}
-        Authors: {paper_authors}
-        Venue: {paper_venue}
-        Year: {paper_year}
-        Fields: {', '.join(fields_of_study) if fields_of_study else 'Not specified'}
-
-        ANALYSIS TASK:
-        Determine if this paper could impact the novelty assessment of the invention by analyzing:
-        1. TECHNICAL OVERLAP: Does the paper describe similar technologies, methods, or mechanisms?
-        2. PROBLEM DOMAIN: Does it address the same or related problems?
-        3. APPLICATION SIMILARITY: Does it target similar use cases or applications?
-        4. PRIOR ART POTENTIAL: Could this work be considered prior art that affects novelty?
-
-        RESPOND IN THIS EXACT JSON FORMAT:
-        {{
-            "relevance_score": 0-10,
-            "technical_overlaps": ["list", "of", "specific", "technical", "overlaps"],
-            "novelty_impact_assessment": "Comprehensive assessment including: (1) Why this paper is/isn't relevant for novelty assessment, (2) Specific technical overlaps and similarities, (3) How this paper could affect the invention's novelty claims, (4) Key findings or methods that relate to the invention"
-        }}
-
-        NOVELTY IMPACT ASSESSMENT SHOULD INCLUDE:
-        - Clear explanation of relevance (2-3 sentences)
-        - Specific technical overlaps identified
-        - Potential impact on novelty claims
-        - Key findings or methods from the paper that relate to the invention
-        - Recommendation for examiner consideration
-
-        RELEVANCE SCORE GUIDELINES (0-10):
-        - 9-10: Directly describes the same or very similar invention
-        - 7-8: Highly relevant, significant technical overlap
-        - 5-6: Moderately relevant, some technical overlap
-        - 3-4: Tangentially related, minimal overlap
-        - 0-2: Not relevant or very weak connection
-
-        IMPORTANT: Score ALL papers honestly - even low scores are valuable for examiners.
-        The top 8 papers by score will be stored regardless of absolute score values.
-        Be precise and focus specifically on patent novelty implications."""
-
-        # Make the LLM call with retry logic
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                bedrock_client = boto3.client('bedrock-runtime', region_name=AWS_REGION)
-                # Prepare the request for Claude
-                request_body = {
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 1000,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": evaluation_prompt
-                        }
-                    ]
-                }
-                # Make the LLM call
-                response = bedrock_client.invoke_model(
-                    modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    body=json.dumps(request_body)
-                )
-                
-                # Parse the response
-                response_body = json.loads(response['body'].read())
-                llm_response = response_body['content'][0]['text']
-                
-                # Try to parse JSON from LLM response
-                json_start = llm_response.find('{')
-                json_end = llm_response.rfind('}') + 1
-                if json_start != -1 and json_end != -1:
-                    json_str = llm_response[json_start:json_end]
-                    llm_evaluation = json.loads(json_str)
-                    
-                    # Validate required fields
-                    if 'relevance_score' in llm_evaluation and 'novelty_impact_assessment' in llm_evaluation:
-                        return {
-                            'relevance_score': llm_evaluation.get('relevance_score', 0),
-                            'technical_overlaps': llm_evaluation.get('technical_overlaps', []),
-                            'novelty_impact_assessment': llm_evaluation.get('novelty_impact_assessment', 'LLM evaluation completed but no detailed assessment provided.')
-                        }
-                    else:
-                        print(f"LLM response missing required fields (attempt {attempt + 1}/{max_retries})")
-                        if attempt == max_retries - 1:
-                            return {
-                                'relevance_score': 0,
-                                'technical_overlaps': [],
-                                'novelty_impact_assessment': 'LLM response validation failed - missing required fields after all retries. Unable to assess relevance or identify technical overlaps.'
-                            }
-                else:
-                    print(f"Could not find JSON in LLM response (attempt {attempt + 1}/{max_retries})")
-                    if attempt == max_retries - 1:
-                        return {
-                            'relevance_score': 0,
-                            'technical_overlaps': [],
-                            'novelty_impact_assessment': 'LLM response parsing failed - could not extract JSON after all retries. Unable to assess relevance or novelty impact.'
-                        }
-                        
-            except json.JSONDecodeError as je:
-                print(f"JSON parsing error (attempt {attempt + 1}/{max_retries}): {je}")
-                if attempt == max_retries - 1:
-                    return {
-                        'relevance_score': 0,
-                        'technical_overlaps': [],
-                        'novelty_impact_assessment': f'LLM JSON parsing failed after all retries: {str(je)}. Unable to assess relevance or novelty impact.'
-                    }
-                    
-            except Exception as e:
-                print(f"LLM call error (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt == max_retries - 1:
-                    return {
-                        'relevance_score': 0,
-                        'technical_overlaps': [],
-                        'novelty_impact_assessment': f'LLM evaluation failed after all retries: {str(e)}. Unable to assess relevance or novelty impact.'
-                    }
-            
-            # Wait before retry
-            if attempt < max_retries - 1:
-                time.sleep(1)  # Wait 1 second before retry
-        
-    except Exception as e:
-        print(f"Error in LLM paper relevance evaluation: {str(e)}")
-        return {
-            'relevance_score': 0,
-            'technical_overlaps': [],
-            'novelty_impact_assessment': f'Evaluation failed due to error: {str(e)}. Unable to assess relevance, technical overlaps, or novelty impact.'
-        }
-
-def calculate_recency_score(published_date: str) -> float:
-    """Calculate recency score based on publication year (0.0 - 1.0)."""
-    try:
-        if not published_date:
-            return 0.5  # Default for unknown dates
-        
-        # Extract year from date string (handles formats like "2024", "2024-01-15", etc.)
-        year_str = published_date.split('-')[0]
-        pub_year = int(year_str)
-        current_year = datetime.now().year
-        
-        # Calculate score: 1.0 for current year, decreases over 20 years
-        years_old = current_year - pub_year
-        score = max(0.0, 1.0 - (years_old / 20.0))
-        
-        return round(score, 3)
-    except Exception as e:
-        print(f"Error calculating recency score: {e}")
-        return 0.5  # Default fallback
-
 @tool
 def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, Any]) -> str:
     """Store LLM-analyzed Semantic Scholar article in DynamoDB with enhanced metadata."""
@@ -726,7 +557,6 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
         paper_id = article_data.get('paperId', 'unknown')
         article_title = article_data.get('title', 'Unknown Title')
 
-        # Use the combined score calculated during search (LLM 60% + Citations 40%)
         # This is the final relevance score used for ranking
         relevance_score = article_data.get('combined_score', 0.0)
         
@@ -770,7 +600,7 @@ scholarly_article_agent = Agent(
     model="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     tools=[read_keywords_from_dynamodb, search_semantic_scholar_articles_strategic, 
            store_semantic_scholar_analysis],
-    system_prompt="""You are an Intelligent Scholarly Article Search Expert using LLM-driven adaptive search for Patent Novelty Assessment.
+    system_prompt="""You are an Intelligent Scholarly Article Search Expert using OPTIMIZED LLM-driven search for Patent Novelty Assessment.
 
     EXECUTE THIS WORKFLOW EXACTLY:
 
@@ -778,36 +608,35 @@ scholarly_article_agent = Agent(
     - Use read_keywords_from_dynamodb to get complete invention data
     - Extract title, technology description, applications, and keywords
 
-    2. EXECUTE INTELLIGENT SEARCH
+    2. EXECUTE OPTIMIZED INTELLIGENT SEARCH
     - Use search_semantic_scholar_articles_strategic with the full invention context
-    - This tool will automatically:
+    - This OPTIMIZED tool will automatically:
       * Generate optimal search queries using LLM analysis
-      * Execute adaptive searches with refinement based on result quality
-      * Evaluate each paper using LLM for semantic relevance
-      * Return only the top 8 most relevant papers
+      * Execute 5 searches (10 papers each = 50 total papers)
+      * Deduplicate papers (~30-40 unique papers)
+      * Pre-filter to top 30 by citation count
+      * Batch evaluate all 30 papers in ONE LLM call (not 30 separate calls)
+      * Rank by combined score (LLM 60% + Citations 40%)
+      * Return top 8 most relevant papers
 
     3. STORE RESULTS - ONE AT A TIME
     - For each paper returned by the strategic search, call store_semantic_scholar_analysis
     - Store papers SEQUENTIALLY: Call tool → Wait for result → Call next tool
     - DO NOT call multiple store_semantic_scholar_analysis in the same turn
     - Pass the complete paper data object which includes LLM analysis results
-    - Continue until all papers are stored
+    - Continue until all 8 papers are stored
 
     CRITICAL PRINCIPLES:
-    - Trust the LLM-driven search strategy - it will handle query generation and refinement
     - Focus on semantic relevance, not just keyword matching
-    - Each paper is evaluated by LLM for relevance scoring and novelty impact
     - Store all papers returned by the strategic search (top 8 by combined score)
     - Target exactly 8 papers ranked by relevance for comprehensive novelty assessment
     - SEQUENTIAL EXECUTION: Store papers one at a time, waiting for each result before the next call
 
     QUALITY ASSURANCE:
-    - The strategic search uses adaptive refinement based on result quality
-    - LLM evaluates each paper's abstract for technical overlap and novelty impact
     - Papers are ranked by combined score (LLM 60% + Citations 40%)
     - Top 8 papers are returned regardless of absolute scores
-    - Detailed novelty impact assessments and technical overlaps are captured for transparency
+    - Detailed novelty impact assessments and technical overlaps are captured
     - Examiners can review all 8 papers with scores to make final relevance decisions
 
-    Your goal: Execute the intelligent search workflow to identify and rank the top 8 academic papers by relevance, providing comprehensive LLM-powered novelty impact assessments for each paper to support patent examination."""
+    Your goal: Execute the OPTIMIZED search workflow to identify and rank the top 8 academic papers by relevance, providing comprehensive LLM-powered novelty impact assessments for each paper to support patent examination."""
 )
