@@ -576,7 +576,7 @@ def store_semantic_scholar_analysis(pdf_filename: str, article_data: Dict[str, A
             'search_query_used': article_data.get('search_query_used', ''),
             'abstract': article_data.get('abstract', ''),
             
-            # Final relevance score (LLM 60% + Citations 40%, normalized 0-1)
+            # Final relevance score, normalized 0-1)
             'relevance_score': Decimal(str(relevance_score)),
             'key_technical_overlaps': ', '.join(article_data.get('technical_overlaps', [])) if article_data.get('technical_overlaps') else '',
             'novelty_impact_assessment': article_data.get('novelty_impact_assessment', ''),
@@ -616,7 +616,7 @@ scholarly_article_agent = Agent(
       * Deduplicate papers (~30-40 unique papers)
       * Pre-filter to top 30 by citation count
       * Batch evaluate all 30 papers in ONE LLM call (not 30 separate calls)
-      * Rank by combined score (LLM 60% + Citations 40%)
+      * Rank by combined score
       * Return top 8 most relevant papers
 
     3. STORE RESULTS - ONE AT A TIME
@@ -633,7 +633,7 @@ scholarly_article_agent = Agent(
     - SEQUENTIAL EXECUTION: Store papers one at a time, waiting for each result before the next call
 
     QUALITY ASSURANCE:
-    - Papers are ranked by combined score (LLM 60% + Citations 40%)
+    - Papers are ranked by combined score
     - Top 8 papers are returned regardless of absolute scores
     - Detailed novelty impact assessments and technical overlaps are captured
     - Examiners can review all 8 papers with scores to make final relevance decisions
