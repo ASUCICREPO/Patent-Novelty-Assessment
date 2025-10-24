@@ -243,7 +243,7 @@ aws s3 cp source.zip s3://$S3_SOURCE_BUCKET/source.zip --no-cli-pager
 
 FRONTEND_SOURCE='{
   "type":"S3",
-  "location":"s3://'$S3_SOURCE_BUCKET'/source.zip",
+  "location":"'$S3_SOURCE_BUCKET'/source.zip",
   "buildspec":"buildspec-frontend.yml"
 }'
 
