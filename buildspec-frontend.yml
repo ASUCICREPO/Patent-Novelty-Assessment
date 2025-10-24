@@ -7,11 +7,11 @@ phases:
     commands:
       - echo "Installing zip utility..."
       - yum install -y zip
-      - echo "Changing into frontend directory"
-      - cd frontend
 
   pre_build:
     commands:
+      - echo "Changing into frontend directory"
+      - cd frontend
       - echo "Installing frontend dependencies..."
       - npm ci
       - echo "Creating .env.local with API Gateway URL..."
