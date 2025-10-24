@@ -20,7 +20,7 @@ BDA_PROJECT_ARN="arn:aws:bedrock:us-west-2:216989103356:data-automation-project/
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-frontend"
-REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment" # IMPORTANT: Replace with your GitHub repository URL
+REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git" # IMPORTANT: Replace with your GitHub repository URL
 
 # Global variables to store IDs/URLs
 API_GATEWAY_URL=""
