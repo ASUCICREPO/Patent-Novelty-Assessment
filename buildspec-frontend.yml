@@ -4,7 +4,6 @@ phases:
   install:
     runtime-versions:
       nodejs: 20
-      python: 3.9
     commands:
       - echo "Installing zip utility..."
       - yum install -y zip
@@ -16,10 +15,7 @@ phases:
       - echo "Installing frontend dependencies..."
       - npm ci
       - echo "Creating .env.local with API Gateway URL..."
-      - |
-        cat > .env.local << EOF
-        NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL
-        EOF
+      - echo "NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL" > .env.local
       - echo "Environment configured with API Gateway URL: $API_GATEWAY_URL"
       - echo "Contents of .env.local file:"
       - cat .env.local
@@ -43,10 +39,8 @@ phases:
           --branch-name frontend-deployment-integration \
           --output json > deployment_response.json
       - echo "Extracting upload URL and job ID..."
-      - >-
-        export UPLOAD_URL=$(python3 -c "import json; data=json.load(open('deployment_response.json')); print(data['zipUploadUrl'])")
-      - >-
-        export JOB_ID=$(python3 -c "import json; data=json.load(open('deployment_response.json')); print(data['jobId'])")
+      - export UPLOAD_URL=$(node -e "const data=require('./deployment_response.json'); console.log(data.zipUploadUrl)")
+      - export JOB_ID=$(node -e "const data=require('./deployment_response.json'); console.log(data.jobId)")
       - echo "Uploading build.zip to Amplify..."
       - curl -X PUT -T build.zip "$UPLOAD_URL"
       - echo "Starting deployment..."
