@@ -16,7 +16,7 @@ phases:
       - npm ci
       - echo "Creating .env.local with API Gateway URL..."
       - echo "NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL" > .env.local
-      - echo "✅ Environment configured with API Gateway URL: $API_GATEWAY_URL"
+      - echo "Environment configured with API Gateway URL: $API_GATEWAY_URL"
 
   build:
     commands:
@@ -28,7 +28,7 @@ phases:
 
   post_build:
     commands:
-      - echo "🚀 Deploying frontend to Amplify..."
+      - echo "Deploying frontend to Amplify..."
       - echo $AMPLIFY_APP_ID
       - echo "Creating Amplify deployment..."
       - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name frontend-deployment-integration --output json > deployment_response.json
@@ -39,4 +39,4 @@ phases:
       - curl -X PUT -T build.zip "$UPLOAD_URL"
       - echo "Starting deployment..."
       - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name frontend-deployment-integration --job-id $JOB_ID
-      - echo "✅ Frontend deployment initiated successfully!"
+      - echo "Frontend deployment initiated successfully!"
