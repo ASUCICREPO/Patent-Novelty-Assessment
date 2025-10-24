@@ -18,6 +18,7 @@ BDA_PROJECT_ARN="arn:aws:bedrock:us-west-2:216989103356:data-automation-project/
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 AMPLIFY_BRANCH_NAME="main"
+REPOSITORY_URL="https://github.com/your-username/patent-novelty-assessment.git"  # IMPORTANT: Replace with your GitHub repository URL
 CODEBUILD_PROJECT_NAME="patent-novelty-frontend"
 
 # Function to print colored output
@@ -73,6 +74,13 @@ EXISTING_PROJECT=$(aws codebuild list-projects --query "projects[?contains(@, '$
 
 if [ -n "$EXISTING_PROJECT" ]; then
     print_warning "CodeBuild project '$CODEBUILD_PROJECT_NAME' already exists"
+    print_status "Updating CodeBuild project to use frontend-deployment-integration branch..."
+    
+    # Update the existing project to use the correct branch
+    aws codebuild update-project \
+        --name "$CODEBUILD_PROJECT_NAME" \
+        --source-version refs/heads/frontend-deployment-integration \
+        --no-cli-pager || print_warning "Failed to update CodeBuild project branch"
 else
     print_status "Creating CodeBuild project for frontend deployment..."
     
@@ -80,11 +88,11 @@ else
     aws codebuild create-project \
         --name "$CODEBUILD_PROJECT_NAME" \
         --description "Frontend build and deployment for Patent Novelty Assessment" \
-        --source type=GITHUB,location=https://github.com/dummy/repo.git \
+        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml" \
+        --source-version refs/heads/frontend-deployment-integration \
         --artifacts type=NO_ARTIFACTS \
-        --environment type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0 \
+        --environment type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_SMALL \
         --service-role arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/CodeBuildServiceRole \
-        --buildspec buildspec-frontend.yml \
         --no-cli-pager || print_warning "Failed to create CodeBuild project. You may need to create it manually."
     
     print_success "CodeBuild project created: $CODEBUILD_PROJECT_NAME"
@@ -154,6 +162,7 @@ print_status "🚀 Phase 5: Deploying Frontend using CodeBuild..."
 print_status "Starting CodeBuild job for frontend deployment..."
 BUILD_ID=$(aws codebuild start-build \
     --project-name "$CODEBUILD_PROJECT_NAME" \
+    --source-version refs/heads/frontend-deployment-integration \
     --environment-variables-override \
         name=API_GATEWAY_URL,value="$API_GATEWAY_URL" \
     --query 'build.id' \
