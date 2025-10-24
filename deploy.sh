@@ -20,7 +20,6 @@ BDA_PROJECT_ARN="arn:aws:bedrock:us-west-2:216989103356:data-automation-project/
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-frontend"
-REPOSITORY_URL="https://github.com/your-username/patent-novelty-assessment.git" # IMPORTANT: Replace with your GitHub repository URL
 
 # Global variables to store IDs/URLs
 API_GATEWAY_URL=""
@@ -233,9 +232,18 @@ FRONTEND_ENVIRONMENT='{
   "environmentVariables": ['"$FRONTEND_ENV_VARS_ARRAY"']
 }'
 
+# Create local source zip for CodeBuild
+print_status "Creating source zip for CodeBuild..."
+zip -r source.zip . -x "node_modules/*" ".git/*" "*.log" "*.tmp" "*.tsbuildinfo" "backend/node_modules/*" "frontend/node_modules/*" "backend/cdk.out/*" "source.zip"
+
+# Upload to S3 for CodeBuild to use
+S3_SOURCE_BUCKET="patent-novelty-source-$(date +%s)"
+aws s3 mb s3://$S3_SOURCE_BUCKET --region $AWS_REGION --no-cli-pager
+aws s3 cp source.zip s3://$S3_SOURCE_BUCKET/source.zip --no-cli-pager
+
 FRONTEND_SOURCE='{
-  "type":"GITHUB",
-  "location":"'$REPOSITORY_URL'",
+  "type":"S3",
+  "location":"s3://'$S3_SOURCE_BUCKET'/source.zip",
   "buildspec":"buildspec-frontend.yml"
 }'
 
@@ -305,12 +313,17 @@ fi
 
 print_success "Frontend deployed to Amplify successfully!"
 
+# --- Cleanup ---
+print_status "🧹 Cleaning up temporary resources..."
+rm -f source.zip
+aws s3 rb s3://$S3_SOURCE_BUCKET --force --no-cli-pager
+print_success "Cleanup completed"
+
 # --- Final Summary ---
 print_success "🎉 COMPLETE DEPLOYMENT SUCCESSFUL! 🎉"
 echo ""
 echo "📊 Deployment Summary:"
 echo "   🌐 API Gateway URL: $API_GATEWAY_URL"
-echo "   🪣 S3 Bucket: $S3_BUCKET_NAME"
 echo "   🚀 Amplify App ID: $AMPLIFY_APP_ID"
 echo "   🌍 Frontend URL: https://main.$AMPLIFY_URL"
 echo "   🏗️  CDK Stack: $STACK_NAME"
