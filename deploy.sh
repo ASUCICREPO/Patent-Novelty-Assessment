@@ -83,7 +83,8 @@ if [ -n "$EXISTING_PROJECT" ]; then
     # Update the existing project to use the correct branch and connection
     aws codebuild update-project \
         --name "$CODEBUILD_PROJECT_NAME" \
-        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml",auth="type=OAUTH,resource=$GITHUB_CONNECTION_ARN" \
+        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml" \
+        --source-auth type=OAUTH,resource="$GITHUB_CONNECTION_ARN" \
         --source-version refs/heads/frontend-deployment-integration \
         --no-cli-pager || print_warning "Failed to update CodeBuild project"
 else
@@ -93,7 +94,8 @@ else
     aws codebuild create-project \
         --name "$CODEBUILD_PROJECT_NAME" \
         --description "Frontend build and deployment for Patent Novelty Assessment" \
-        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml",auth="type=OAUTH,resource=$GITHUB_CONNECTION_ARN" \
+        --source type=GITHUB,location="$REPOSITORY_URL",buildspec="buildspec-frontend.yml" \
+        --source-auth type=OAUTH,resource="$GITHUB_CONNECTION_ARN" \
         --source-version refs/heads/frontend-deployment-integration \
         --artifacts type=NO_ARTIFACTS \
         --environment type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_SMALL \
