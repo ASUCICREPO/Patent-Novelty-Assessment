@@ -291,16 +291,16 @@ print_success "Frontend build and deployment completed successfully!"
 
 # Get Amplify URL
 print_status "Getting Amplify application URL..."
-AMPLIFY_URL=$(aws amplify get-branch \
+AMPLIFY_URL=$(aws amplify get-app \
     --app-id "$AMPLIFY_APP_ID" \
-    --branch-name frontend-deployment-integration \
-    --query 'branch.associatedResource.defaultDomain' \
+    --query 'app.defaultDomain' \
     --output text \
     --region "$AWS_REGION" \
     --no-cli-pager)
 
 if [ -z "$AMPLIFY_URL" ] || [ "$AMPLIFY_URL" = "None" ]; then
-    print_error "Failed to retrieve Amplify Application URL."
+    print_warning "Could not retrieve Amplify URL, using app ID instead"
+    AMPLIFY_URL="$AMPLIFY_APP_ID.amplifyapp.com"
 fi
 
 print_success "Frontend deployed to Amplify successfully!"
