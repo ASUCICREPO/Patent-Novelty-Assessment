@@ -220,13 +220,16 @@ BACKEND_ENV_VARS_ARRAY='{
     "type": "PLAINTEXT"
   }'
 
-BACKEND_ENVIRONMENT='{
+BACKEND_ENVIRONMENT=$(cat <<EOF
+{
   "type": "ARM_CONTAINER",
   "image": "aws/codebuild/amazonlinux-aarch64-standard:3.0",
   "computeType": "BUILD_GENERAL1_LARGE",
   "privilegedMode": true,
-  "environmentVariables": ['"$BACKEND_ENV_VARS_ARRAY"']
-}'
+  "environmentVariables": [$BACKEND_ENV_VARS_ARRAY]
+}
+EOF
+)
 
 BACKEND_SOURCE='{
   "type":"GITHUB",
@@ -296,9 +299,9 @@ while [ "$BACKEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
       --output json 2>/dev/null)
   fi
   
-  # Print new log messages
+  # Print new log messages (filter out container metadata and empty lines)
   if [ -n "$LOG_OUTPUT" ]; then
-    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null
+    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null | grep -v "^\[Container\]" | grep -v "^$" || true
     LAST_TOKEN=$(echo "$LOG_OUTPUT" | jq -r '.nextForwardToken' 2>/dev/null)
   fi
   
@@ -399,12 +402,15 @@ FRONTEND_ENV_VARS_ARRAY='{
     "type": "PLAINTEXT"
   }'
 
-FRONTEND_ENVIRONMENT='{
+FRONTEND_ENVIRONMENT=$(cat <<EOF
+{
   "type": "LINUX_CONTAINER",
   "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
   "computeType": "BUILD_GENERAL1_MEDIUM",
-  "environmentVariables": ['"$FRONTEND_ENV_VARS_ARRAY"']
-}'
+  "environmentVariables": [$FRONTEND_ENV_VARS_ARRAY]
+}
+EOF
+)
 
 FRONTEND_SOURCE='{
   "type":"GITHUB",
@@ -471,9 +477,9 @@ while [ "$FRONTEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
       --output json 2>/dev/null)
   fi
   
-  # Print new log messages
+  # Print new log messages (filter out container metadata and empty lines)
   if [ -n "$LOG_OUTPUT" ]; then
-    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null
+    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null | grep -v "^\[Container\]" | grep -v "^$" || true
     LAST_TOKEN=$(echo "$LOG_OUTPUT" | jq -r '.nextForwardToken' 2>/dev/null)
   fi
   
