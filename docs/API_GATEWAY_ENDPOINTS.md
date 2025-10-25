@@ -1,6 +1,6 @@
 # Patent Novelty Assessment - API Gateway Endpoints
 
-This document provides comprehensive documentation for all internal API Gateway endpoints used by the Patent Novelty Assessment application.
+This document provides comprehensive documentation for all internal API Gateway endpoints used by the Patent Novelty Assessment application. These endpoints power the frontend application and provide programmatic access to all system functionality.
 
 ## Base URL
 
@@ -10,7 +10,40 @@ https://your-api-id.execute-api.us-west-2.amazonaws.com/prod
 
 ## Authentication
 
-All endpoints use **AWS API Gateway** authentication. No additional authentication headers are required for frontend requests.
+**No authentication is required** for API Gateway endpoints. The API is publicly accessible without any authentication headers or API keys.
+
+## Frontend Integration
+
+The frontend application uses these endpoints through a centralized configuration system. All API calls are handled by utility functions in the `lib/` directory:
+
+### Configuration
+
+```typescript
+// lib/config.ts
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+
+export function getApiUrl(endpoint: string): string {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  return API_BASE_URL ? `${API_BASE_URL}${cleanEndpoint}` : `/api/${cleanEndpoint}`;
+}
+```
+
+### Usage Examples
+
+```typescript
+// File upload
+const uploadUrl = await fetch(getApiUrl('/s3?operation=get_presigned_url&filename=test.pdf'));
+
+// Query results
+const patentResults = await fetch(getApiUrl('/dynamodb?tableType=patent-results&pdfFilename=test'));
+
+// Trigger agent
+const response = await fetch(getApiUrl('/agent-invoke'), {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ action: 'search_patents', pdfFilename: 'test' })
+});
+```
 
 ## Common Headers
 
@@ -40,7 +73,8 @@ All endpoints return standardized error responses:
 **HTTP Status Codes:**
 - `200` - Success
 - `400` - Bad Request (invalid parameters)
-- `404` - Not Found (resource doesn't exist)
+- `404` - Not Found (resource doesn't exist in DynamoDB)
+- `405` - Method Not Allowed (wrong HTTP method)
 - `500` - Internal Server Error (Lambda function error)
 
 ---
@@ -185,8 +219,7 @@ curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tabl
 ```
 
 **Response Fields:**
-- `results`: Array of patent objects with detailed information
-- `count`: Total number of results
+- `result`: Single analysis object with metadata and keywords
 
 ### 2. Query Scholarly Article Results
 
@@ -251,17 +284,14 @@ curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tabl
 **Response:**
 ```json
 {
-  "results": [
-    {
-      "fileName": "patent",
-      "keywords": "medical device,stent,deployment",
-      "analysis_timestamp": "2025-01-23T10:00:00.000Z",
-      "status": "completed",
-      "patent_count": 8,
-      "scholarly_count": 12
-    }
-  ],
-  "count": 1
+  "result": {
+    "fileName": "patent",
+    "keywords": "medical device,stent,deployment",
+    "analysis_timestamp": "2025-01-23T10:00:00.000Z",
+    "status": "completed",
+    "patent_count": 8,
+    "scholarly_count": 12
+  }
 }
 ```
 
@@ -283,9 +313,7 @@ curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tabl
 **Response:**
 ```json
 {
-  "message": "Keywords updated successfully",
-  "fileName": "patent",
-  "updatedKeywords": "updated,keyword,list"
+  "message": "Keywords updated successfully"
 }
 ```
 
@@ -309,9 +337,7 @@ curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tabl
 **Response:**
 ```json
 {
-  "message": "Add to report flag updated successfully",
-  "publicationNumber": "12345678",
-  "addToReport": "Yes"
+  "message": "Updated add_to_report for patent 12345678 to Yes"
 }
 ```
 
@@ -461,13 +487,224 @@ The system implements automatic retry logic for:
 
 ## Testing
 
-Use the provided curl examples or test with tools like Postman:
+### Complete Endpoint Testing (Execution Flow Order)
 
+Use these comprehensive curl examples to test all endpoints in the order they would be executed:
+
+#### Step 1: File Upload
+
+**1. Get Presigned Upload URL**
 ```bash
-# Test all endpoints
-curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?operation=get_presigned_url&filename=test.pdf"
-curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tableType=patent-results&pdfFilename=test"
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?operation=get_presigned_url&filename=invention.pdf"
+```
+
+**2. Direct File Upload (POST)**
+```bash
+curl -X POST "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?filename=invention.pdf" \
+  -H "Content-Type: application/pdf" \
+  --data-binary @invention.pdf
+```
+
+**⚠️ Important Note**: After uploading a file, wait for the system to process it (keyword extraction, patent search, literature search) before testing the following endpoints. This typically takes 25-30 minutes.
+
+#### Step 2: Check Processing Results & Update Results (All Can Be Done in Parallel)
+
+**3. Get Analysis Results (Keywords)**
+```bash
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tableType=analysis&fileName=invention"
+```
+
+**4. Update Keywords (Optional - can be done immediately after getting analysis results)**
+```bash
+curl -X PUT "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "update_keywords",
+    "tableType": "analysis",
+    "fileName": "invention",
+    "keywords": ["medical device", "stent", "deployment"]
+  }'
+```
+
+**5. Get Patent Search Results**
+```bash
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tableType=patent-results&pdfFilename=invention"
+```
+
+**6. Update Patent Add to Report Flag (Optional - can be done immediately after getting patent results)**
+```bash
+curl -X PUT "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "update_add_to_report",
+    "tableType": "patent-results",
+    "pdfFilename": "invention",
+    "patentNumber": "12345678",
+    "addToReport": true
+  }'
+```
+
+**7. Get Scholarly Article Results**
+```bash
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tableType=scholarly-results&pdfFilename=invention"
+```
+
+**8. Update Scholarly Article Add to Report Flag (Optional - can be done immediately after getting scholarly results)**
+```bash
+curl -X PUT "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "update_add_to_report",
+    "tableType": "scholarly-results",
+    "pdfFilename": "invention",
+    "articleDoi": "10.1000/182",
+    "addToReport": true
+  }'
+```
+
+#### Step 3: Trigger Additional Processing (Optional)
+
+**9. Trigger Patent Search**
+```bash
 curl -X POST "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/agent-invoke" \
   -H "Content-Type: application/json" \
-  -d '{"action": "search_patents", "pdfFilename": "test"}'
+  -d '{"action": "search_patents", "pdfFilename": "invention"}'
 ```
+
+**10. Trigger Scholarly Search**
+```bash
+curl -X POST "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/agent-invoke" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "search_articles", "pdfFilename": "invention"}'
+```
+
+**11. Trigger Report Generation**
+```bash
+curl -X POST "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/agent-invoke" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "generate_report", "pdfFilename": "invention"}'
+```
+
+#### Step 5: Check and Download Reports
+
+**12. Check Report Status**
+```bash
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?operation=check_reports&filename=invention"
+```
+
+**13. Get Report Download URLs**
+```bash
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?operation=get_signed_urls&filename=invention"
+```
+
+### Error Testing
+
+**Test Invalid Parameters:**
+```bash
+# Missing required parameters
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?operation=get_presigned_url"
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tableType=patent-results"
+
+# Invalid operation
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/s3?operation=invalid&filename=test.pdf"
+# Expected response: {"error": "Invalid operation. Must be: get_signed_urls, check_reports, or get_presigned_url"}
+
+# Invalid table type
+curl "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/dynamodb?tableType=invalid&pdfFilename=test"
+# Expected response: {"error": "Invalid tableType. Must be: analysis, patent-results, or scholarly-results"}
+
+# Invalid action
+curl -X POST "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod/agent-invoke" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "invalid_action", "pdfFilename": "test"}'
+# Expected response: {"error": "Invalid action. Must be one of: search_patents, search_articles, generate_report"}
+```
+
+### Testing with Postman
+
+Import these requests into Postman:
+
+**Collection JSON:**
+```json
+{
+  "info": {
+    "name": "Patent Novelty Assessment API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "S3 - Get Presigned URL",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/s3?operation=get_presigned_url&filename=invention.pdf",
+          "host": ["{{baseUrl}}"],
+          "path": ["s3"],
+          "query": [
+            {"key": "operation", "value": "get_presigned_url"},
+            {"key": "filename", "value": "invention.pdf"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "DynamoDB - Get Patent Results",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/dynamodb?tableType=patent-results&pdfFilename=invention",
+          "host": ["{{baseUrl}}"],
+          "path": ["dynamodb"],
+          "query": [
+            {"key": "tableType", "value": "patent-results"},
+            {"key": "pdfFilename", "value": "invention"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "Agent - Trigger Patent Search",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"search_patents\",\n  \"pdfFilename\": \"invention\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/agent-invoke",
+          "host": ["{{baseUrl}}"],
+          "path": ["agent-invoke"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://your-api-id.execute-api.us-west-2.amazonaws.com/prod"
+    }
+  ]
+}
+```
+
+### Expected Response Codes
+
+- **200**: Success
+- **400**: Bad Request (missing/invalid parameters)
+- **405**: Method Not Allowed (wrong HTTP method)
+- **500**: Internal Server Error (Lambda function error)
+
+### Testing Checklist
+
+- [ ] All S3 operations (4 endpoints)
+- [ ] All DynamoDB GET operations (3 endpoints)
+- [ ] All DynamoDB PUT operations (2 endpoints)
+- [ ] All Agent Invoke operations (3 endpoints)
+- [ ] Error scenarios with invalid parameters
+- [ ] File upload with actual PDF file
+- [ ] Response validation against documented schemas
