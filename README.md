@@ -1,30 +1,33 @@
 # Patent Novelty Assessment System
 
-An AI-powered patent novelty assessment platform that automates prior art searches across patent databases and academic literature. The system analyzes invention disclosure documents, generates strategic search keywords, executes comprehensive searches, and produces professional PDF reports for patent examiners and technology transfer professionals.
+An intelligent patent novelty assessment platform built with AWS Bedrock, Agent Core, and deployed on AWS Lambda. The system provides automated prior art searches across patent databases and academic literature through AI-powered agents with comprehensive knowledge base integration.
 
-![User Interface Demo](./docs/media/user-interface.gif)
+![User Interface](./docs/media/user-interface.gif)
 
-> **[PLACEHOLDER]** Please provide a GIF or screenshot of the application interface and save it as `docs/media/user-interface.gif`
-
-## Table of Contents
-
-| Index                                                    | Description                                             |
-| :------------------------------------------------------- | :------------------------------------------------------ |
-| [High Level Architecture](#high-level-architecture)      | High level overview illustrating component interactions |
-| [Deployment Guide](./docs/deploymentGuide.md)            | How to deploy the project                               |
-| [User Guide](./docs/userGuide.md)                        | The working solution                                    |
-| [Directories](#directories)                              | General project directory structure                     |
-| [API Documentation](./docs/APIdoc.md)                    | Documentation on the APIs the project uses              |
-| [Architecture Deep Dive](./docs/architectureDeepDive.md) | Technical architecture explanation                      |
-| [Modification Guide](./docs/modificationGuide.md)        | Developer guide for extending/modifying                 |
+| Index                                               | Description                                             |
+| :-------------------------------------------------- | :------------------------------------------------------ |
+| [High Level Architecture](#high-level-architecture) | High level overview illustrating component interactions |
+| [Deployment](#deployment-guide)                     | How to deploy the project                               |
+| [User Guide](#user-guide)                           | The working solution                                    |
+| [Directories](#directories)                         | General project directory structure                     |
+| [API Documentation](#api-documentation)             | Documentation on the API the project uses               |
+| [Credits](#credits)                                 | Meet the team behind the solution                       |
+| [License](#license)                                 | License details                                         |
 
 ## High-Level Architecture
 
-The Patent Novelty Assessment System is a serverless, event-driven architecture built on AWS that orchestrates multiple AI agents to conduct comprehensive prior art searches. When a user uploads an invention disclosure PDF, the system automatically extracts content using Amazon Bedrock Data Automation (BDA), generates strategic search keywords, searches PatentView and Semantic Scholar databases, evaluates results using LLM-powered relevance scoring, and generates professional PDF reports.
-
-For a detailed technical explanation of the architecture, see the [Architecture Deep Dive](./docs/architectureDeepDive.md).
+The following architecture diagram illustrates the various AWS components utilized to deliver the solution. For an in-depth explanation of the backend, please look at the [Architecture Guide](docs/architectureDeepDive.md).
 
 ![Architecture Diagram](./docs/media/architecture.png)
+
+## Deployment Guide
+
+To deploy this solution, please follow the steps laid out in the [Deployment Guide](./docs/deploymentGuide.md).
+
+
+## User Guide
+
+Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions on using the web app.
 
 ## Directories
 
@@ -44,51 +47,95 @@ For a detailed technical explanation of the architecture, see the [Architecture 
 │   │   └── patent-novelty-stack.ts            # Infrastructure as Code (CDK stack)
 │   ├── lambda/
 │   │   ├── pdf_processor.py                   # Triggers BDA processing on PDF upload
-│   │   └── agent_trigger.py                   # Triggers agents when BDA completes
+│   │   ├── agent_trigger.py                   # Triggers agents when BDA completes
+│   │   ├── s3_api.py                          # S3 operations API Gateway
+│   │   ├── dynamodb_api.py                    # DynamoDB operations API Gateway
+│   │   └── agent_invoke_api.py                # Agent invocation API Gateway
 │   ├── cdk.json                               # CDK configuration
 │   ├── package.json                           # Node.js dependencies
-│   └── tsconfig.json                          # TypeScript configuration
+│   ├── package-lock.json                      # Node.js dependency lock file
+│   ├── tsconfig.json                          # TypeScript configuration
+│   ├── node_modules/                          # Node.js dependencies
+│   └── cdk.out/                               # CDK build output directory
 ├── docs/
+│   ├── architectureDeepDive.md                # Technical architecture explanation
+│   ├── deploymentGuide.md                     # Deployment instructions
+│   ├── userGuide.md                           # User interface guide
+│   ├── APIdoc.md                              # External API documentation
+│   ├── API_GATEWAY_ENDPOINTS.md               # Internal API Gateway documentation
+│   ├── modificationGuide.md                   # Developer modification guide
 │   ├── patentview_openapi_spec.json           # PatentView API specification
+│   ├── PatentView.txt                         # PatentView API documentation
 │   ├── semantic_scholar_openapi_spec.json     # Semantic Scholar API specification
+│   ├── semantic_scholar.json                  # Semantic Scholar API documentation
 │   └── media/                                 # Images and diagrams for documentation
+├── frontend/
+│   ├── app/                                   # Next.js App Router pages
+│   ├── components/                            # React components
+│   │   └── ui/                                # UI component library
+│   ├── hooks/                                 # Custom React hooks
+│   ├── lib/                                   # Utility functions and configuration
+│   ├── types/                                 # TypeScript type definitions
+│   ├── public/                                # Static assets and images
+│   ├── out/                                   # Static export directory for deployment
+│   ├── package.json                           # Frontend dependencies
+│   ├── package-lock.json                      # Frontend dependency lock file
+│   ├── next.config.ts                         # Next.js configuration
+│   ├── components.json                        # UI components configuration
+│   ├── env.example                            # Environment variables template
+│   ├── eslint.config.mjs                      # ESLint configuration
+│   ├── postcss.config.mjs                     # PostCSS configuration
+│   ├── next-env.d.ts                          # Next.js TypeScript definitions
+│   ├── tsconfig.json                          # TypeScript configuration
+│   ├── tsconfig.tsbuildinfo                   # TypeScript build cache
+│   └── node_modules/                          # Node.js dependencies
 ├── deploy.sh                                  # Automated deployment script
+├── buildspec.yml                              # CodeBuild configuration
+├── .gitignore                                 # Git ignore file
 ├── LICENSE                                    # Project license
 └── README.md                                  # This file
 ```
 
-### Directory Explanations
+1. **`backend/`**: AWS CDK app and backend code
+   - `PatentNoveltyOrchestrator/`: AI agent implementations using Strands framework
+   - `infrastructure/`: CDK stacks and constructs (infrastructure as code)
+   - `lambda/`: Lambda functions for event handling and API Gateway
+   - `cdk.json`: CDK configuration
+   - `package.json` & `package-lock.json`: Node.js dependencies
+   - `tsconfig.json`: TypeScript configuration
+   - `cdk.out/`: CDK build output directory
+2. **`docs/`**: Architecture, deployment, and user guides with media assets
+   - `architectureDeepDive.md`: Technical architecture explanation
+   - `deploymentGuide.md`: Deployment instructions
+   - `userGuide.md`: User interface guide
+   - `APIdoc.md`: External API documentation
+   - `API_GATEWAY_ENDPOINTS.md`: Internal API Gateway documentation
+   - `modificationGuide.md`: Developer modification guide
+   - API specifications and documentation files
+3. **`frontend/`**: Next.js web application with API Gateway integration
+   - `app/`: Next.js App Router configuration and pages
+   - `components/`: Reusable UI components
+     - `ui/`: UI component library (button.tsx, etc.)
+   - `hooks/`: Custom React hooks for file upload and state management
+   - `lib/`: Utility functions and API configuration
+   - `types/`: TypeScript type definitions
+   - `public/`: Static assets and images
+   - `out/`: Static export directory for deployment
+   - `package.json` & `package-lock.json`: Frontend dependencies
+   - Configuration files for Next.js, TypeScript, ESLint, and PostCSS
+4. **Root**: Deployment scripts and build configurations
+   - `deploy.sh`: Main deployment script (backend + frontend)
+   - `buildspec.yml`: CodeBuild configuration for CI/CD
+   - `.gitignore`: Git ignore file
+   - `LICENSE`: Project license
 
-1. **backend/PatentNoveltyOrchestrator/** - Contains all AI agent implementations using the Strands framework. The orchestrator routes requests to specialized agents (keyword extraction, patent search, article search, commercial assessment, report generation). Each agent uses AWS Bedrock Claude Sonnet 4.5 for LLM-powered analysis.
+## API Documentation
 
-2. **backend/infrastructure/** - AWS CDK Infrastructure as Code defining all cloud resources: S3 buckets, Lambda functions, DynamoDB tables, IAM roles, and Docker image assets. The stack creates a complete serverless architecture.
+Here you can learn about the APIs the project uses:
 
-3. **backend/lambda/** - Lambda functions that handle event-driven triggers: `pdf_processor.py` initiates BDA processing when PDFs are uploaded, and `agent_trigger.py` automatically invokes keyword and commercial assessment agents when BDA completes.
+- **External APIs**: [External API Documentation](./docs/APIdoc.md) - PatentView and Semantic Scholar APIs
+- **Internal APIs**: [API Gateway Endpoints](./docs/API_GATEWAY_ENDPOINTS.md) - Internal API Gateway endpoints for frontend integration
 
-4. **docs/** - Contains OpenAPI specifications for external APIs (PatentView and Semantic Scholar) and media assets for documentation.
-
-## Key Features
-
-- **Automated Document Processing** - Uses Amazon Bedrock Data Automation to extract text from invention disclosure PDFs
-- **AI-Powered Keyword Extraction** - Claude Sonnet 4.5 analyzes documents and generates strategic search keywords
-- **Comprehensive Patent Search** - Searches PatentView database with intelligent query strategies and LLM-based relevance scoring
-- **Academic Literature Search** - Searches Semantic Scholar with adaptive query refinement and semantic relevance evaluation
-- **Early Commercial Assessment** - Analyzes market potential, competition, and commercialization viability
-- **Professional PDF Reports** - Generates examiner-ready reports with prior art analysis and abstracts
-- **Event-Driven Architecture** - Fully automated workflow from upload to report generation
-
-## Technology Stack
-
-- **AWS Bedrock** - Claude Sonnet 4.5 for LLM analysis, Data Automation for PDF processing
-- **AWS Bedrock Agent Core** - Orchestrates multi-agent workflows with tool calling
-- **AWS Lambda** - Serverless compute for event handling
-- **Amazon S3** - Document storage and report delivery
-- **Amazon DynamoDB** - NoSQL database for keywords, patents, articles, and assessments
-- **AWS CDK** - Infrastructure as Code in TypeScript
-- **Python 3.12** - Agent implementation with Strands framework
-- **Docker** - Containerized agent runtime
-- **PatentView API** - USPTO patent database access via MCP Gateway
-- **Semantic Scholar API** - Academic paper search via MCP Gateway
 
 ## Credits
 
@@ -96,10 +143,4 @@ This application was architected and developed by <a href="https://www.linkedin.
 
 ## License
 
-This project is licensed under the terms specified in the [LICENSE](./LICENSE) file.
-
----
-
-_For detailed deployment instructions, see the [Deployment Guide](./docs/deploymentGuide.md)._
-
-_For usage instructions, see the [User Guide](./docs/userGuide.md)._
+This project is distributed under the [MIT License](LICENSE).
