@@ -235,7 +235,7 @@ BACKEND_SOURCE='{
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
-SOURCE_VERSION="main"
+SOURCE_VERSION="enhancement10"
 
 print_status "Creating Backend CodeBuild project '$BACKEND_PROJECT_NAME'..."
 AWS_PAGER="" aws codebuild create-project \
