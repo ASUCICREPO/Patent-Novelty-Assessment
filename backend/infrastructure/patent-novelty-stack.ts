@@ -138,6 +138,14 @@ export class PatentNoveltyStack extends cdk.Stack {
       );
     }
 
+    // Get Agent Runtime ARN from context (passed by deployment script)
+    const agentRuntimeArn = this.node.tryGetContext("agentRuntimeArn");
+    if (!agentRuntimeArn) {
+      throw new Error(
+        "Agent Runtime ARN must be provided via context. Run deployment script instead of direct CDK deploy."
+      );
+    }
+
     // Lambda function for PDF processing
     const pdfProcessorFunction = new lambda.Function(
       this,
@@ -167,10 +175,7 @@ export class PatentNoveltyStack extends cdk.Stack {
         timeout: cdk.Duration.minutes(5),
         memorySize: 256,
         environment: {
-          // NOTE: This ARN must be updated after manually creating Agent Core Runtime in AWS Console
-          // Format: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID
-          AGENT_RUNTIME_ARN:
-            "arn:aws:bedrock-agentcore:us-west-2:216989103356:runtime/PatentNovelty-dTEUy8Ar35",
+          AGENT_RUNTIME_ARN: agentRuntimeArn,
         },
       }
     );
@@ -273,7 +278,7 @@ export class PatentNoveltyStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(5),
       memorySize: 256,
       environment: {
-        AGENT_RUNTIME_ARN: "arn:aws:bedrock-agentcore:us-west-2:216989103356:runtime/PatentNovelty-dTEUy8Ar35",
+        AGENT_RUNTIME_ARN: agentRuntimeArn,
       },
     });
 

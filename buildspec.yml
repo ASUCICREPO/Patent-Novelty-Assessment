@@ -1,0 +1,56 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo "Installing AWS CDK CLI..."
+      - npm install -g aws-cdk
+      - echo "Installing zip utility for frontend..."
+      - yum install -y zip
+
+  pre_build:
+    commands:
+      - echo "=== BACKEND DEPLOYMENT ==="
+      - echo "Changing into backend directory"
+      - cd backend
+      - echo "Installing backend dependencies..."
+      - npm ci
+      - echo "Bootstrapping CDK..."
+      - cdk bootstrap --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN
+
+  build:
+    commands:
+      - echo "Deploying CDK stack..."
+      - cdk deploy --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN
+      - echo "CDK deployment complete."
+      - echo "Extracting API Gateway URL..."
+      - cd ..
+      - export API_GATEWAY_URL=$(aws cloudformation describe-stacks --stack-name PatentNoveltyStack --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text --region us-west-2)
+      - echo "API Gateway URL=$API_GATEWAY_URL"
+      - echo ""
+      - echo "=== FRONTEND DEPLOYMENT ==="
+      - cd frontend
+      - echo "Installing frontend dependencies..."
+      - npm ci
+      - echo "Creating .env.local with API Gateway URL..."
+      - echo "NEXT_PUBLIC_API_BASE_URL=$API_GATEWAY_URL" | tee .env.local
+      - echo "Building Next.js application..."
+      - npm run build
+      - echo "Creating deployment package..."
+      - cd out && zip -r build.zip .
+
+  post_build:
+    commands:
+      - echo "Deploying frontend to Amplify..."
+      - echo "Creating Amplify deployment..."
+      - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name main --output json | tee deployment_response.json
+      - echo "Extracting upload URL and job ID..."
+      - export UPLOAD_URL=$(node -e "const data=require('./deployment_response.json'); console.log(data.zipUploadUrl)")
+      - export JOB_ID=$(node -e "const data=require('./deployment_response.json'); console.log(data.jobId)")
+      - echo "Uploading build.zip to Amplify..."
+      - curl -X PUT -T build.zip "$UPLOAD_URL"
+      - echo "Starting deployment..."
+      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name main --job-id $JOB_ID
+      - echo "Complete deployment finished successfully!"
