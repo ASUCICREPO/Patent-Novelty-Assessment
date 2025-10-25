@@ -302,7 +302,7 @@ AWS_PAGER="" aws codebuild create-project \
   --artifacts "$ARTIFACTS" \
   --environment "$ENVIRONMENT" \
   --service-role "$ROLE_ARN" \
-  --output json || print_error "Failed to create CodeBuild project."
+  --output json > /dev/null || print_error "Failed to create CodeBuild project."
 
 print_success "Unified CodeBuild project '$CODEBUILD_PROJECT_NAME' created."
 
