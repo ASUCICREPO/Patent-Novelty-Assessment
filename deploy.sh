@@ -84,7 +84,7 @@ print_status "Checking for existing BDA project: $BDA_PROJECT_NAME"
 
 # Try to find existing project
 EXISTING_PROJECT=$(AWS_PAGER="" aws bedrock-data-automation list-data-automation-projects \
-    --region $AWS_REGION \
+    --region "$AWS_REGION" \
     --query "projects[?projectName=='$BDA_PROJECT_NAME'].projectArn" \
     --output text 2>/dev/null)
 
