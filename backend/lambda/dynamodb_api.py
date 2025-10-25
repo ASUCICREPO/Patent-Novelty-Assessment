@@ -8,6 +8,9 @@ from boto3.dynamodb.conditions import Key
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
 
+# Get allowed origin from environment variable
+ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
+
 def lambda_handler(event, context):
     """
     Lambda handler for DynamoDB API operations
@@ -240,7 +243,7 @@ def create_response(status_code, body):
         'statusCode': status_code,
         'headers': {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
             'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
         },

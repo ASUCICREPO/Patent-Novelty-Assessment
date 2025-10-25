@@ -18,12 +18,12 @@ phases:
       - echo "Installing backend dependencies..."
       - npm ci
       - echo "Bootstrapping CDK..."
-      - cdk bootstrap --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN
+      - cdk bootstrap --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN --context amplifyAppId=$AMPLIFY_APP_ID
 
   build:
     commands:
       - echo "Deploying CDK stack..."
-      - cdk deploy --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN
+      - cdk deploy --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN --context amplifyAppId=$AMPLIFY_APP_ID
       - echo "CDK deployment complete."
       - echo "Extracting API Gateway URL..."
       - cd ..
