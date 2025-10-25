@@ -74,7 +74,7 @@ if [[ ! "$AGENT_RUNTIME_ARN" =~ ^arn:aws:bedrock-agentcore:[a-z0-9-]+:[0-9]+:run
     print_error "Invalid Agent Runtime ARN format. Expected: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID"
 fi
 
-print_success "Agent Runtime ARN: $AGENT_RUNTIME_ARN"
+print_success "Agent Runtime ARN: REDACTED"
 
 # --- Phase 1: Create or Get BDA Project ---
 print_status "📄 Phase 1: Setting up BDA Project..."
@@ -91,7 +91,7 @@ EXISTING_PROJECT=$(AWS_PAGER="" aws bedrock-data-automation list-data-automation
 if [ -n "$EXISTING_PROJECT" ] && [ "$EXISTING_PROJECT" != "None" ]; then
     # Project exists - use existing ARN
     BDA_PROJECT_ARN=$EXISTING_PROJECT
-    print_success "Found existing BDA project: $BDA_PROJECT_ARN"
+    print_success "Found existing BDA project: REDACTED"
 else
     # Project doesn't exist - create new one
     print_status "Creating new BDA project: $BDA_PROJECT_NAME"
@@ -133,7 +133,7 @@ else
         print_error "Failed to extract BDA project ARN from response"
     fi
     
-    print_success "Created BDA Project ARN: $BDA_PROJECT_ARN"
+    print_success "Created BDA Project ARN: REDACTED"
 fi
 
 # --- Phase 2: Create IAM Service Role ---
@@ -230,7 +230,7 @@ else
         print_error "Failed to create Amplify app"
         exit 1
     fi
-    print_success "Amplify app created with ID: $AMPLIFY_APP_ID"
+    print_success "Amplify app created with ID: REDACTED"
 fi
 
 # Check if main branch exists
@@ -457,8 +457,8 @@ fi
 print_success "COMPLETE DEPLOYMENT SUCCESSFUL!"
 echo ""
 echo "Deployment Summary:"
-echo "   API Gateway URL: $API_GATEWAY_URL"
-echo "   Amplify App ID: $AMPLIFY_APP_ID"
+echo "   API Gateway URL: REDACTED"
+echo "   Amplify App ID: REDACTED"
 echo "   Frontend URL: https://main.$AMPLIFY_URL"
 echo "   CDK Stack: $STACK_NAME"
 echo "   AWS Region: $AWS_REGION"
