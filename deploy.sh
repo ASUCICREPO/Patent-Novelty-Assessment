@@ -333,9 +333,13 @@ LOG_STREAM=$(echo "$BUILD_ID" | cut -d':' -f2)
 # Wait a few seconds for logs to start
 sleep 5
 
-# Stream logs
+# Stream logs with filtering for CDK outputs only
 BUILD_STATUS="IN_PROGRESS"
 LAST_TOKEN=""
+IN_CDK_OUTPUT_SECTION=false
+
+print_status "Monitoring build progress (showing CDK outputs only)..."
+echo ""
 
 while [ "$BUILD_STATUS" = "IN_PROGRESS" ]; do
   # Get logs
@@ -353,9 +357,59 @@ while [ "$BUILD_STATUS" = "IN_PROGRESS" ]; do
       --output json 2>/dev/null)
   fi
   
-  # Print new log messages (filter out container metadata and empty lines)
+  # Filter logs to show only CDK outputs and important milestones
   if [ -n "$LOG_OUTPUT" ]; then
-    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null | grep -v "^\[Container\]" | grep -v "^$" || true
+    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null | while IFS= read -r line; do
+      # Skip container metadata and empty lines
+      if [[ "$line" =~ ^\[Container\] ]] || [[ -z "$line" ]]; then
+        continue
+      fi
+      
+      # Show phase transitions
+      if [[ "$line" =~ "BACKEND DEPLOYMENT" ]] || \
+         [[ "$line" =~ "FRONTEND DEPLOYMENT" ]] || \
+         [[ "$line" =~ "Deploying CDK stack" ]] || \
+         [[ "$line" =~ "Building Next.js" ]] || \
+         [[ "$line" =~ "Deploying frontend to Amplify" ]]; then
+        echo -e "${BLUE}[PHASE]${NC} $line"
+        continue
+      fi
+      
+      # Detect CDK output section start
+      if [[ "$line" =~ "Outputs:" ]] || [[ "$line" =~ "Stack ARN:" ]]; then
+        IN_CDK_OUTPUT_SECTION=true
+        echo -e "${GREEN}[CDK OUTPUT]${NC} $line"
+        continue
+      fi
+      
+      # Show CDK outputs
+      if [[ "$IN_CDK_OUTPUT_SECTION" == true ]]; then
+        # Stop showing when we hit the next phase
+        if [[ "$line" =~ "Stack ARN:" ]] || \
+           [[ "$line" =~ "CDK deployment complete" ]] || \
+           [[ "$line" =~ "Extracting API Gateway URL" ]]; then
+          echo -e "${GREEN}[CDK OUTPUT]${NC} $line"
+          IN_CDK_OUTPUT_SECTION=false
+          continue
+        fi
+        
+        # Show output lines (they typically start with "PatentNoveltyStack.")
+        if [[ "$line" =~ ^PatentNoveltyStack\. ]] || [[ "$line" =~ ^[[:space:]]*PatentNoveltyStack\. ]]; then
+          echo -e "${GREEN}[CDK OUTPUT]${NC} $line"
+        fi
+      fi
+      
+      # Show errors
+      if [[ "$line" =~ "ERROR" ]] || [[ "$line" =~ "Error" ]] || [[ "$line" =~ "Failed" ]]; then
+        echo -e "${RED}[ERROR]${NC} $line"
+      fi
+      
+      # Show success messages
+      if [[ "$line" =~ "successfully" ]] || [[ "$line" =~ "Complete deployment finished" ]]; then
+        echo -e "${GREEN}[SUCCESS]${NC} $line"
+      fi
+    done
+    
     LAST_TOKEN=$(echo "$LOG_OUTPUT" | jq -r '.nextForwardToken' 2>/dev/null)
   fi
   
