@@ -35,6 +35,19 @@ export class PatentNoveltyStack extends cdk.Stack {
       versioned: false,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      cors: [
+        {
+          allowedHeaders: ["*"],
+          allowedMethods: [
+            s3.HttpMethods.GET,
+            s3.HttpMethods.PUT,
+            s3.HttpMethods.POST,
+          ],
+          allowedOrigins: ["*"],
+          exposedHeaders: [],
+          maxAge: 3000,
+        },
+      ],
     });
 
     // DynamoDB table for storing patent analysis (keywords, title, descriptions)
