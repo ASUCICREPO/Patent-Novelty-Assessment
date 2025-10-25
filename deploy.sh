@@ -453,45 +453,6 @@ if [ -z "$AMPLIFY_URL" ] || [ "$AMPLIFY_URL" = "None" ]; then
     AMPLIFY_URL="$AMPLIFY_APP_ID.amplifyapp.com"
 fi
 
-# --- Phase 6: Update S3 CORS Policy ---
-print_status "🔒 Phase 6: Securing S3 CORS Policy..."
-
-# Get AWS Account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region "$AWS_REGION")
-BUCKET_NAME="patent-novelty-pdf-processing-${ACCOUNT_ID}"
-FRONTEND_URL="https://main.$AMPLIFY_URL"
-
-print_status "Updating CORS to allow only: $FRONTEND_URL"
-
-# Create CORS configuration
-CORS_CONFIG=$(cat <<EOF
-{
-  "CORSRules": [
-    {
-      "AllowedHeaders": ["*"],
-      "AllowedMethods": ["GET", "PUT", "POST"],
-      "AllowedOrigins": ["$FRONTEND_URL", "http://localhost:3000"],
-      "ExposeHeaders": [],
-      "MaxAgeSeconds": 3000
-    }
-  ]
-}
-EOF
-)
-
-# Update S3 CORS
-if aws s3api put-bucket-cors \
-  --bucket "$BUCKET_NAME" \
-  --cors-configuration "$CORS_CONFIG" \
-  --region "$AWS_REGION" 2>/dev/null; then
-  print_success "S3 CORS policy updated successfully"
-  print_status "Allowed origins: $FRONTEND_URL, http://localhost:3000"
-else
-  print_warning "Failed to update S3 CORS policy. You may need to update it manually."
-  print_status "Bucket: $BUCKET_NAME"
-  print_status "Allowed origin should be: $FRONTEND_URL"
-fi
-
 # --- Final Summary ---
 print_success "COMPLETE DEPLOYMENT SUCCESSFUL!"
 echo ""
