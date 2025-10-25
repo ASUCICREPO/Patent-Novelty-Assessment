@@ -41,7 +41,8 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 │   │   ├── commercial_assessment_agent.py     # Conducts early commercial assessment
 │   │   ├── report_generator.py                # Generates professional PDF reports
 │   │   ├── requirements.txt                   # Python dependencies
-│   │   └── Dockerfile                         # Container image for Agent Core Runtime
+│   │   ├── Dockerfile                         # Container image for Agent Core Runtime
+│   │   └── .dockerignore                      # Docker ignore file
 │   ├── infrastructure/
 │   │   ├── app.ts                             # CDK app entry point
 │   │   └── patent-novelty-stack.ts            # Infrastructure as Code (CDK stack)
@@ -54,9 +55,7 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 │   ├── cdk.json                               # CDK configuration
 │   ├── package.json                           # Node.js dependencies
 │   ├── package-lock.json                      # Node.js dependency lock file
-│   ├── tsconfig.json                          # TypeScript configuration
-│   ├── node_modules/                          # Node.js dependencies
-│   └── cdk.out/                               # CDK build output directory
+│   └── tsconfig.json                          # TypeScript configuration
 ├── docs/
 │   ├── architectureDeepDive.md                # Technical architecture explanation
 │   ├── deploymentGuide.md                     # Deployment instructions
@@ -71,24 +70,53 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 │   └── media/                                 # Images and diagrams for documentation
 ├── frontend/
 │   ├── app/                                   # Next.js App Router pages
+│   │   ├── favicon.ico                        # Site favicon
+│   │   ├── globals.css                        # Global CSS styles
+│   │   ├── layout.tsx                         # Root layout component
+│   │   ├── page.tsx                           # Home page
+│   │   ├── literature-search/page.tsx         # Literature search page
+│   │   ├── patent-search/page.tsx             # Patent search page
+│   │   ├── report-generation/page.tsx         # Report generation page
+│   │   └── results/page.tsx                   # Results page
 │   ├── components/                            # React components
+│   │   ├── FileUploadCard.tsx                 # File upload component
+│   │   ├── Header.tsx                         # Header component
+│   │   ├── Keywords.tsx                       # Keywords display component
+│   │   ├── LiteratureSearchResults.tsx        # Literature results component
+│   │   ├── PatentSearchResults.tsx            # Patent results component
+│   │   ├── UploadIcon.tsx                     # Upload icon component
+│   │   ├── UploadSection.tsx                  # Upload section component
 │   │   └── ui/                                # UI component library
+│   │       └── button.tsx                     # Button component
 │   ├── hooks/                                 # Custom React hooks
+│   │   └── useFileUpload.ts                   # File upload hook
 │   ├── lib/                                   # Utility functions and configuration
+│   │   ├── config.ts                          # API configuration
+│   │   ├── dynamodb.ts                        # DynamoDB operations
+│   │   ├── patentSearch.ts                    # Patent search service
+│   │   ├── reportGeneration.ts                # Report generation service
+│   │   ├── scholarlySearch.ts                 # Scholarly search service
+│   │   ├── statePersistence.ts                # State persistence utilities
+│   │   └── utils.ts                           # General utilities
 │   ├── types/                                 # TypeScript type definitions
+│   │   └── index.ts                           # Type definitions
 │   ├── public/                                # Static assets and images
-│   ├── out/                                   # Static export directory for deployment
-│   ├── package.json                           # Frontend dependencies
-│   ├── package-lock.json                      # Frontend dependency lock file
-│   ├── next.config.ts                         # Next.js configuration
+│   │   ├── University_of_Minnesota_wordmark.ico
+│   │   ├── University_of_Minnesota_wordmark.png
+│   │   ├── file.svg                           # File icon
+│   │   ├── globe.svg                          # Globe icon
+│   │   ├── next.svg                           # Next.js logo
+│   │   ├── vercel.svg                         # Vercel logo
+│   │   └── window.svg                         # Window icon
+│   ├── .gitignore                             # Frontend git ignore file
 │   ├── components.json                        # UI components configuration
 │   ├── env.example                            # Environment variables template
 │   ├── eslint.config.mjs                      # ESLint configuration
+│   ├── next.config.ts                         # Next.js configuration
+│   ├── package.json                           # Frontend dependencies
+│   ├── package-lock.json                      # Frontend dependency lock file
 │   ├── postcss.config.mjs                     # PostCSS configuration
-│   ├── next-env.d.ts                          # Next.js TypeScript definitions
-│   ├── tsconfig.json                          # TypeScript configuration
-│   ├── tsconfig.tsbuildinfo                   # TypeScript build cache
-│   └── node_modules/                          # Node.js dependencies
+│   └── tsconfig.json                          # TypeScript configuration
 ├── deploy.sh                                  # Automated deployment script
 ├── buildspec.yml                              # CodeBuild configuration
 ├── .gitignore                                 # Git ignore file
@@ -103,7 +131,6 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
    - `cdk.json`: CDK configuration
    - `package.json` & `package-lock.json`: Node.js dependencies
    - `tsconfig.json`: TypeScript configuration
-   - `cdk.out/`: CDK build output directory
 2. **`docs/`**: Architecture, deployment, and user guides with media assets
    - `architectureDeepDive.md`: Technical architecture explanation
    - `deploymentGuide.md`: Deployment instructions
@@ -120,7 +147,6 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
    - `lib/`: Utility functions and API configuration
    - `types/`: TypeScript type definitions
    - `public/`: Static assets and images
-   - `out/`: Static export directory for deployment
    - `package.json` & `package-lock.json`: Frontend dependencies
    - Configuration files for Next.js, TypeScript, ESLint, and PostCSS
 4. **Root**: Deployment scripts and build configurations
