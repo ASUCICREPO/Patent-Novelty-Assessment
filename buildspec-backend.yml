@@ -15,7 +15,7 @@ phases:
   pre_build:
     commands:
       - echo "Bootstrapping CDK (no approval)..."
-      - cdk bootstrap --require-approval never
+      - cdk bootstrap --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN
 
   build:
     commands:
