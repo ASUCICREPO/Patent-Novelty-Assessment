@@ -52,8 +52,31 @@ print_amplify() {
     echo -e "${PURPLE}[AMPLIFY]${NC} $1"
 }
 
-# --- Phase 0: Create or Get BDA Project ---
-print_status "📄 Phase 0: Setting up BDA Project..."
+# --- Phase 0: Prompt for Agent Runtime ARN ---
+print_status "🤖 Phase 0: Agent Runtime ARN Configuration..."
+
+echo ""
+echo "Before proceeding, you must manually create an Agent Core Runtime in the AWS Console."
+echo "Instructions:"
+echo "  1. Go to AWS Bedrock Console > Agent Core"
+echo "  2. Create a new Agent Runtime"
+echo "  3. Copy the Runtime ARN (format: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID)"
+echo ""
+read -p "Enter your Agent Runtime ARN: " AGENT_RUNTIME_ARN
+
+if [ -z "$AGENT_RUNTIME_ARN" ]; then
+    print_error "Agent Runtime ARN is required. Please create an Agent Core Runtime first."
+fi
+
+# Validate ARN format
+if [[ ! "$AGENT_RUNTIME_ARN" =~ ^arn:aws:bedrock-agentcore:[a-z0-9-]+:[0-9]+:runtime/.+ ]]; then
+    print_error "Invalid Agent Runtime ARN format. Expected: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID"
+fi
+
+print_success "Agent Runtime ARN: $AGENT_RUNTIME_ARN"
+
+# --- Phase 1: Create or Get BDA Project ---
+print_status "📄 Phase 1: Setting up BDA Project..."
 
 BDA_PROJECT_NAME="patent-novelty-bda"
 print_status "Checking for existing BDA project: $BDA_PROJECT_NAME"
@@ -112,15 +135,15 @@ else
     print_success "Created BDA Project ARN: $BDA_PROJECT_ARN"
 fi
 
-# --- Phase 1: Backend Deployment (CDK) ---
-print_status "🚀 Phase 1: Deploying CDK Infrastructure..."
+# --- Phase 2: Backend Deployment (CDK) ---
+print_status "🚀 Phase 2: Deploying CDK Infrastructure..."
 cd backend || print_error "Failed to change to backend directory."
 
 print_status "Installing CDK dependencies..."
 npm install || print_error "Failed to install backend dependencies."
 
 print_status "Deploying CDK stack (this may take a few minutes)..."
-npx cdk deploy --require-approval never --context bdaProjectArn="$BDA_PROJECT_ARN" || print_error "CDK deployment failed."
+npx cdk deploy --require-approval never --context bdaProjectArn="$BDA_PROJECT_ARN" --context agentRuntimeArn="$AGENT_RUNTIME_ARN" || print_error "CDK deployment failed."
 
 print_status "Extracting API Gateway URL from CDK outputs..."
 API_GATEWAY_URL=$(AWS_PAGER="" aws cloudformation describe-stacks \
@@ -135,8 +158,8 @@ print_success "API Gateway URL: $API_GATEWAY_URL"
 
 cd .. # Go back to root directory
 
-# --- Phase 2: Create IAM Service Role ---
-print_status "🔐 Phase 2: Creating IAM Service Role..."
+# --- Phase 3: Create IAM Service Role ---
+print_status "🔐 Phase 3: Creating IAM Service Role..."
 
 ROLE_NAME="${PROJECT_NAME}-service-role"
 print_status "Checking for IAM role: $ROLE_NAME"
@@ -213,8 +236,8 @@ else
     sleep 10
 fi
 
-# --- Phase 3: Create Amplify App (Static Hosting) ---
-print_amplify "🌐 Phase 3: Creating Amplify Application for Static Hosting..."
+# --- Phase 4: Create Amplify App (Static Hosting) ---
+print_amplify "🌐 Phase 4: Creating Amplify Application for Static Hosting..."
 
 # Check if app already exists
 EXISTING_APP_ID=$(AWS_PAGER="" aws amplify list-apps --query "apps[?name=='$AMPLIFY_APP_NAME'].appId" --output text --region "$AWS_REGION")
@@ -241,8 +264,8 @@ else
     print_success "Amplify app created with ID: $AMPLIFY_APP_ID"
 fi
 
-# --- Phase 4: Create Amplify Branch ---
-print_amplify "🌿 Phase 4: Creating Amplify Branch..."
+# --- Phase 5: Create Amplify Branch ---
+print_amplify "🌿 Phase 5: Creating Amplify Branch..."
 
 # Check if main branch exists
 EXISTING_BRANCH=$(AWS_PAGER="" aws amplify get-branch \
@@ -267,8 +290,8 @@ else
     print_success "main branch created"
 fi
 
-# --- Phase 5: Create CodeBuild Project ---
-print_codebuild "🏗️ Phase 5: Creating CodeBuild Project..."
+# --- Phase 6: Create CodeBuild Project ---
+print_codebuild "🏗️ Phase 6: Creating CodeBuild Project..."
 
 # Build environment variables array for frontend
 FRONTEND_ENV_VARS_ARRAY='{
@@ -309,8 +332,8 @@ AWS_PAGER="" aws codebuild create-project \
 
 print_success "CodeBuild project '$CODEBUILD_PROJECT_NAME' created."
 
-# --- Phase 6: Start CodeBuild Job ---
-print_codebuild "🚀 Phase 6: Starting CodeBuild Job for Frontend Build and Deploy..."
+# --- Phase 7: Start CodeBuild Job ---
+print_codebuild "🚀 Phase 7: Starting CodeBuild Job for Frontend Build and Deploy..."
 
 print_status "Starting frontend build for project '$CODEBUILD_PROJECT_NAME'..."
 BUILD_ID=$(AWS_PAGER="" aws codebuild start-build \
