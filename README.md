@@ -106,6 +106,50 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
    - `.gitignore`: Git ignore file
    - `LICENSE`: Project license
 
+## Key Features
+
+### Backend Features
+- **Automated Document Processing** - Uses Amazon Bedrock Data Automation to extract text from invention disclosure PDFs
+- **AI-Powered Keyword Extraction** - Claude Sonnet 4.5 analyzes documents and generates strategic search keywords
+- **Comprehensive Patent Search** - Searches PatentView database with intelligent query strategies and LLM-based relevance scoring
+- **Academic Literature Search** - Searches Semantic Scholar with adaptive query refinement and semantic relevance evaluation
+- **Early Commercial Assessment** - Analyzes market potential, competition, and commercialization viability
+- **Professional PDF Reports** - Generates examiner-ready reports with prior art analysis and abstracts
+- **Event-Driven Architecture** - Fully automated workflow from upload to report generation
+
+### Frontend Features
+- **Intuitive File Upload** - Drag-and-drop PDF upload with real-time progress tracking and validation
+- **Multi-Page Workflow** - Guided user experience through upload, keyword review, patent search, literature search, and report generation
+- **Interactive Results Display** - Dynamic tables showing patent and literature search results with filtering and selection capabilities
+- **Status Monitoring** - Progress indicators and status updates throughout the analysis process
+- **Keyword Management** - Editable keyword interface allowing users to refine search terms before analysis
+- **Report Download Interface** - Direct download access to generated PTLS and ECA reports
+- **State Persistence** - Browser-based state management ensuring progress is maintained across page refreshes
+
+## Technology Stack
+
+### Backend Technologies
+- **AWS Bedrock** - Claude Sonnet 4.5 for LLM analysis, Data Automation for PDF processing
+- **AWS Bedrock Agent Core** - Orchestrates multi-agent workflows with tool calling
+- **AWS Lambda** - Serverless compute for event handling and API Gateway integration
+- **Amazon S3** - Document storage and report delivery
+- **Amazon DynamoDB** - NoSQL database for keywords, patents, articles, and assessments
+- **AWS CDK** - Infrastructure as Code in TypeScript
+- **Python 3.12** - Agent implementation with Strands framework
+- **Docker** - Containerized agent runtime
+- **PatentView API** - USPTO patent database access via MCP Gateway
+- **Semantic Scholar API** - Academic paper search via MCP Gateway
+
+### Frontend Technologies
+- **Next.js 15** - React framework with App Router for server-side rendering and routing
+- **React 19** - Modern React with concurrent features and improved performance
+- **TypeScript** - Type-safe JavaScript for enhanced developer experience
+- **Tailwind CSS** - Utility-first CSS framework for responsive design
+- **shadcn/ui** - Modern component library built on Radix UI primitives
+- **AWS SDK v3** - Direct integration with AWS services (S3, DynamoDB, Bedrock Agent Core)
+- **Lucide React** - Icon library for consistent visual design
+- **Custom Hooks** - React hooks for file upload, state management, and API integration
+
 ## API Documentation
 
 Here you can learn about the APIs the project uses:
