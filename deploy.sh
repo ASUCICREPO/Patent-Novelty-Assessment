@@ -1,6 +1,6 @@
 #!/bin/bash
 # Complete End-to-End Deployment Pipeline
-# Uses CodeBuild for both backend and frontend deployment
+# Uses single unified CodeBuild project for backend and frontend
 
 set -euo pipefail
 
@@ -18,8 +18,7 @@ PROJECT_NAME="patent-novelty-${TIMESTAMP}"
 STACK_NAME="PatentNoveltyStack"
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
-BACKEND_PROJECT_NAME="${PROJECT_NAME}-backend"
-FRONTEND_PROJECT_NAME="${PROJECT_NAME}-frontend"
+CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-deployment"
 REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git"
 
 # Global variables
@@ -206,136 +205,8 @@ else
     sleep 10
 fi
 
-# --- Phase 3: Create Backend CodeBuild Project ---
-print_codebuild "🏗️ Phase 3: Creating Backend CodeBuild Project..."
-
-# Build environment variables for backend
-BACKEND_ENV_VARS_ARRAY='{
-    "name": "BDA_PROJECT_ARN",
-    "value": "'"$BDA_PROJECT_ARN"'",
-    "type": "PLAINTEXT"
-  },{
-    "name": "AGENT_RUNTIME_ARN",
-    "value": "'"$AGENT_RUNTIME_ARN"'",
-    "type": "PLAINTEXT"
-  }'
-
-BACKEND_ENVIRONMENT=$(cat <<EOF
-{
-  "type": "ARM_CONTAINER",
-  "image": "aws/codebuild/amazonlinux-aarch64-standard:3.0",
-  "computeType": "BUILD_GENERAL1_LARGE",
-  "privilegedMode": true,
-  "environmentVariables": [$BACKEND_ENV_VARS_ARRAY]
-}
-EOF
-)
-
-BACKEND_SOURCE='{
-  "type":"GITHUB",
-  "location":"'$REPOSITORY_URL'",
-  "buildspec":"buildspec-backend.yml"
-}'
-
-ARTIFACTS='{"type":"NO_ARTIFACTS"}'
-SOURCE_VERSION="enhancement10"
-
-print_status "Creating Backend CodeBuild project '$BACKEND_PROJECT_NAME'..."
-AWS_PAGER="" aws codebuild create-project \
-  --name "$BACKEND_PROJECT_NAME" \
-  --source "$BACKEND_SOURCE" \
-  --source-version "$SOURCE_VERSION" \
-  --artifacts "$ARTIFACTS" \
-  --environment "$BACKEND_ENVIRONMENT" \
-  --service-role "$ROLE_ARN" \
-  --output json || print_error "Failed to create backend CodeBuild project."
-
-print_success "Backend CodeBuild project '$BACKEND_PROJECT_NAME' created."
-
-# --- Phase 4: Start Backend Build ---
-print_codebuild "🚀 Phase 4: Starting Backend Build (CDK Deployment)..."
-
-print_status "Starting backend build for project '$BACKEND_PROJECT_NAME'..."
-BACKEND_BUILD_ID=$(AWS_PAGER="" aws codebuild start-build \
-  --project-name "$BACKEND_PROJECT_NAME" \
-  --query 'build.id' \
-  --output text)
-
-if [ $? -ne 0 ]; then
-  print_error "Failed to start the backend build"
-fi
-
-print_success "Backend build started successfully. Build ID: $BACKEND_BUILD_ID"
-
-# Wait for backend build to complete and stream logs
-print_status "Streaming backend build logs (this may take several minutes)..."
-print_status "Build ID: $BACKEND_BUILD_ID"
-echo ""
-
-# Extract log group and stream from build ID
-LOG_GROUP="/aws/codebuild/$BACKEND_PROJECT_NAME"
-LOG_STREAM=$(echo "$BACKEND_BUILD_ID" | cut -d':' -f2)
-
-# Wait a few seconds for logs to start
-sleep 5
-
-# Stream logs in background
-BACKEND_BUILD_STATUS="IN_PROGRESS"
-LAST_TOKEN=""
-
-while [ "$BACKEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
-  # Get logs
-  if [ -z "$LAST_TOKEN" ]; then
-    LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
-      --log-group-name "$LOG_GROUP" \
-      --log-stream-name "$LOG_STREAM" \
-      --start-from-head \
-      --output json 2>/dev/null)
-  else
-    LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
-      --log-group-name "$LOG_GROUP" \
-      --log-stream-name "$LOG_STREAM" \
-      --next-token "$LAST_TOKEN" \
-      --output json 2>/dev/null)
-  fi
-  
-  # Print new log messages (filter out container metadata and empty lines)
-  if [ -n "$LOG_OUTPUT" ]; then
-    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null | grep -v "^\[Container\]" | grep -v "^$" || true
-    LAST_TOKEN=$(echo "$LOG_OUTPUT" | jq -r '.nextForwardToken' 2>/dev/null)
-  fi
-  
-  # Check build status
-  BACKEND_BUILD_STATUS=$(AWS_PAGER="" aws codebuild batch-get-builds --ids "$BACKEND_BUILD_ID" --query 'builds[0].buildStatus' --output text)
-  
-  sleep 3
-done
-
-echo ""
-print_status "Backend build status: $BACKEND_BUILD_STATUS"
-
-if [ "$BACKEND_BUILD_STATUS" != "SUCCEEDED" ]; then
-  print_error "Backend build failed with status: $BACKEND_BUILD_STATUS"
-  print_status "Check CodeBuild logs for details: https://console.aws.amazon.com/codesuite/codebuild/projects/$BACKEND_PROJECT_NAME/build/$BACKEND_BUILD_ID/"
-  exit 1
-fi
-
-print_success "Backend deployment completed successfully!"
-
-# Extract API Gateway URL from CloudFormation
-print_status "Extracting API Gateway URL from CDK outputs..."
-API_GATEWAY_URL=$(AWS_PAGER="" aws cloudformation describe-stacks \
-  --stack-name "$STACK_NAME" \
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
-  --output text --region "$AWS_REGION")
-
-if [ -z "$API_GATEWAY_URL" ] || [ "$API_GATEWAY_URL" = "None" ]; then
-  print_error "Failed to extract API Gateway URL from CDK outputs. Please check CloudFormation stack: $STACK_NAME"
-fi
-print_success "API Gateway URL: $API_GATEWAY_URL"
-
-# --- Phase 5: Create Amplify App (Static Hosting) ---
-print_amplify "🌐 Phase 5: Creating Amplify Application for Static Hosting..."
+# --- Phase 3: Create Amplify App (Static Hosting) ---
+print_amplify "🌐 Phase 3: Creating Amplify Application for Static Hosting..."
 
 # Check if app already exists
 EXISTING_APP_ID=$(AWS_PAGER="" aws amplify list-apps --query "apps[?name=='$AMPLIFY_APP_NAME'].appId" --output text --region "$AWS_REGION")
@@ -362,9 +233,6 @@ else
     print_success "Amplify app created with ID: $AMPLIFY_APP_ID"
 fi
 
-# --- Phase 6: Create Amplify Branch ---
-print_amplify "🌿 Phase 6: Creating Amplify Branch..."
-
 # Check if main branch exists
 EXISTING_BRANCH=$(AWS_PAGER="" aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
@@ -388,13 +256,17 @@ else
     print_success "main branch created"
 fi
 
-# --- Phase 7: Create Frontend CodeBuild Project ---
-print_codebuild "🏗️ Phase 7: Creating Frontend CodeBuild Project..."
+# --- Phase 4: Create Unified CodeBuild Project ---
+print_codebuild "🏗️ Phase 4: Creating Unified CodeBuild Project..."
 
-# Build environment variables for frontend
-FRONTEND_ENV_VARS_ARRAY='{
-    "name": "API_GATEWAY_URL",
-    "value": "'"$API_GATEWAY_URL"'",
+# Build environment variables for unified deployment
+ENV_VARS_ARRAY='{
+    "name": "BDA_PROJECT_ARN",
+    "value": "'"$BDA_PROJECT_ARN"'",
+    "type": "PLAINTEXT"
+  },{
+    "name": "AGENT_RUNTIME_ARN",
+    "value": "'"$AGENT_RUNTIME_ARN"'",
     "type": "PLAINTEXT"
   },{
     "name": "AMPLIFY_APP_ID",
@@ -402,66 +274,70 @@ FRONTEND_ENV_VARS_ARRAY='{
     "type": "PLAINTEXT"
   }'
 
-FRONTEND_ENVIRONMENT=$(cat <<EOF
+ENVIRONMENT=$(cat <<EOF
 {
-  "type": "LINUX_CONTAINER",
-  "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
-  "computeType": "BUILD_GENERAL1_MEDIUM",
-  "environmentVariables": [$FRONTEND_ENV_VARS_ARRAY]
+  "type": "ARM_CONTAINER",
+  "image": "aws/codebuild/amazonlinux-aarch64-standard:3.0",
+  "computeType": "BUILD_GENERAL1_LARGE",
+  "privilegedMode": true,
+  "environmentVariables": [$ENV_VARS_ARRAY]
 }
 EOF
 )
 
-FRONTEND_SOURCE='{
+SOURCE='{
   "type":"GITHUB",
   "location":"'$REPOSITORY_URL'",
-  "buildspec":"buildspec-frontend.yml"
+  "buildspec":"buildspec.yml"
 }'
 
-print_status "Creating Frontend CodeBuild project '$FRONTEND_PROJECT_NAME'..."
+ARTIFACTS='{"type":"NO_ARTIFACTS"}'
+SOURCE_VERSION="enhancement10"
+
+print_status "Creating unified CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
 AWS_PAGER="" aws codebuild create-project \
-  --name "$FRONTEND_PROJECT_NAME" \
-  --source "$FRONTEND_SOURCE" \
+  --name "$CODEBUILD_PROJECT_NAME" \
+  --source "$SOURCE" \
   --source-version "$SOURCE_VERSION" \
   --artifacts "$ARTIFACTS" \
-  --environment "$FRONTEND_ENVIRONMENT" \
+  --environment "$ENVIRONMENT" \
   --service-role "$ROLE_ARN" \
-  --output json || print_error "Failed to create frontend CodeBuild project."
+  --output json || print_error "Failed to create CodeBuild project."
 
-print_success "Frontend CodeBuild project '$FRONTEND_PROJECT_NAME' created."
+print_success "Unified CodeBuild project '$CODEBUILD_PROJECT_NAME' created."
 
-# --- Phase 8: Start Frontend Build ---
-print_codebuild "🚀 Phase 8: Starting Frontend Build and Deploy..."
+# --- Phase 5: Start Unified Build ---
+print_codebuild "🚀 Phase 5: Starting Unified Deployment (Backend + Frontend)..."
 
-print_status "Starting frontend build for project '$FRONTEND_PROJECT_NAME'..."
-FRONTEND_BUILD_ID=$(AWS_PAGER="" aws codebuild start-build \
-  --project-name "$FRONTEND_PROJECT_NAME" \
+print_status "Starting deployment build for project '$CODEBUILD_PROJECT_NAME'..."
+BUILD_ID=$(AWS_PAGER="" aws codebuild start-build \
+  --project-name "$CODEBUILD_PROJECT_NAME" \
   --query 'build.id' \
   --output text)
 
 if [ $? -ne 0 ]; then
-  print_error "Failed to start the frontend build"
+  print_error "Failed to start the deployment build"
 fi
 
-print_success "Frontend build started successfully. Build ID: $FRONTEND_BUILD_ID"
+print_success "Deployment build started successfully. Build ID: $BUILD_ID"
 
-# Wait for frontend build to complete and stream logs
-print_status "Streaming frontend build logs..."
-print_status "Build ID: $FRONTEND_BUILD_ID"
+# Stream logs
+print_status "Streaming deployment logs..."
+print_status "Build ID: $BUILD_ID"
 echo ""
 
 # Extract log group and stream from build ID
-LOG_GROUP="/aws/codebuild/$FRONTEND_PROJECT_NAME"
-LOG_STREAM=$(echo "$FRONTEND_BUILD_ID" | cut -d':' -f2)
+LOG_GROUP="/aws/codebuild/$CODEBUILD_PROJECT_NAME"
+LOG_STREAM=$(echo "$BUILD_ID" | cut -d':' -f2)
 
 # Wait a few seconds for logs to start
 sleep 5
 
-# Stream logs in background
-FRONTEND_BUILD_STATUS="IN_PROGRESS"
+# Stream logs
+BUILD_STATUS="IN_PROGRESS"
 LAST_TOKEN=""
 
-while [ "$FRONTEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
+while [ "$BUILD_STATUS" = "IN_PROGRESS" ]; do
   # Get logs
   if [ -z "$LAST_TOKEN" ]; then
     LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
@@ -484,24 +360,35 @@ while [ "$FRONTEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
   fi
   
   # Check build status
-  FRONTEND_BUILD_STATUS=$(AWS_PAGER="" aws codebuild batch-get-builds --ids "$FRONTEND_BUILD_ID" --query 'builds[0].buildStatus' --output text)
+  BUILD_STATUS=$(AWS_PAGER="" aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
   
   sleep 3
 done
 
 echo ""
-print_status "Frontend build status: $FRONTEND_BUILD_STATUS"
+print_status "Deployment build status: $BUILD_STATUS"
 
-if [ "$FRONTEND_BUILD_STATUS" != "SUCCEEDED" ]; then
-  print_error "Frontend build failed with status: $FRONTEND_BUILD_STATUS"
-  print_status "Check CodeBuild logs for details: https://console.aws.amazon.com/codesuite/codebuild/projects/$FRONTEND_PROJECT_NAME/build/$FRONTEND_BUILD_ID/"
+if [ "$BUILD_STATUS" != "SUCCEEDED" ]; then
+  print_error "Deployment build failed with status: $BUILD_STATUS"
+  print_status "Check CodeBuild logs for details: https://console.aws.amazon.com/codesuite/codebuild/projects/$CODEBUILD_PROJECT_NAME/build/$BUILD_ID/"
   exit 1
 fi
 
-print_success "Frontend build and deployment completed successfully!"
+print_success "Complete deployment finished successfully!"
+
+# Extract API Gateway URL from CloudFormation
+print_status "Extracting deployment information..."
+API_GATEWAY_URL=$(AWS_PAGER="" aws cloudformation describe-stacks \
+  --stack-name "$STACK_NAME" \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
+  --output text --region "$AWS_REGION")
+
+if [ -z "$API_GATEWAY_URL" ] || [ "$API_GATEWAY_URL" = "None" ]; then
+  print_warning "Could not extract API Gateway URL from CDK outputs"
+  API_GATEWAY_URL="Check CloudFormation console"
+fi
 
 # Get Amplify URL
-print_status "Getting Amplify application URL..."
 AMPLIFY_URL=$(AWS_PAGER="" aws amplify get-app \
     --app-id "$AMPLIFY_APP_ID" \
     --query 'app.defaultDomain' \
@@ -509,11 +396,8 @@ AMPLIFY_URL=$(AWS_PAGER="" aws amplify get-app \
     --region "$AWS_REGION")
 
 if [ -z "$AMPLIFY_URL" ] || [ "$AMPLIFY_URL" = "None" ]; then
-    print_warning "Could not retrieve Amplify URL, using app ID instead"
     AMPLIFY_URL="$AMPLIFY_APP_ID.amplifyapp.com"
 fi
-
-print_success "Frontend deployed to Amplify successfully!"
 
 # --- Final Summary ---
 print_success "COMPLETE DEPLOYMENT SUCCESSFUL!"
