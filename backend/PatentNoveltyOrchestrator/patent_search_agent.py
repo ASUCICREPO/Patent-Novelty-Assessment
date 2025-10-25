@@ -475,33 +475,7 @@ def run_patentview_search_via_gateway(query_json: Dict, limit: int = 10, sort_by
             
             if result and 'content' in result:
                 response_text = result['content'][0].get('text', '{}')
-                
-                # Debug: Log response text length and first 200 chars
-                print(f"Response text length: {len(response_text)}")
-                if response_text:
-                    print(f"Response text preview: {response_text[:200]}")
-                else:
-                    print("Response text is empty!")
-                
-                # Handle empty response
-                if not response_text or not response_text.strip():
-                    print("PatentView returned empty response")
-                    return {
-                        'success': False,
-                        'patents': [],
-                        'error': 'PatentView returned empty response'
-                    }
-                
-                try:
-                    response_data = json.loads(response_text)
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error: {e}")
-                    print(f"Failed to parse response: {response_text[:500]}")
-                    return {
-                        'success': False,
-                        'patents': [],
-                        'error': f'Invalid JSON response from PatentView: {str(e)}'
-                    }
+                response_data = json.loads(response_text)
                 
                 patents = response_data.get('patents', [])
                 total_hits = response_data.get('total_hits', 0)
