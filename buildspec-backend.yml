@@ -1,0 +1,36 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo "Installing AWS CDK CLI..."
+      - npm install -g aws-cdk
+      - echo "Changing into backend directory"
+      - cd backend
+      - echo "Installing npm dependencies"
+      - npm ci
+
+  pre_build:
+    commands:
+      - echo "Bootstrapping CDK (no approval)..."
+      - cdk bootstrap --require-approval never
+
+  build:
+    commands:
+      - echo "Deploying CDK stack..."
+      - cdk deploy --require-approval never --context bdaProjectArn=$BDA_PROJECT_ARN --context agentRuntimeArn=$AGENT_RUNTIME_ARN
+
+  post_build:
+    commands:
+      - echo "CDK deployment complete."
+      - echo "Extracting API Gateway URL from CloudFormation outputs..."
+      - cd ..
+      - export API_GATEWAY_URL=$(aws cloudformation describe-stacks --stack-name PatentNoveltyStack --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text --region us-west-2)
+      - echo "API Gateway URL=$API_GATEWAY_URL"
+      - echo $API_GATEWAY_URL > api_gateway_url.txt
+
+artifacts:
+  files:
+    - api_gateway_url.txt
