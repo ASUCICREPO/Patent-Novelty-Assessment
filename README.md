@@ -10,6 +10,8 @@ An intelligent patent novelty assessment platform built with AWS Bedrock, Agent 
 | [Deployment](#deployment-guide)                     | How to deploy the project                               |
 | [User Guide](#user-guide)                           | The working solution                                    |
 | [Directories](#directories)                         | General project directory structure                     |
+| [Key Features](#key-features)                       | Backend and frontend capabilities                       |
+| [Technology Stack](#technology-stack)               | Technologies and frameworks used                        |
 | [API Documentation](#api-documentation)             | Documentation on the API the project uses               |
 | [Credits](#credits)                                 | Meet the team behind the solution                       |
 | [License](#license)                                 | License details                                         |
