@@ -1,6 +1,5 @@
 #!/bin/bash
 # Complete End-to-End Deployment Pipeline
-# Based on PDF_accessability_UI working approach: CodeBuild + Amplify zip deployment
 
 set -euo pipefail
 
@@ -16,11 +15,10 @@ NC='\033[0m' # No Color
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 PROJECT_NAME="patent-novelty-${TIMESTAMP}"
 STACK_NAME="PatentNoveltyStack"
-BDA_PROJECT_ARN="arn:aws:bedrock:us-west-2:216989103356:data-automation-project/97146aaabae2"
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-frontend"
-REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git" # IMPORTANT: Replace with your GitHub repository URL
+REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git" # IMPORTANT: GitHub repository URL
 
 # Global variables to store IDs/URLs
 API_GATEWAY_URL=""
@@ -53,6 +51,66 @@ print_codebuild() {
 print_amplify() {
     echo -e "${PURPLE}[AMPLIFY]${NC} $1"
 }
+
+# --- Phase 0: Create or Get BDA Project ---
+print_status "📄 Phase 0: Setting up BDA Project..."
+
+BDA_PROJECT_NAME="patent-novelty-bda"
+print_status "Checking for existing BDA project: $BDA_PROJECT_NAME"
+
+# Try to find existing project
+EXISTING_PROJECT=$(AWS_PAGER="" aws bedrock-data-automation list-data-automation-projects \
+    --region $AWS_REGION \
+    --query "projects[?projectName=='$BDA_PROJECT_NAME'].projectArn" \
+    --output text 2>/dev/null)
+
+if [ -n "$EXISTING_PROJECT" ] && [ "$EXISTING_PROJECT" != "None" ]; then
+    # Project exists - use existing ARN
+    BDA_PROJECT_ARN=$EXISTING_PROJECT
+    print_success "Found existing BDA project: $BDA_PROJECT_ARN"
+else
+    # Project doesn't exist - create new one
+    print_status "Creating new BDA project: $BDA_PROJECT_NAME"
+    
+    BDA_RESPONSE=$(aws bedrock-data-automation create-data-automation-project \
+        --project-name "$BDA_PROJECT_NAME" \
+        --standard-output-configuration '{
+            "document": {
+                "extraction": {
+                    "granularity": {
+                        "types": ["DOCUMENT", "PAGE", "ELEMENT"]
+                    },
+                    "boundingBox": {
+                        "state": "ENABLED"
+                    }
+                },
+                "generativeField": {
+                    "state": "DISABLED"
+                },
+                "outputFormat": {
+                    "textFormat": {
+                        "types": ["PLAIN_TEXT", "MARKDOWN"]
+                    },
+                    "additionalFileFormat": {
+                        "state": "ENABLED"
+                    }
+                }
+            }
+        }' \
+        --region $AWS_REGION 2>&1)
+    
+    if [ $? -ne 0 ]; then
+        print_error "Failed to create BDA project: $BDA_RESPONSE"
+    fi
+    
+    BDA_PROJECT_ARN=$(echo $BDA_RESPONSE | grep -o 'arn:aws:bedrock:[^"]*' | head -1)
+    
+    if [ -z "$BDA_PROJECT_ARN" ]; then
+        print_error "Failed to extract BDA project ARN from response"
+    fi
+    
+    print_success "Created BDA Project ARN: $BDA_PROJECT_ARN"
+fi
 
 # --- Phase 1: Backend Deployment (CDK) ---
 print_status "🚀 Phase 1: Deploying CDK Infrastructure..."
