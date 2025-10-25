@@ -264,15 +264,52 @@ fi
 
 print_success "Backend build started successfully. Build ID: $BACKEND_BUILD_ID"
 
-# Wait for backend build to complete
-print_status "Waiting for backend build to complete (this may take several minutes)..."
+# Wait for backend build to complete and stream logs
+print_status "Streaming backend build logs (this may take several minutes)..."
+print_status "Build ID: $BACKEND_BUILD_ID"
+echo ""
+
+# Extract log group and stream from build ID
+LOG_GROUP="/aws/codebuild/$BACKEND_PROJECT_NAME"
+LOG_STREAM=$(echo "$BACKEND_BUILD_ID" | cut -d':' -f2)
+
+# Wait a few seconds for logs to start
+sleep 5
+
+# Stream logs in background
 BACKEND_BUILD_STATUS="IN_PROGRESS"
+LAST_TOKEN=""
 
 while [ "$BACKEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
-  sleep 20
+  # Get logs
+  if [ -z "$LAST_TOKEN" ]; then
+    LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
+      --log-group-name "$LOG_GROUP" \
+      --log-stream-name "$LOG_STREAM" \
+      --start-from-head \
+      --output json 2>/dev/null)
+  else
+    LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
+      --log-group-name "$LOG_GROUP" \
+      --log-stream-name "$LOG_STREAM" \
+      --next-token "$LAST_TOKEN" \
+      --output json 2>/dev/null)
+  fi
+  
+  # Print new log messages
+  if [ -n "$LOG_OUTPUT" ]; then
+    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null
+    LAST_TOKEN=$(echo "$LOG_OUTPUT" | jq -r '.nextForwardToken' 2>/dev/null)
+  fi
+  
+  # Check build status
   BACKEND_BUILD_STATUS=$(AWS_PAGER="" aws codebuild batch-get-builds --ids "$BACKEND_BUILD_ID" --query 'builds[0].buildStatus' --output text)
-  print_status "Backend build status: $BACKEND_BUILD_STATUS"
+  
+  sleep 3
 done
+
+echo ""
+print_status "Backend build status: $BACKEND_BUILD_STATUS"
 
 if [ "$BACKEND_BUILD_STATUS" != "SUCCEEDED" ]; then
   print_error "Backend build failed with status: $BACKEND_BUILD_STATUS"
@@ -402,15 +439,52 @@ fi
 
 print_success "Frontend build started successfully. Build ID: $FRONTEND_BUILD_ID"
 
-# Wait for frontend build to complete
-print_status "Waiting for frontend build to complete..."
+# Wait for frontend build to complete and stream logs
+print_status "Streaming frontend build logs..."
+print_status "Build ID: $FRONTEND_BUILD_ID"
+echo ""
+
+# Extract log group and stream from build ID
+LOG_GROUP="/aws/codebuild/$FRONTEND_PROJECT_NAME"
+LOG_STREAM=$(echo "$FRONTEND_BUILD_ID" | cut -d':' -f2)
+
+# Wait a few seconds for logs to start
+sleep 5
+
+# Stream logs in background
 FRONTEND_BUILD_STATUS="IN_PROGRESS"
+LAST_TOKEN=""
 
 while [ "$FRONTEND_BUILD_STATUS" = "IN_PROGRESS" ]; do
-  sleep 15
+  # Get logs
+  if [ -z "$LAST_TOKEN" ]; then
+    LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
+      --log-group-name "$LOG_GROUP" \
+      --log-stream-name "$LOG_STREAM" \
+      --start-from-head \
+      --output json 2>/dev/null)
+  else
+    LOG_OUTPUT=$(AWS_PAGER="" aws logs get-log-events \
+      --log-group-name "$LOG_GROUP" \
+      --log-stream-name "$LOG_STREAM" \
+      --next-token "$LAST_TOKEN" \
+      --output json 2>/dev/null)
+  fi
+  
+  # Print new log messages
+  if [ -n "$LOG_OUTPUT" ]; then
+    echo "$LOG_OUTPUT" | jq -r '.events[]?.message' 2>/dev/null
+    LAST_TOKEN=$(echo "$LOG_OUTPUT" | jq -r '.nextForwardToken' 2>/dev/null)
+  fi
+  
+  # Check build status
   FRONTEND_BUILD_STATUS=$(AWS_PAGER="" aws codebuild batch-get-builds --ids "$FRONTEND_BUILD_ID" --query 'builds[0].buildStatus' --output text)
-  print_status "Frontend build status: $FRONTEND_BUILD_STATUS"
+  
+  sleep 3
 done
+
+echo ""
+print_status "Frontend build status: $FRONTEND_BUILD_STATUS"
 
 if [ "$FRONTEND_BUILD_STATUS" != "SUCCEEDED" ]; then
   print_error "Frontend build failed with status: $FRONTEND_BUILD_STATUS"
@@ -436,28 +510,28 @@ fi
 print_success "Frontend deployed to Amplify successfully!"
 
 # --- Final Summary ---
-print_success "🎉 COMPLETE DEPLOYMENT SUCCESSFUL! 🎉"
+print_success "COMPLETE DEPLOYMENT SUCCESSFUL!"
 echo ""
-echo "📊 Deployment Summary:"
-echo "   🌐 API Gateway URL: $API_GATEWAY_URL"
-echo "   🚀 Amplify App ID: $AMPLIFY_APP_ID"
-echo "   🌍 Frontend URL: https://main.$AMPLIFY_URL"
-echo "   🏗️  CDK Stack: $STACK_NAME"
-echo "   🌍 AWS Region: $AWS_REGION"
+echo "Deployment Summary:"
+echo "   API Gateway URL: $API_GATEWAY_URL"
+echo "   Amplify App ID: $AMPLIFY_APP_ID"
+echo "   Frontend URL: https://main.$AMPLIFY_URL"
+echo "   CDK Stack: $STACK_NAME"
+echo "   AWS Region: $AWS_REGION"
 echo ""
-echo "✅ What was deployed:"
-echo "   ✓ BDA Project for document processing"
-echo "   ✓ CDK backend infrastructure (via CodeBuild)"
-echo "   ✓ API Gateway with Lambda functions"
-echo "   ✓ DynamoDB tables"
-echo "   ✓ S3 bucket"
-echo "   ✓ Docker image for Agent Core Runtime"
-echo "   ✓ Frontend built and deployed to Amplify (via CodeBuild)"
+echo "What was deployed:"
+echo "   - BDA Project for document processing"
+echo "   - CDK backend infrastructure via CodeBuild"
+echo "   - API Gateway with Lambda functions"
+echo "   - DynamoDB tables"
+echo "   - S3 bucket"
+echo "   - Docker image for Agent Core Runtime"
+echo "   - Frontend built and deployed to Amplify via CodeBuild"
 echo ""
-echo "🔗 Access your application:"
+echo "Access your application:"
 echo "   https://main.$AMPLIFY_URL"
 echo ""
-echo "📱 Next steps:"
+echo "Next steps:"
 echo "   1. Visit the application URL above"
 echo "   2. Test file upload functionality"
 echo "   3. Monitor in AWS Amplify Console and AWS CodeBuild Console"
