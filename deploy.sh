@@ -292,7 +292,7 @@ SOURCE='{
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
-SOURCE_VERSION="enhancement11"
+SOURCE_VERSION="main"
 
 print_status "Creating unified CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
 AWS_PAGER="" aws codebuild create-project \
