@@ -19,7 +19,7 @@ STACK_NAME="PatentNoveltyStack"
 AWS_REGION="us-west-2"
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-deployment"
-REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git"
+REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git" # IMPORTANT: repo url from which codebuild runs
 
 # Global variables
 API_GATEWAY_URL=""
@@ -380,7 +380,7 @@ print_success "Complete deployment finished successfully!"
 print_status "Extracting deployment information..."
 API_GATEWAY_URL=$(AWS_PAGER="" aws cloudformation describe-stacks \
   --stack-name "$STACK_NAME" \
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
+  --query "Stacks[0].Outputs[?OutputKey==\`ApiGatewayUrl\`].OutputValue" \
   --output text --region "$AWS_REGION")
 
 if [ -z "$API_GATEWAY_URL" ] || [ "$API_GATEWAY_URL" = "None" ]; then
