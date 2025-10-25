@@ -33,25 +33,9 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 
 ```
 ├── backend/
-│   ├── PatentNoveltyOrchestrator/
-│   │   ├── orchestrator.py                    # Main orchestrator routing requests to agents
-│   │   ├── keyword_agent.py                   # Extracts keywords from invention disclosures
-│   │   ├── patent_search_agent.py             # Searches PatentView for prior art patents
-│   │   ├── scholarly_article_agent.py         # Searches Semantic Scholar for academic papers
-│   │   ├── commercial_assessment_agent.py     # Conducts early commercial assessment
-│   │   ├── report_generator.py                # Generates professional PDF reports
-│   │   ├── requirements.txt                   # Python dependencies
-│   │   ├── Dockerfile                         # Container image for Agent Core Runtime
-│   │   └── .dockerignore                      # Docker ignore file
-│   ├── infrastructure/
-│   │   ├── app.ts                             # CDK app entry point
-│   │   └── patent-novelty-stack.ts            # Infrastructure as Code (CDK stack)
-│   ├── lambda/
-│   │   ├── pdf_processor.py                   # Triggers BDA processing on PDF upload
-│   │   ├── agent_trigger.py                   # Triggers agents when BDA completes
-│   │   ├── s3_api.py                          # S3 operations API Gateway
-│   │   ├── dynamodb_api.py                    # DynamoDB operations API Gateway
-│   │   └── agent_invoke_api.py                # Agent invocation API Gateway
+│   ├── PatentNoveltyOrchestrator/             # AI agent implementations
+│   ├── infrastructure/                        # CDK stacks and constructs
+│   ├── lambda/                                # Lambda functions for API Gateway
 │   ├── cdk.json                               # CDK configuration
 │   ├── package.json                           # Node.js dependencies
 │   ├── package-lock.json                      # Node.js dependency lock file
@@ -70,44 +54,11 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 │   └── media/                                 # Images and diagrams for documentation
 ├── frontend/
 │   ├── app/                                   # Next.js App Router pages
-│   │   ├── favicon.ico                        # Site favicon
-│   │   ├── globals.css                        # Global CSS styles
-│   │   ├── layout.tsx                         # Root layout component
-│   │   ├── page.tsx                           # Home page
-│   │   ├── literature-search/page.tsx         # Literature search page
-│   │   ├── patent-search/page.tsx             # Patent search page
-│   │   ├── report-generation/page.tsx         # Report generation page
-│   │   └── results/page.tsx                   # Results page
 │   ├── components/                            # React components
-│   │   ├── FileUploadCard.tsx                 # File upload component
-│   │   ├── Header.tsx                         # Header component
-│   │   ├── Keywords.tsx                       # Keywords display component
-│   │   ├── LiteratureSearchResults.tsx        # Literature results component
-│   │   ├── PatentSearchResults.tsx            # Patent results component
-│   │   ├── UploadIcon.tsx                     # Upload icon component
-│   │   ├── UploadSection.tsx                  # Upload section component
-│   │   └── ui/                                # UI component library
-│   │       └── button.tsx                     # Button component
 │   ├── hooks/                                 # Custom React hooks
-│   │   └── useFileUpload.ts                   # File upload hook
 │   ├── lib/                                   # Utility functions and configuration
-│   │   ├── config.ts                          # API configuration
-│   │   ├── dynamodb.ts                        # DynamoDB operations
-│   │   ├── patentSearch.ts                    # Patent search service
-│   │   ├── reportGeneration.ts                # Report generation service
-│   │   ├── scholarlySearch.ts                 # Scholarly search service
-│   │   ├── statePersistence.ts                # State persistence utilities
-│   │   └── utils.ts                           # General utilities
 │   ├── types/                                 # TypeScript type definitions
-│   │   └── index.ts                           # Type definitions
 │   ├── public/                                # Static assets and images
-│   │   ├── University_of_Minnesota_wordmark.ico
-│   │   ├── University_of_Minnesota_wordmark.png
-│   │   ├── file.svg                           # File icon
-│   │   ├── globe.svg                          # Globe icon
-│   │   ├── next.svg                           # Next.js logo
-│   │   ├── vercel.svg                         # Vercel logo
-│   │   └── window.svg                         # Window icon
 │   ├── .gitignore                             # Frontend git ignore file
 │   ├── components.json                        # UI components configuration
 │   ├── env.example                            # Environment variables template
