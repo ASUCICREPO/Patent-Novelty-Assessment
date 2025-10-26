@@ -1,314 +1,210 @@
 # User Guide
 
-**Please ensure the application is deployed. Instructions in the deployment guide here:** [Deployment Guide](./deploymentGuide.md)
+**Please ensure the application is deployed using the instructions in the deployment guide:**
+- [Deployment Guide](./deploymentGuide.md)
 
-## Introduction
+Once you have deployed the solution, this user guide will help you navigate the available functions and features.
 
-The Patent Novelty Assessment System automates the prior art search process for invention disclosures. Simply upload your invention disclosure PDF, and the system will automatically extract keywords, search patent databases and academic literature, evaluate relevance using AI, and generate professional PDF reports for patent examiners and technology transfer professionals.
+## Overview
 
-The entire workflow is automated - from document upload to report generation - requiring no manual intervention.
+The Patent Novelty Assessment System provides automated prior art search and analysis for invention disclosures. The system:
 
-## Step-by-Step Usage Instructions
+- **Analyzes Invention Disclosures**: Extracts keywords and technical details from PDF documents
+- **Searches Patent Databases**: Finds relevant prior art patents using AI-powered search
+- **Searches Academic Literature**: Discovers relevant research papers and articles
+- **Generates Professional Reports**: Creates examiner-ready PDF reports for patent assessment
 
-### 1. Prepare Your Invention Disclosure Document
+The system uses specialized AI agents that automatically process your invention disclosure and provide comprehensive prior art analysis with professional reports.
 
-Ensure your invention disclosure is in PDF format and contains:
-- Clear description of the invention
-- Technical details and mechanisms
-- Potential applications
-- Problem being solved
+**Important Disclaimer**: This tool provides preliminary prior art analysis and should not replace professional review. Please review every detail professionally before trusting the results.
 
-![Step 1 - Prepare Document](./media/step-1-prepare-document.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing an example invention disclosure PDF and save as `docs/media/step-1-prepare-document.png`
+## Getting Started
 
-### 2. Upload PDF to S3
+### Accessing the Application
 
-Upload your invention disclosure PDF to the S3 bucket's `uploads/` folder:
+After deployment, you'll receive:
+1. **Frontend URL**: The web application for uploading and viewing results
+2. **API Gateway URL**: Backend API endpoint (for developers)
 
-**Option A: Using AWS Console**
-1. Go to AWS Console → S3
-2. Navigate to your bucket: `patent-novelty-pdf-processing-ACCOUNT_ID`
-3. Click on the `uploads/` folder
-4. Click "Upload"
-5. Select your PDF file
-6. Click "Upload"
+Navigate to the Frontend URL to start using the patent novelty assessment system.
 
-**Option B: Using AWS CLI**
-```bash
-aws s3 cp your-invention.pdf s3://patent-novelty-pdf-processing-ACCOUNT_ID/uploads/
-```
+## Features
 
-![Step 2 - Upload to S3](./media/step-2-upload-s3.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing the S3 upload interface with a PDF being uploaded to the uploads/ folder and save as `docs/media/step-2-upload-s3.png`
+### 1. Document Upload and Processing
 
-### 3. Automatic Document Processing
+The system automatically processes your invention disclosure through multiple AI agents:
 
-Once uploaded, the system automatically:
-- Triggers BDA (Bedrock Data Automation) to extract text from the PDF
-- Processes the document and stores results in `temp/docParser/` folder
-- This typically takes 2-5 minutes depending on document length
-
-You can monitor progress in CloudWatch Logs:
-```bash
-aws logs tail /aws/lambda/PatentNoveltyStack-PdfProcessorFunction --follow
-```
-
-![Step 3 - BDA Processing](./media/step-3-bda-processing.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing CloudWatch Logs with BDA processing messages and save as `docs/media/step-3-bda-processing.png`
-
-### 4. Automatic Keyword Extraction
-
-When BDA completes, the system automatically triggers the Keyword Generator Agent:
-- Analyzes the invention disclosure using Claude Sonnet 4.5
+**Keyword Extraction Agent**:
+- Analyzes your invention disclosure
 - Extracts strategic search keywords (12-15 keywords)
-- Generates invention title, technology description, and applications
-- Stores results in DynamoDB `patent-keywords` table
+- Generates invention title and technology description
 
-This process takes 1-2 minutes.
+**Patent Search Agent**:
+- Searches PatentView database for relevant patents
+- Uses AI to evaluate patent relevance
+- Ranks results by relevance score
 
-![Step 4 - Keyword Extraction](./media/step-4-keyword-extraction.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing DynamoDB table with extracted keywords and save as `docs/media/step-4-keyword-extraction.png`
+**Literature Search Agent**:
+- Searches Semantic Scholar for academic papers
+- Applies semantic relevance filtering
+- Identifies most relevant research
 
-### 5. Automatic Commercial Assessment
+### 2. File Upload Process
 
-Simultaneously, the Commercial Assessment Agent:
-- Analyzes commercialization potential
-- Evaluates market size and competition
-- Identifies potential licensees
-- Assesses key challenges and assumptions
-- Stores results in DynamoDB `early-commercial-assessment` table
+![File Upload Interface](./media/file-upload-interface.png)
 
-This process takes 2-3 minutes.
+**Upload Requirements**:
+- **File Type**: PDF only
+- **Content**: Must contain text (not scanned images)
+- **Security**: No password-protected PDFs
 
-![Step 5 - Commercial Assessment](./media/step-5-commercial-assessment.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing DynamoDB table with commercial assessment data and save as `docs/media/step-5-commercial-assessment.png`
+**Upload Process**:
+1. Drag and drop your PDF file onto the upload area
+2. Or click to browse and select your file
+3. Watch the upload progress bar
+4. Wait for processing to complete
 
-### 6. Initiate Patent Search
+### 3. Processing Status and Timing
 
-Manually trigger the Patent Search Agent (or automate via additional Lambda):
+**Processing Times**:
+- **Document Upload**: 3-5 seconds
+- **Keyword Extraction**: 15 seconds
+- **Patent Search**: 12-15 minutes
+- **Literature Search**: 10-15 minutes
+- **Report Generation**: 3-4 seconds
 
-**Using AWS Console:**
-1. Go to AWS Console → Bedrock → Agent Core
-2. Select your Patent Novelty Orchestrator runtime
-3. Click "Test" or "Invoke"
-4. Enter payload:
-```json
-{
-  "action": "search_patents",
-  "pdf_filename": "your-invention"
-}
-```
-5. Click "Invoke"
+**Total Time**: Usually 25-30 minutes for complete results
 
-**Using AWS CLI:**
-```bash
-aws bedrock-agentcore invoke-agent-runtime \
-  --agent-runtime-arn "arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID" \
-  --runtime-session-id "session-$(date +%s)" \
-  --payload '{"action":"search_patents","pdf_filename":"your-invention"}'
-```
+**What to Expect**:
+- Progress indicators show current processing stage
+- You can navigate away and return later
+- Results appear automatically when ready
+- If taking longer than 45 minutes, try refreshing
 
-The Patent Search Agent will:
-- Search PatentView for each keyword
-- Deduplicate and pre-filter by citation count
-- Use LLM to evaluate relevance of each patent
-- Store top 6-8 most relevant patents in DynamoDB
+### 4. Viewing Analysis Results
 
-This process takes 3-5 minutes.
+![Keywords Results](./media/keywords-results.png)
 
-![Step 6 - Patent Search](./media/step-6-patent-search.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing the Agent Core invocation interface with patent search action and save as `docs/media/step-6-patent-search.png`
+**Keywords Results**:
+- Shows extracted keywords and analysis
+- Displays invention title and technology description
+- Provides technology applications
 
-### 7. Initiate Academic Literature Search
+![Patent Search Results](./media/patent-search-results.png)
 
-Trigger the Scholarly Article Search Agent:
+**Patent Search Results**:
+- Lists relevant patents found
+- Shows relevance scores and patent details
+- Includes patent abstracts and citations
 
-**Payload:**
-```json
-{
-  "action": "search_articles",
-  "pdf_filename": "your-invention"
-}
-```
+![Literature Search Results](./media/literature-search-results.png)
 
-The Scholarly Article Agent will:
-- Generate strategic search queries using LLM
-- Search Semantic Scholar with adaptive refinement
-- Apply LLM-powered semantic relevance filtering
-- Store top 5-8 most relevant papers in DynamoDB
+**Literature Search Results**:
+- Displays relevant academic papers
+- Shows paper abstracts and authors
+- Includes publication details and citations
 
-This process takes 4-6 minutes.
+### 5. Generated Reports
 
-![Step 7 - Article Search](./media/step-7-article-search.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing the Agent Core invocation interface with article search action and save as `docs/media/step-7-article-search.png`
+![Report Generation](./media/report-generation.png)
 
-### 8. Mark Results for Report Inclusion
+**Two Professional PDF Reports**:
 
-Review search results in DynamoDB and mark relevant items for report inclusion:
-
-**For Patents:**
-1. Go to DynamoDB → `patent-search-results` table
-2. Find patents for your case (filter by `pdf_filename`)
-3. For each relevant patent, edit the item and set:
-   - `add_to_report` = `"Yes"`
-4. Save changes
-
-**For Articles:**
-1. Go to DynamoDB → `scholarly-articles-results` table
-2. Find articles for your case (filter by `pdf_filename`)
-3. For each relevant article, edit the item and set:
-   - `add_to_report` = `"Yes"`
-4. Save changes
-
-![Step 8 - Mark Results](./media/step-8-mark-results.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing DynamoDB item editor with add_to_report field being set to "Yes" and save as `docs/media/step-8-mark-results.png`
-
-### 9. Generate PDF Reports
-
-Trigger the Report Generator:
-
-**Payload:**
-```json
-{
-  "action": "generate_report",
-  "pdf_filename": "your-invention"
-}
-```
-
-The Report Generator will:
-- Fetch all data from DynamoDB tables
-- Generate two professional PDF reports:
-  - **Novelty Report** - Patent and literature search results with abstracts
-  - **ECA Report** - Early commercial assessment findings
-- Upload reports to S3 `reports/` folder
-
-This process takes 1-2 minutes.
-
-![Step 9 - Generate Reports](./media/step-9-generate-reports.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing the Agent Core invocation interface with generate_report action and save as `docs/media/step-9-generate-reports.png`
-
-### 10. Download and Review Reports
-
-Download the generated PDF reports from S3:
-
-**Using AWS Console:**
-1. Go to AWS Console → S3
-2. Navigate to your bucket: `patent-novelty-pdf-processing-ACCOUNT_ID`
-3. Click on the `reports/` folder
-4. Find your reports:
-   - `your-invention_report.pdf` (Novelty Report)
-   - `your-invention_eca_report.pdf` (ECA Report)
-5. Click on each file and click "Download"
-
-**Using AWS CLI:**
-```bash
-# Download Novelty Report
-aws s3 cp s3://patent-novelty-pdf-processing-ACCOUNT_ID/reports/your-invention_report.pdf ./
-
-# Download ECA Report
-aws s3 cp s3://patent-novelty-pdf-processing-ACCOUNT_ID/reports/your-invention_eca_report.pdf ./
-```
-
-![Step 10 - Download Reports](./media/step-10-download-reports.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing the S3 interface with generated PDF reports in the reports/ folder and save as `docs/media/step-10-download-reports.png`
-
-### 11. Review Generated Reports
-
-Open the PDF reports to review:
-
-**Novelty Report Contents:**
-- Case information (filename, title, keywords)
-- Patent search results table (patent number, inventors, assignees, title)
-- Literature search results table (journal, year, authors, title)
-- Detailed prior art analysis with abstracts for each patent and paper
+**Novelty Report**:
+- Case information and extracted keywords
+- Patent search results with abstracts
+- Literature search results with abstracts
+- Detailed prior art analysis
 - Legal disclaimer
 
-**ECA Report Contents:**
-- Case information
+**ECA Report (Early Commercial Assessment)**:
 - Problem solved and solution offered
-- Non-confidential marketing abstract
-- Technology details
-- Potential applications
-- Market overview
-- Competition analysis
-- Potential licensees
-- Key commercialization challenges
-- Key assumptions
-- Key companies
-- Legal disclaimer
+- Technology details and applications
+- Market overview and competition analysis
+- Potential licensees and commercialization challenges
+- Key assumptions and recommendations
 
-![Step 11 - Review Reports](./media/step-11-review-reports.png)
-> **[PLACEHOLDER]** Please provide a screenshot showing an opened PDF report with visible content (novelty report or ECA report) and save as `docs/media/step-11-review-reports.png`
+### 6. Navigation and Results Access
 
-## Tips for Best Results
+**Results Navigation**:
+- **Keywords**: View extracted keywords and analysis
+- **Patent Search**: Review patent search results
+- **Literature Search**: Examine academic paper results
+- **Reports**: Download generated PDF reports
 
-### Document Quality
-- Ensure PDFs are text-based (not scanned images)
+**Results Access**:
+- Results are saved and accessible anytime
+- No time limits on viewing results
+- Can download reports multiple times
+
+## Usage Tips
+
+### Getting Better Results
+
+**Document Quality**:
+- Use text-based PDFs (not scanned images)
 - Include clear technical descriptions
 - Provide specific details about mechanisms and materials
 - Describe the problem being solved
 
-### Keyword Review
-- Review extracted keywords in DynamoDB before running searches
-- Manually edit keywords if needed for better search results
-- Add domain-specific terminology if missing
+**Understanding Results**:
+- Review relevance scores to identify most important prior art
+- Focus on patents and papers with higher relevance scores
+- Consider publication dates and citation counts
+- Use results as starting point for deeper analysis
 
-### Result Selection
-- Review LLM relevance scores in DynamoDB
-- Mark only truly relevant patents/articles for report inclusion
-- Aim for 6-8 patents and 5-8 articles per report
-- Consider citation counts as an indicator of impact
+### Common Error Messages
 
-### Report Customization
-- Reports are AI-generated and require manual review
-- Verify all prior art references are accurate
-- Add additional analysis or commentary as needed
-- Use reports as a starting point for examiner review
+**"Only PDF files are supported"** → Upload a PDF file
+**"File too large"** → Try uploading a different PDF file
+**"Upload failed"** → Check internet connection and try again
+**"Results not found"** → Processing isn't done yet, wait longer
+**"Reports not ready"** → Wait for processing to complete
 
-## Monitoring and Troubleshooting
 
-### Check Processing Status
+## Troubleshooting
 
-Monitor CloudWatch Logs for each component:
+### Upload Issues
 
-```bash
-# PDF Processor
-aws logs tail /aws/lambda/PatentNoveltyStack-PdfProcessorFunction --follow
+**File Upload Fails**:
+- Check file format (PDF only)
+- Ensure stable internet connection
+- Try a different browser
 
-# Agent Trigger
-aws logs tail /aws/lambda/PatentNoveltyStack-AgentTriggerFunction --follow
+**Processing Stuck**:
+- Wait up to 45 minutes before refreshing
+- Check if file contains extractable text
+- Try uploading a different PDF
 
-# Agent Core Runtime
-# View logs in AWS Console → Bedrock → Agent Core → Your Runtime → Logs
-```
+### Results Issues
 
-### Common Issues
+**Results Not Loading**:
+- Refresh the page
+- Check browser console for errors
+- Verify internet connection
 
-**Issue: No keywords extracted**
-- Check BDA processing completed successfully
-- Verify PDF contains extractable text (not scanned image)
-- Review CloudWatch Logs for errors
+**Reports Not Generating**:
+- Ensure processing is complete
+- Wait for all search results to finish
+- Try regenerating reports
 
-**Issue: No search results**
-- Verify keywords are relevant and not too specific
-- Check gateway credentials are configured correctly
-- Review Agent Core Runtime logs for API errors
+### Getting Help
 
-**Issue: Reports not generated**
-- Ensure at least one patent or article is marked with `add_to_report = "Yes"`
-- Verify all DynamoDB tables contain data
-- Check S3 bucket permissions
-
-**Issue: Low-quality results**
-- Review and refine extracted keywords
-- Adjust LLM relevance score thresholds in agent code
-- Run additional searches with different keyword combinations
+**If Problems Persist**:
+1. Try using Chrome browser
+2. Clear browser cache and cookies
+3. Check internet connection stability
+4. Try uploading a different PDF file
+5. Wait longer for processing to complete
 
 ## Next Steps
 
-After reviewing reports:
-1. Share with patent examiners for novelty assessment
-2. Use ECA report for commercialization decision-making
-3. Conduct deeper analysis on identified prior art
-4. Refine invention disclosure based on findings
-5. Proceed with patent filing or licensing discussions
+After reviewing your results:
+
+1. **Professional Review**: Use novelty report for patent filing decisions
+2. **Commercial Assessment**: Use ECA report for business development
+3. **Further Analysis**: Conduct deeper research on identified prior art
+4. **Refine Invention**: Update disclosure based on findings
+5. **Patent Strategy**: Proceed with filing or licensing discussions
+
+**Remember**: This tool provides preliminary analysis. Please review every detail professionally before trusting the results and making final decisions.
