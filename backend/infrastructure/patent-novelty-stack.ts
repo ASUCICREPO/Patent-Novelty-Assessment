@@ -27,6 +27,13 @@ export class PatentNoveltyStack extends cdk.Stack {
         : lambda.Architecture.X86_64;
     console.log(`Lambda architecture: ${lambdaArchitecture}`);
 
+    // Get Amplify App ID from context and construct frontend URL for CORS
+    const amplifyAppId = this.node.tryGetContext("amplifyAppId");
+    const frontendUrl = amplifyAppId
+      ? `https://main.${amplifyAppId}.amplifyapp.com`
+      : "*";
+    console.log(`Frontend URL for CORS: ${frontendUrl}`);
+
     // S3 Bucket for PDF processing
     const processingBucket = new s3.Bucket(this, "PdfProcessingBucket", {
       bucketName: `patent-novelty-pdf-processing-${accountId}`,
@@ -35,6 +42,19 @@ export class PatentNoveltyStack extends cdk.Stack {
       versioned: false,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      cors: [
+        {
+          allowedHeaders: ["*"],
+          allowedMethods: [
+            s3.HttpMethods.GET,
+            s3.HttpMethods.PUT,
+            s3.HttpMethods.POST,
+          ],
+          allowedOrigins: [frontendUrl, "http://localhost:3000"],
+          exposedHeaders: [],
+          maxAge: 3000,
+        },
+      ],
     });
 
     // DynamoDB table for storing patent analysis (keywords, title, descriptions)
@@ -250,6 +270,7 @@ export class PatentNoveltyStack extends cdk.Stack {
       memorySize: 256,
       environment: {
         BUCKET_NAME: processingBucket.bucketName,
+        ALLOWED_ORIGIN: frontendUrl,
       },
     });
 
@@ -266,6 +287,7 @@ export class PatentNoveltyStack extends cdk.Stack {
         PATENT_RESULTS_TABLE: patentResultsTable.tableName,
         SCHOLARLY_ARTICLES_TABLE: scholarlyArticlesTable.tableName,
         COMMERCIAL_ASSESSMENT_TABLE: commercialAssessmentTable.tableName,
+        ALLOWED_ORIGIN: frontendUrl,
       },
     });
 
@@ -279,6 +301,7 @@ export class PatentNoveltyStack extends cdk.Stack {
       memorySize: 256,
       environment: {
         AGENT_RUNTIME_ARN: agentRuntimeArn,
+        ALLOWED_ORIGIN: frontendUrl,
       },
     });
 
@@ -287,7 +310,7 @@ export class PatentNoveltyStack extends cdk.Stack {
       restApiName: "Patent Novelty Assessment API",
       description: "API for Patent Novelty Assessment application",
       defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowOrigins: [frontendUrl, "http://localhost:3000"],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: [
           "Content-Type",
