@@ -18,6 +18,8 @@ An intelligent patent novelty assessment platform built with AWS Bedrock, Agent 
 
 ## High-Level Architecture
 
+The Patent Novelty Assessment System is a serverless, event-driven architecture built on AWS that orchestrates multiple AI agents to conduct comprehensive prior art searches. When a user uploads an invention disclosure PDF, the system automatically extracts content using Amazon Bedrock Data Automation (BDA), generates strategic search keywords, searches PatentView and Semantic Scholar databases, evaluates results using LLM-powered relevance scoring, and generates professional PDF reports.
+
 The following architecture diagram illustrates the various AWS components utilized to deliver the solution. For an in-depth explanation of the backend, please look at the [Architecture Guide](docs/architectureDeepDive.md).
 
 ![Architecture Diagram](./docs/media/architecture.png)
