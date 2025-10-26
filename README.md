@@ -50,9 +50,7 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 │   ├── API_GATEWAY_ENDPOINTS.md               # Internal API Gateway documentation
 │   ├── modificationGuide.md                   # Developer modification guide
 │   ├── patentview_openapi_spec.json           # PatentView API specification
-│   ├── PatentView.txt                         # PatentView API documentation
 │   ├── semantic_scholar_openapi_spec.json     # Semantic Scholar API specification
-│   ├── semantic_scholar.json                  # Semantic Scholar API documentation
 │   └── media/                                 # Images and diagrams for documentation
 ├── frontend/
 │   ├── app/                                   # Next.js App Router pages
