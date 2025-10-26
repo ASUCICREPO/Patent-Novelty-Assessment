@@ -4,17 +4,19 @@ An intelligent patent novelty assessment platform built with AWS Bedrock, Agent 
 
 ![User Interface](./docs/media/user-interface.gif)
 
-| Index                                               | Description                                             |
-| :-------------------------------------------------- | :------------------------------------------------------ |
-| [High Level Architecture](#high-level-architecture) | High level overview illustrating component interactions |
-| [Deployment](#deployment-guide)                     | How to deploy the project                               |
-| [User Guide](#user-guide)                           | The working solution                                    |
-| [Directories](#directories)                         | General project directory structure                     |
-| [Key Features](#key-features)                       | Backend and frontend capabilities                       |
-| [Technology Stack](#technology-stack)               | Technologies and frameworks used                        |
-| [API Documentation](#api-documentation)             | Documentation on the API the project uses               |
-| [Credits](#credits)                                 | Meet the team behind the solution                       |
-| [License](#license)                                 | License details                                         |
+| Index                                                    | Description                                             |
+| :------------------------------------------------------- | :------------------------------------------------------ |
+| [High Level Architecture](#high-level-architecture)      | High level overview illustrating component interactions |
+| [Deployment](#deployment-guide)                          | How to deploy the project                               |
+| [User Guide](#user-guide)                                | The working solution                                    |
+| [Directories](#directories)                              | General project directory structure                     |
+| [Key Features](#key-features)                            | Backend and frontend capabilities                       |
+| [Technology Stack](#technology-stack)                    | Technologies and frameworks used                        |
+| [API Documentation](#api-documentation)                  | Documentation on the API the project uses               |
+| [Architecture Deep Dive](./docs/architectureDeepDive.md) | Technical architecture explanation                      |
+| [Modification Guide](./docs/modificationGuide.md)         | Developer guide for extending/modifying                 |
+| [Credits](#credits)                                      | Meet the team behind the solution                       |
+| [License](#license)                                      | License details                                         |
 
 ## High-Level Architecture
 
