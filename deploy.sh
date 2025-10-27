@@ -17,6 +17,7 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 PROJECT_NAME="patent-novelty-${TIMESTAMP}"
 STACK_NAME="PatentNoveltyStack"
 AWS_REGION=$(aws configure get region || echo "us-west-2")
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-deployment"
 REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git" # IMPORTANT: repo url from which codebuild runs
@@ -271,6 +272,14 @@ ENV_VARS_ARRAY='{
   },{
     "name": "AMPLIFY_APP_ID",
     "value": "'"$AMPLIFY_APP_ID"'",
+    "type": "PLAINTEXT"
+  },{
+    "name": "CDK_DEFAULT_REGION",
+    "value": "'"$AWS_REGION"'",
+    "type": "PLAINTEXT"
+  },{
+    "name": "CDK_DEFAULT_ACCOUNT",
+    "value": "'"$AWS_ACCOUNT_ID"'",
     "type": "PLAINTEXT"
   }'
 
