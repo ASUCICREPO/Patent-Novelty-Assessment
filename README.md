@@ -158,7 +158,6 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 - **AWS Bedrock** - Claude Sonnet 4.5 for LLM analysis, Data Automation for PDF processing
 - **AWS Bedrock Agent Core** - Orchestrates multi-agent workflows with tool calling
 - **MCP (Model Context Protocol)** - Gateway protocol for external API integration
-- **OAuth 2.0** - Secure authentication for API gateways via AWS Cognito
 - **AWS Lambda** - Serverless compute for event handling and API Gateway integration
 - **Amazon S3** - Document storage and report delivery with event notifications
 - **Amazon DynamoDB** - NoSQL database for keywords, patents, articles, and assessments
@@ -166,7 +165,6 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 - **AWS CodeBuild** - Automated CI/CD pipeline for deployment
 - **AWS Amplify** - Frontend hosting and deployment
 - **Python 3.12** - Agent implementation with Strands framework
-- **ReportLab** - Professional PDF report generation
 - **PatentView API** - USPTO patent database access via MCP Gateway
 - **Semantic Scholar API** - Academic paper search via MCP Gateway
 
