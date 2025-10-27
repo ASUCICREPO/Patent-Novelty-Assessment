@@ -127,7 +127,7 @@ else
         print_error "Failed to create BDA project: $BDA_RESPONSE"
     fi
     
-    BDA_PROJECT_ARN=$(echo $BDA_RESPONSE | grep -o 'arn:aws:bedrock-data-automation:[^"]*' | head -1)
+    BDA_PROJECT_ARN=$(echo $BDA_RESPONSE | grep -o 'arn:aws:bedrock:[^"]*data-automation-project[^"]*' | head -1)
     
     if [ -z "$BDA_PROJECT_ARN" ]; then
         print_error "Failed to extract BDA project ARN from response"
