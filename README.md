@@ -1,8 +1,10 @@
 # Patent Novelty Assessment System
 
-An intelligent patent novelty assessment platform built with AWS Bedrock, Agent Core, and deployed on AWS Lambda. The system provides automated prior art searches across patent databases and academic literature through AI-powered agents with comprehensive knowledge base integration.
+An intelligent patent novelty assessment platform built with AWS Bedrock Agent Core and serverless AWS services. The system provides automated prior art searches across patent databases and academic literature through AI-powered multi-agent orchestration with LLM-powered relevance evaluation.
 
 ![User Interface](./docs/media/user-interface.gif)
+
+> **Note:** Screenshots and demo GIFs are placeholders. Please refer to the [User Guide](./docs/userGuide.md) for detailed interface documentation.
 
 | Index                                                    | Description                                             |
 | :------------------------------------------------------- | :------------------------------------------------------ |
@@ -14,7 +16,7 @@ An intelligent patent novelty assessment platform built with AWS Bedrock, Agent 
 | [Technology Stack](#technology-stack)                    | Technologies and frameworks used                        |
 | [API Documentation](#api-documentation)                  | Documentation on the API the project uses               |
 | [Architecture Deep Dive](./docs/architectureDeepDive.md) | Technical architecture explanation                      |
-| [Modification Guide](./docs/modificationGuide.md)         | Developer guide for extending/modifying                 |
+| [Modification Guide](./docs/modificationGuide.md)        | Developer guide for extending/modifying                 |
 | [Credits](#credits)                                      | Meet the team behind the solution                       |
 | [License](#license)                                      | License details                                         |
 
@@ -26,10 +28,27 @@ The following architecture diagram illustrates the various AWS components utiliz
 
 ![Architecture Diagram](./docs/media/architecture.png)
 
+**Key Components:**
+
+- **Event-Driven Processing:** S3 triggers → Lambda → BDA → Agent Core
+- **Multi-Agent Orchestration:** Keyword extraction, patent search, literature search, commercial assessment, report generation
+- **External API Integration:** PatentView and Semantic Scholar via MCP Gateways with OAuth 2.0
+- **Batch LLM Evaluation:** Optimized relevance scoring (30 patents evaluated in 1 LLM call)
+- **Serverless Architecture:** Auto-scaling, pay-per-use, no server management
+
 ## Deployment Guide
 
-To deploy this solution, please follow the steps laid out in the [Deployment Guide](./docs/deploymentGuide.md).
+To deploy this solution, please follow the comprehensive [Deployment Guide](./docs/deploymentGuide.md).
 
+**Quick Overview:**
+
+1. **Phase 1:** Create API Identities and Gateways (PatentView & Semantic Scholar)
+2. **Phase 2:** Create and Configure Agent Runtime with environment variables
+3. **Phase 3:** Deploy infrastructure via CloudShell using the automated deployment script
+
+**Estimated Time:** 30-45 minutes
+
+**Prerequisites:** AWS Account with appropriate permissions, access to AWS Console and CloudShell
 
 ## User Guide
 
@@ -113,6 +132,7 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 ## Key Features
 
 ### Backend Features
+
 - **Automated Document Processing** - Uses Amazon Bedrock Data Automation to extract text from invention disclosure PDFs
 - **AI-Powered Keyword Extraction** - Claude Sonnet 4.5 analyzes documents and generates strategic search keywords
 - **Comprehensive Patent Search** - Searches PatentView database with intelligent query strategies and LLM-based relevance scoring
@@ -122,6 +142,7 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 - **Event-Driven Architecture** - Fully automated workflow from upload to report generation
 
 ### Frontend Features
+
 - **Intuitive File Upload** - Drag-and-drop PDF upload with real-time progress tracking and validation
 - **Multi-Page Workflow** - Guided user experience through upload, keyword review, patent search, literature search, and report generation
 - **Interactive Results Display** - Dynamic tables showing patent and literature search results with filtering and selection capabilities
@@ -133,18 +154,24 @@ Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions o
 ## Technology Stack
 
 ### Backend Technologies
+
 - **AWS Bedrock** - Claude Sonnet 4.5 for LLM analysis, Data Automation for PDF processing
 - **AWS Bedrock Agent Core** - Orchestrates multi-agent workflows with tool calling
+- **MCP (Model Context Protocol)** - Gateway protocol for external API integration
+- **OAuth 2.0** - Secure authentication for API gateways via AWS Cognito
 - **AWS Lambda** - Serverless compute for event handling and API Gateway integration
-- **Amazon S3** - Document storage and report delivery
+- **Amazon S3** - Document storage and report delivery with event notifications
 - **Amazon DynamoDB** - NoSQL database for keywords, patents, articles, and assessments
 - **AWS CDK** - Infrastructure as Code in TypeScript
+- **AWS CodeBuild** - Automated CI/CD pipeline for deployment
+- **AWS Amplify** - Frontend hosting and deployment
 - **Python 3.12** - Agent implementation with Strands framework
-- **Docker** - Containerized agent runtime
+- **ReportLab** - Professional PDF report generation
 - **PatentView API** - USPTO patent database access via MCP Gateway
 - **Semantic Scholar API** - Academic paper search via MCP Gateway
 
 ### Frontend Technologies
+
 - **Next.js 15** - React framework with App Router for server-side rendering and routing
 - **React 19** - Modern React with concurrent features and improved performance
 - **TypeScript** - Type-safe JavaScript for enhanced developer experience
@@ -160,7 +187,6 @@ Here you can learn about the APIs the project uses:
 
 - **External APIs**: [External API Documentation](./docs/APIdoc.md) - PatentView and Semantic Scholar APIs
 - **Internal APIs**: [API Gateway Endpoints](./docs/API_GATEWAY_ENDPOINTS.md) - Internal API Gateway endpoints for frontend integration
-
 
 ## Credits
 
