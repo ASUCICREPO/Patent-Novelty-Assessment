@@ -27,7 +27,7 @@ phases:
       - echo "CDK deployment complete."
       - echo "Extracting API Gateway URL..."
       - cd ..
-      - export API_GATEWAY_URL=$(aws cloudformation describe-stacks --stack-name PatentNoveltyStack --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text --region us-west-2)
+      - export API_GATEWAY_URL=$(aws cloudformation describe-stacks --stack-name PatentNoveltyStack --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' --output text --region $AWS_DEFAULT_REGION)
       - echo "API Gateway URL=$API_GATEWAY_URL"
       - echo ""
       - echo "=== FRONTEND DEPLOYMENT ==="
