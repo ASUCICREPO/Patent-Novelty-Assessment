@@ -1,195 +1,75 @@
 # Patent Novelty Assessment System
 
-An intelligent patent novelty assessment platform built with AWS Bedrock Agent Core and serverless AWS services. The system provides automated prior art searches across patent databases and academic literature through AI-powered multi-agent orchestration with LLM-powered relevance evaluation.
+An AI-powered patent novelty assessment platform that automates prior art searches across patent databases and academic literature, powered by AWS Bedrock Agent Core and multi-agent orchestration.
 
-![User Interface](./docs/media/user-interface.gif)
+## Demo Video
 
-> **Note:** Screenshots and demo GIFs are placeholders. Please refer to the [User Guide](./docs/userGuide.md) for detailed interface documentation.
+## Index
 
-| Index                                                    | Description                                             |
-| :------------------------------------------------------- | :------------------------------------------------------ |
-| [High Level Architecture](#high-level-architecture)      | High level overview illustrating component interactions |
-| [Deployment](#deployment-guide)                          | How to deploy the project                               |
-| [User Guide](#user-guide)                                | The working solution                                    |
-| [Directories](#directories)                              | General project directory structure                     |
-| [Key Features](#key-features)                            | Backend and frontend capabilities                       |
-| [Technology Stack](#technology-stack)                    | Technologies and frameworks used                        |
-| [API Documentation](#api-documentation)                  | Documentation on the API the project uses               |
-| [Architecture Deep Dive](./docs/architectureDeepDive.md) | Technical architecture explanation                      |
-| [Modification Guide](./docs/modificationGuide.md)        | Developer guide for extending/modifying                 |
-| [Credits](#credits)                                      | Meet the team behind the solution                       |
-| [License](#license)                                      | License details                                         |
+| Description           | Link                                                  |
+| --------------------- | ----------------------------------------------------- |
+| Overview              | [Overview](#overview)                                 |
+| Architecture          | [Architecture](#architecture-diagram)                 |
+| Detailed Architecture | [Detailed Architecture](docs/architectureDeepDive.md) |
+| User Flow             | [User Flow](docs/userGuide.md)                        |
+| Deployment            | [Deployment](docs/deploymentGuide.md)                 |
+| Usage                 | [Usage](#usage)                                       |
+| Infrastructure        | [Infrastructure](docs/architectureDeepDive.md)        |
+| Modification Guide    | [Modification Guide](docs/modificationGuide.md)       |
+| Credits               | [Credits](#credits)                                   |
+| License               | [License](#license)                                   |
 
-## High-Level Architecture
+## Overview
 
-The Patent Novelty Assessment System is a serverless, event-driven architecture built on AWS that orchestrates multiple AI agents to conduct comprehensive prior art searches. When a user uploads an invention disclosure PDF, the system automatically extracts content using Amazon Bedrock Data Automation (BDA), generates strategic search keywords, searches PatentView and Semantic Scholar databases, evaluates results using LLM-powered relevance scoring, and generates professional PDF reports.
+This application combines AI-powered document processing with intelligent patent and literature search to deliver comprehensive prior art analysis. Built on a serverless architecture with multi-agent orchestration, automated workflow, and professional PDF report generation.
 
-The following architecture diagram illustrates the various AWS components utilized to deliver the solution. For an in-depth explanation of the backend, please look at the [Architecture Guide](docs/architectureDeepDive.md).
+### Key Features
 
-![Architecture Diagram](./docs/media/architecture.png)
+- **Multi-Agent AI System** powered by AWS Bedrock with Claude Sonnet 4.5
+- **Automated Document Processing** using Amazon Bedrock Data Automation
+- **Intelligent Patent Search** via PatentView API with LLM-powered relevance scoring
+- **Academic Literature Search** via Semantic Scholar with semantic evaluation
+- **Early Commercial Assessment** for market viability analysis
+- **Professional PDF Reports** with prior art analysis and abstracts
+- **Real-time Web Interface** with drag-and-drop upload and progress tracking
 
-**Key Components:**
+## Architecture Diagram
 
-- **Event-Driven Processing:** S3 triggers → Lambda → BDA → Agent Core
-- **Multi-Agent Orchestration:** Keyword extraction, patent search, literature search, commercial assessment, report generation
-- **External API Integration:** PatentView and Semantic Scholar via MCP Gateways with OAuth 2.0
-- **Batch LLM Evaluation:** Optimized relevance scoring (30 patents evaluated in 1 LLM call)
-- **Serverless Architecture:** Auto-scaling, pay-per-use, no server management
+![Patent Novelty Architecture Diagram](docs/media/architecture.png)
 
-## Deployment Guide
+The application implements a serverless, event-driven architecture with a multi-agent AI system at its core, combining automated document processing with intelligent search and evaluation.
 
-To deploy this solution, please follow the comprehensive [Deployment Guide](./docs/deploymentGuide.md).
+For a detailed deep dive into the architecture, including core principles, component interactions, data flow, security, and implementation details, see [docs/architectureDeepDive.md](docs/architectureDeepDive.md).
 
-**Quick Overview:**
+## User Flow
 
-1. **Phase 1:** Create API Identities and Gateways (PatentView & Semantic Scholar)
-2. **Phase 2:** Create and Configure Agent Runtime with environment variables
-3. **Phase 3:** Deploy infrastructure via CloudShell using the automated deployment script
+For a detailed overview of the user journey and application workflow, including step-by-step user interactions, see [docs/userGuide.md](docs/userGuide.md).
 
-**Estimated Time:** 30-45 minutes
+## Deployment
 
-**Prerequisites:** AWS Account with appropriate permissions, access to AWS Console and CloudShell
+For detailed deployment instructions, including prerequisites and step-by-step guides, see [docs/deploymentGuide.md](docs/deploymentGuide.md).
 
-## User Guide
+## Usage
 
-Please refer to the [Web App User Guide](./docs/userGuide.md) for instructions on using the web app.
+For detailed post-deployment setup and usage instructions, including configuration steps and how to use the application, see [docs/userGuide.md](docs/usage.md).
 
-## Directories
+## Infrastructure
 
-```
-├── backend/
-│   ├── PatentNoveltyOrchestrator/             # AI agent implementations
-│   ├── infrastructure/                        # CDK stacks and constructs
-│   ├── lambda/                                # Lambda functions for API Gateway
-│   ├── cdk.json                               # CDK configuration
-│   ├── package.json                           # Node.js dependencies
-│   ├── package-lock.json                      # Node.js dependency lock file
-│   └── tsconfig.json                          # TypeScript configuration
-├── docs/
-│   ├── architectureDeepDive.md                # Technical architecture explanation
-│   ├── deploymentGuide.md                     # Deployment instructions
-│   ├── userGuide.md                           # User interface guide
-│   ├── APIdoc.md                              # External API documentation
-│   ├── API_GATEWAY_ENDPOINTS.md               # Internal API Gateway documentation
-│   ├── modificationGuide.md                   # Developer modification guide
-│   ├── patentview_openapi_spec.json           # PatentView API specification
-│   ├── semantic_scholar_openapi_spec.json     # Semantic Scholar API specification
-│   └── media/                                 # Images and diagrams for documentation
-├── frontend/
-│   ├── app/                                   # Next.js App Router pages
-│   ├── components/                            # React components
-│   ├── hooks/                                 # Custom React hooks
-│   ├── lib/                                   # Utility functions and configuration
-│   ├── types/                                 # TypeScript type definitions
-│   ├── public/                                # Static assets and images
-│   ├── .gitignore                             # Frontend git ignore file
-│   ├── components.json                        # UI components configuration
-│   ├── env.example                            # Environment variables template
-│   ├── eslint.config.mjs                      # ESLint configuration
-│   ├── next.config.ts                         # Next.js configuration
-│   ├── package.json                           # Frontend dependencies
-│   ├── package-lock.json                      # Frontend dependency lock file
-│   ├── postcss.config.mjs                     # PostCSS configuration
-│   └── tsconfig.json                          # TypeScript configuration
-├── deploy.sh                                  # Automated deployment script
-├── buildspec.yml                              # CodeBuild configuration
-├── .gitignore                                 # Git ignore file
-├── LICENSE                                    # Project license
-└── README.md                                  # This file
-```
+For a detailed overview of the application infrastructure, including component interactions, AWS services, and data flow, see [docs/architectureDeepDive.md](docs/architectureDeepDive.md).
 
-1. **`backend/`**: AWS CDK app and backend code
-   - `PatentNoveltyOrchestrator/`: AI agent implementations using Strands framework
-   - `infrastructure/`: CDK stacks and constructs (infrastructure as code)
-   - `lambda/`: Lambda functions for event handling and API Gateway
-   - `cdk.json`: CDK configuration
-   - `package.json` & `package-lock.json`: Node.js dependencies
-   - `tsconfig.json`: TypeScript configuration
-2. **`docs/`**: Architecture, deployment, and user guides with media assets
-   - `architectureDeepDive.md`: Technical architecture explanation
-   - `deploymentGuide.md`: Deployment instructions
-   - `userGuide.md`: User interface guide
-   - `APIdoc.md`: External API documentation
-   - `API_GATEWAY_ENDPOINTS.md`: Internal API Gateway documentation
-   - `modificationGuide.md`: Developer modification guide
-   - API specifications and documentation files
-3. **`frontend/`**: Next.js web application with API Gateway integration
-   - `app/`: Next.js App Router configuration and pages
-   - `components/`: Reusable UI components
-     - `ui/`: UI component library (button.tsx, etc.)
-   - `hooks/`: Custom React hooks for file upload and state management
-   - `lib/`: Utility functions and API configuration
-   - `types/`: TypeScript type definitions
-   - `public/`: Static assets and images
-   - `package.json` & `package-lock.json`: Frontend dependencies
-   - Configuration files for Next.js, TypeScript, ESLint, and PostCSS
-4. **Root**: Deployment scripts and build configurations
-   - `deploy.sh`: Main deployment script (backend + frontend)
-   - `buildspec.yml`: CodeBuild configuration for CI/CD
-   - `.gitignore`: Git ignore file
-   - `LICENSE`: Project license
+## Documentation
 
-## Key Features
+- **[API Documentation](docs/APIdoc.md)** - Comprehensive API reference for PatentView and Semantic Scholar
+- **[API Gateway Endpoints](docs/API_GATEWAY_ENDPOINTS.md)** - Internal API Gateway documentation
 
-### Backend Features
+## Modification Guide
 
-- **Automated Document Processing** - Uses Amazon Bedrock Data Automation to extract text from invention disclosure PDFs
-- **AI-Powered Keyword Extraction** - Claude Sonnet 4.5 analyzes documents and generates strategic search keywords
-- **Comprehensive Patent Search** - Searches PatentView database with intelligent query strategies and LLM-based relevance scoring
-- **Academic Literature Search** - Searches Semantic Scholar with adaptive query refinement and semantic relevance evaluation
-- **Early Commercial Assessment** - Analyzes market potential, competition, and commercialization viability
-- **Professional PDF Reports** - Generates examiner-ready reports with prior art analysis and abstracts
-- **Event-Driven Architecture** - Fully automated workflow from upload to report generation
-
-### Frontend Features
-
-- **Intuitive File Upload** - Drag-and-drop PDF upload with real-time progress tracking and validation
-- **Multi-Page Workflow** - Guided user experience through upload, keyword review, patent search, literature search, and report generation
-- **Interactive Results Display** - Dynamic tables showing patent and literature search results with filtering and selection capabilities
-- **Status Monitoring** - Progress indicators and status updates throughout the analysis process
-- **Keyword Management** - Editable keyword interface allowing users to refine search terms before analysis
-- **Report Download Interface** - Direct download access to generated PTLS and ECA reports
-- **State Persistence** - Browser-based state management ensuring progress is maintained across page refreshes
-
-## Technology Stack
-
-### Backend Technologies
-
-- **AWS Bedrock** - Claude Sonnet 4.5 for LLM analysis, Data Automation for PDF processing
-- **AWS Bedrock Agent Core** - Orchestrates multi-agent workflows with tool calling
-- **MCP (Model Context Protocol)** - Gateway protocol for external API integration
-- **AWS Lambda** - Serverless compute for event handling and API Gateway integration
-- **Amazon S3** - Document storage and report delivery with event notifications
-- **Amazon DynamoDB** - NoSQL database for keywords, patents, articles, and assessments
-- **AWS CDK** - Infrastructure as Code in TypeScript
-- **AWS CodeBuild** - Automated CI/CD pipeline for deployment
-- **AWS Amplify** - Frontend hosting and deployment
-- **Python 3.12** - Agent implementation with Strands framework
-- **PatentView API** - USPTO patent database access via MCP Gateway
-- **Semantic Scholar API** - Academic paper search via MCP Gateway
-
-### Frontend Technologies
-
-- **Next.js 15** - React framework with App Router for server-side rendering and routing
-- **React 19** - Modern React with concurrent features and improved performance
-- **TypeScript** - Type-safe JavaScript for enhanced developer experience
-- **Tailwind CSS** - Utility-first CSS framework for responsive design
-- **shadcn/ui** - Modern component library built on Radix UI primitives
-- **AWS SDK v3** - Direct integration with AWS services (S3, DynamoDB, Bedrock Agent Core)
-- **Lucide React** - Icon library for consistent visual design
-- **Custom Hooks** - React hooks for file upload, state management, and API integration
-
-## API Documentation
-
-Here you can learn about the APIs the project uses:
-
-- **External APIs**: [External API Documentation](./docs/APIdoc.md) - PatentView and Semantic Scholar APIs
-- **Internal APIs**: [API Gateway Endpoints](./docs/API_GATEWAY_ENDPOINTS.md) - Internal API Gateway endpoints for frontend integration
+Steps to implement optional modifications such as changing the Bedrock model, adding more agents, or customizing the frontend can be found [here](docs/modificationGuide.md).
 
 ## Credits
 
-This application was architected and developed by <a href="https://www.linkedin.com/in/shaashvatm156/" target="_blank">Shaashvat Mittal</a>, <a href="https://www.linkedin.com/in/sahajpreet/" target="_blank">Sahajpreet Singh</a>, and <a href="https://www.linkedin.com/in/ashik-tharakan/" target="_blank">Ashik Tharakan</a>, with solutions architect <a href="https://www.linkedin.com/in/arunarunachalam/" target="_blank">Arun Arunachalam</a>, program manager <a href="https://www.linkedin.com/in/thomas-orr/" target="_blank">Thomas Orr</a> and product manager <a href="https://www.linkedin.com/in/rachelhayden/" target="_blank">Rachel Hayden</a>. Thanks to the ASU Cloud Innovation Center Technical and Project Management teams for their guidance and support.
+This application was architected and developed by [Shaashvat Mittal](https://www.linkedin.com/in/shaashvatm156/), [Sahajpreet Singh](https://www.linkedin.com/in/sahajpreet/), and [Ashik Tharakan](https://www.linkedin.com/in/ashik-tharakan/) with solutions architect [Arun Arunachalam](https://www.linkedin.com/in/arunarunachalam/), program manager [Thomas Orr](https://www.linkedin.com/in/thomas-orr/) and product manager [Rachel Hayden](https://www.linkedin.com/in/rachelhayden/). Thanks to the ASU Cloud Innovation Center Technical and Project Management teams for their guidance and support.
 
 ## License
 
-This project is distributed under the [MIT License](LICENSE).
+See [LICENSE](LICENSE) file for details.
