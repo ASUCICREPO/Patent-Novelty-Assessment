@@ -45,12 +45,25 @@ phases:
     commands:
       - echo "Deploying frontend to Amplify..."
       - echo "Creating Amplify deployment..."
-      - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name main --output json | tee deployment_response.json
+      - cd ..
+      - aws amplify create-deployment --app-id $AMPLIFY_APP_ID --branch-name main --region $AWS_DEFAULT_REGION --output json > deployment_response.json
+      - |
+        if [ $? -ne 0 ]; then
+          echo "Failed to create Amplify deployment. Check if a deployment is already running."
+          cat deployment_response.json
+          exit 1
+        fi
       - echo "Extracting upload URL and job ID..."
       - export UPLOAD_URL=$(node -e "const data=require('./deployment_response.json'); console.log(data.zipUploadUrl)")
       - export JOB_ID=$(node -e "const data=require('./deployment_response.json'); console.log(data.jobId)")
       - echo "Uploading build.zip to Amplify..."
+      - cd out
       - curl -X PUT -T build.zip "$UPLOAD_URL"
+      - |
+        if [ $? -ne 0 ]; then
+          echo "Failed to upload build.zip to Amplify"
+          exit 1
+        fi
       - echo "Starting deployment..."
-      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name main --job-id $JOB_ID
+      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name main --job-id $JOB_ID --region $AWS_DEFAULT_REGION
       - echo "Complete deployment finished successfully!"

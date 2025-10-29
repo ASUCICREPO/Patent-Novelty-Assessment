@@ -205,7 +205,7 @@ AWS_REGION=<your_region>
 ### Step 3.2: Clone the Repository
 
 ```bash
-git clone https://github.com/ASUCICREPO/patent-novelty-assessment.git
+git clone https://github.com/ASUCICREPO/Patent-Novelty-Assessment.git
 cd patent-novelty-assessment
 ```
 
@@ -278,7 +278,17 @@ ARTICLES_TABLE_NAME=<value_from_deployment>
 COMMERCIAL_ASSESSMENT_TABLE_NAME=<value_from_deployment>
 ```
 
-### Step 4.2: Update Container Image
+### Step 4.2: Update IAM Role (CRITICAL)
+
+1. Still in the Edit screen, scroll to **Permissions**
+2. Change the IAM role to the custom role created by CDK:
+   - Select **Use an existing service role**
+   - From the dropdown, choose: `PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX`
+   - **Do NOT use** the default `AmazonBedrockAgentCoreRuntimeDefaultServiceRole`
+
+**Why this is required:** The custom role includes AWS Marketplace permissions needed for Claude Sonnet 4.5 and access to your S3 bucket and DynamoDB tables. The default role will cause "AccessDeniedException" errors.
+
+### Step 4.3: Update Container Image
 
 1. Still in the Edit screen, scroll to **Container image**
 2. Replace with the **Docker Image URI** from the CDK outputs:
@@ -287,7 +297,7 @@ COMMERCIAL_ASSESSMENT_TABLE_NAME=<value_from_deployment>
    ```
 3. Click **Save changes**
 
-### Step 4.3: Host the Agent
+### Step 4.4: Host the Agent
 
 1. Click **Host agent**
 2. Wait for the agent to become **Healthy** (this may take 2-3 minutes)
