@@ -20,7 +20,7 @@ AWS_REGION=${AWS_REGION:-$(aws configure get region || echo "us-west-2")}
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 AMPLIFY_APP_NAME="PatentNoveltyAssessment"
 CODEBUILD_PROJECT_NAME="${PROJECT_NAME}-deployment"
-REPOSITORY_URL="https://github.com/ASUCICREPO/patent-novelty-assessment.git" # IMPORTANT: repo url from which codebuild runs
+REPOSITORY_URL="https://github.com/ASUCICREPO/Patent-Novelty-Assessment.git" # IMPORTANT: repo url from which codebuild runs
 
 # Global variables
 API_GATEWAY_URL=""

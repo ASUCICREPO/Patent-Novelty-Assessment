@@ -205,7 +205,7 @@ AWS_REGION=<your_region>
 ### Step 3.2: Clone the Repository
 
 ```bash
-git clone https://github.com/ASUCICREPO/patent-novelty-assessment.git
+git clone https://github.com/ASUCICREPO/Patent-Novelty-Assessment.git
 cd patent-novelty-assessment
 ```
 
