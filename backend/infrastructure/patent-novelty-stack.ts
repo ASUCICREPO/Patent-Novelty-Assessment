@@ -158,13 +158,8 @@ export class PatentNoveltyStack extends cdk.Stack {
       );
     }
 
-    // Get Agent Runtime ARN from context (passed by deployment script)
-    const agentRuntimeArn = this.node.tryGetContext("agentRuntimeArn");
-    if (!agentRuntimeArn) {
-      throw new Error(
-        "Agent Runtime ARN must be provided via context. Run deployment script instead of direct CDK deploy."
-      );
-    }
+    // Get Agent Runtime ARN from context (optional - will be updated after Agent Runtime creation)
+    const agentRuntimeArn = this.node.tryGetContext("agentRuntimeArn") || "PLACEHOLDER-UPDATE-AFTER-AGENT-CREATION";
 
     // Lambda function for PDF processing
     const pdfProcessorFunction = new lambda.Function(
@@ -500,6 +495,11 @@ export class PatentNoveltyStack extends cdk.Stack {
     new cdk.CfnOutput(this, "AgentInvokeApiFunctionName", {
       value: agentInvokeApiFunction.functionName,
       description: "Lambda function for Agent Invoke API operations",
+    });
+
+    new cdk.CfnOutput(this, "PostDeploymentInstructions", {
+      value: `After creating Agent Runtime, update Lambda functions: ${agentTriggerFunction.functionName} and ${agentInvokeApiFunction.functionName}`,
+      description: "Lambda functions that need AGENT_RUNTIME_ARN environment variable updated",
     });
   }
 }

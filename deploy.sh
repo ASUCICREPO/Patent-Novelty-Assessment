@@ -54,29 +54,6 @@ print_amplify() {
     echo -e "${PURPLE}[AMPLIFY]${NC} $1"
 }
 
-# --- Phase 0: Prompt for Agent Runtime ARN ---
-print_status "🤖 Phase 0: Agent Runtime ARN Configuration..."
-
-echo ""
-echo "Before proceeding, you must manually create an Agent Core Runtime in the AWS Console."
-echo "Instructions:"
-echo "  1. Go to AWS Bedrock Console > Agent Core"
-echo "  2. Create a new Agent Runtime"
-echo "  3. Copy the Runtime ARN (format: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID)"
-echo ""
-read -p "Enter your Agent Runtime ARN: " AGENT_RUNTIME_ARN
-
-if [ -z "$AGENT_RUNTIME_ARN" ]; then
-    print_error "Agent Runtime ARN is required. Please create an Agent Core Runtime first."
-fi
-
-# Validate ARN format
-if [[ ! "$AGENT_RUNTIME_ARN" =~ ^arn:aws:bedrock-agentcore:[a-z0-9-]+:[0-9]+:runtime/.+ ]]; then
-    print_error "Invalid Agent Runtime ARN format. Expected: arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID"
-fi
-
-print_success "Agent Runtime ARN: REDACTED"
-
 # --- Phase 1: Create or Get BDA Project ---
 print_status "📄 Phase 1: Setting up BDA Project..."
 
@@ -265,10 +242,6 @@ print_codebuild "🏗️ Phase 4: Creating Unified CodeBuild Project..."
 ENV_VARS_ARRAY='{
     "name": "BDA_PROJECT_ARN",
     "value": "'"$BDA_PROJECT_ARN"'",
-    "type": "PLAINTEXT"
-  },{
-    "name": "AGENT_RUNTIME_ARN",
-    "value": "'"$AGENT_RUNTIME_ARN"'",
     "type": "PLAINTEXT"
   },{
     "name": "AMPLIFY_APP_ID",
@@ -480,13 +453,50 @@ echo "   - API Gateway with Lambda functions"
 echo "   - DynamoDB tables"
 echo "   - S3 bucket with restricted CORS policy"
 echo "   - Docker image for Agent Core Runtime"
+echo "   - IAM role for Agent Core Runtime"
 echo "   - Frontend built and deployed to Amplify via CodeBuild"
 echo ""
-echo "Access your application:"
-echo "   https://main.$AMPLIFY_URL"
+echo "Frontend URL: https://main.$AMPLIFY_URL"
 echo ""
-echo "Next steps:"
-echo "   1. Visit the application URL above"
-echo "   2. Test file upload functionality"
-echo "   3. Monitor in AWS Amplify Console and AWS CodeBuild Console"
-echo "   4. Set up custom domain if needed"
+echo "=========================================================================="
+echo "IMPORTANT: NEXT STEPS TO COMPLETE DEPLOYMENT"
+echo "=========================================================================="
+echo ""
+echo "The infrastructure is deployed, but you must complete these steps:"
+echo ""
+echo "STEP 1: Create Agent Runtime in AWS Console"
+echo "------------------------------------------------------------------------"
+echo "1. Go to: AWS Bedrock Console > Agent Core > Agent runtime"
+echo "2. Click 'Host agent'"
+echo "3. Configure:"
+echo "   - Name: Patent-Novelty-Agent"
+echo "   - Container Image: (Use Docker Image URI from CDK outputs above)"
+echo "   - Permissions: Select 'Use an existing service role'"
+echo "   - IAM Role: PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX"
+echo "   - Environment Variables: Add all 14 variables (see deployment guide)"
+echo "4. Click 'Host agent' and wait for status 'Healthy'"
+echo "5. Copy the Agent Runtime ARN"
+echo ""
+echo "STEP 2: Update Lambda Functions with Agent Runtime ARN"
+echo "------------------------------------------------------------------------"
+echo "After creating the Agent Runtime, run these commands:"
+echo ""
+echo "  # Set your Agent Runtime ARN"
+echo "  AGENT_ARN='arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX'"
+echo "  FRONTEND_URL='https://main.$AMPLIFY_URL'"
+echo ""
+echo "  # Update agent_trigger Lambda"
+echo "  aws lambda update-function-configuration \\"
+echo "    --function-name <AgentTriggerFunctionName-from-outputs-above> \\"
+echo "    --environment Variables={AGENT_RUNTIME_ARN=\$AGENT_ARN} \\"
+echo "    --region $AWS_REGION"
+echo ""
+echo "  # Update agent_invoke_api Lambda"
+echo "  aws lambda update-function-configuration \\"
+echo "    --function-name <AgentInvokeApiFunctionName-from-outputs-above> \\"
+echo "    --environment Variables={AGENT_RUNTIME_ARN=\$AGENT_ARN,ALLOWED_ORIGIN=\$FRONTEND_URL} \\"
+echo "    --region $AWS_REGION"
+echo ""
+echo "=========================================================================="
+echo "For detailed instructions, see: docs/deploymentGuide.md"
+echo "=========================================================================="

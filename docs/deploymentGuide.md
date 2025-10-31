@@ -14,11 +14,12 @@ This guide provides step-by-step instructions to deploy the Patent Novelty Asses
 
 ## Deployment Overview
 
-The deployment consists of 3 main phases:
+The deployment consists of 4 main phases:
 
 1. **Phase 1:** Create API Identities and Gateways (PatentView & Semantic Scholar)
-2. **Phase 2:** Create and Configure Agent Runtime
-3. **Phase 3:** Deploy Infrastructure via CloudShell
+2. **Phase 2:** Deploy Infrastructure via CloudShell
+3. **Phase 3:** Create and Configure Agent Runtime
+4. **Phase 4:** Update Lambda Functions
 
 ---
 
@@ -138,58 +139,9 @@ Before proceeding, ensure:
 
 ---
 
-## Phase 2: Create and Configure Agent Runtime
+## Phase 2: Deploy Infrastructure via CloudShell
 
-### Step 2.1: Create Agent Runtime
-
-1. In **Agent Core** → **Agent runtime**, click **Host agent**
-2. **Basic Configuration:**
-   - **Name:** `Patent-Novelty-Agent`
-   - **Description:** `Multi-agent orchestrator for patent novelty assessment`
-3. **Container Image:**
-   - Select **any existing Docker image** in your ECR (we'll update this later)
-   - If you don't have any, use: `public.ecr.aws/docker/library/python:3.12-slim`
-4. **Keep all other settings as default**
-
-### Step 2.2: Configure Environment Variables (Part 1)
-
-1. Scroll to **Advanced Configurations**
-2. Click **Add environment variable**
-3. Add the following **9 environment variables** one by one:
-
-```bash
-# Gateway Credentials (from Phase 1)
-PATENTVIEW_CLIENT_ID=<your_value>
-PATENTVIEW_CLIENT_SECRET=<your_value>
-PATENTVIEW_TOKEN_URL=<your_value>
-PATENTVIEW_GATEWAY_URL=<your_value>
-
-SEMANTIC_SCHOLAR_CLIENT_ID=<your_value>
-SEMANTIC_SCHOLAR_CLIENT_SECRET=<your_value>
-SEMANTIC_SCHOLAR_TOKEN_URL=<your_value>
-SEMANTIC_SCHOLAR_GATEWAY_URL=<your_value>
-
-# AWS Region (use the region you're deploying in)
-AWS_REGION=<your_region>
-```
-
-**Important:** Replace `<your_value>` with the actual values you copied in Phase 1.
-
-### Step 2.3: Save Agent Runtime ARN
-
-1. Click **Host Agent**
-2. Wait for the agent to be created (this may take a few minutes)
-3. Once created, **copy the Agent Runtime ARN**
-   - Format: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID`
-4. **Save this ARN** - you'll need it in Phase 3
-
-**Note:** The agent will show as "Unhealthy" initially - this is expected. We'll update it after deploying the infrastructure.
-
----
-
-## Phase 3: Deploy Infrastructure via CloudShell
-
-### Step 3.1: Open AWS CloudShell
+### Step 2.1: Open AWS CloudShell
 
 1. In the AWS Console, click the **CloudShell icon** (terminal icon in the top navigation bar)
 2. Wait for CloudShell to initialize
@@ -202,32 +154,30 @@ AWS_REGION=<your_region>
    export AWS_REGION=<your_region>
    ```
 
-### Step 3.2: Clone the Repository
+### Step 2.2: Clone the Repository
 
 ```bash
 git clone https://github.com/ASUCICREPO/Patent-Novelty-Assessment.git
 cd patent-novelty-assessment
 ```
 
-### Step 3.3: Make Deploy Script Executable
+### Step 2.3: Make Deploy Script Executable
 
 ```bash
 chmod +x ./deploy.sh
 ```
 
-### Step 3.4: Run Deployment Script
+### Step 2.4: Run Deployment Script
 
 ```bash
 ./deploy.sh
 ```
 
-### Step 3.5: Provide Agent Runtime ARN
+**Note:** The script will NO LONGER prompt for Agent Runtime ARN. The infrastructure will be deployed first, then you'll create the Agent Runtime in Phase 3.
 
-When prompted:
+### Step 2.5: Wait for Deployment
 
-```
-Enter your Agent Runtime ARN:
-```
+````
 
 Paste the **Agent Runtime ARN** you saved in Step 2.3.
 
@@ -254,54 +204,130 @@ KEYWORDS_TABLE_NAME=patent-keywords-<account-id>
 RESULTS_TABLE_NAME=patent-search-results-<account-id>
 ARTICLES_TABLE_NAME=scholarly-articles-results-<account-id>
 COMMERCIAL_ASSESSMENT_TABLE_NAME=early-commercial-assessment-<account-id>
-```
+````
 
-Also note the **API Gateway URL** and **Frontend URL** from the deployment summary.
+Also note:
+
+- **Docker Image URI** (for Agent Runtime)
+- **IAM Role Name** (PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX)
+- **Lambda Function Names** (AgentTriggerFunctionName and AgentInvokeApiFunctionName)
+- **API Gateway URL**
+- **Frontend URL**
 
 ---
 
-## Phase 4: Update Agent Runtime Configuration
+## Phase 3: Create and Configure Agent Runtime
 
-### Step 4.1: Add Remaining Environment Variables
+Now that the infrastructure is deployed, create the Agent Runtime with the correct IAM role and all environment variables at once.
 
-1. Go back to **Agent Core** → **Agent runtime**
-2. Select your `Patent-Novelty-Agent`
-3. Click **Edit**
-4. Scroll to **Advanced Configurations** → **Environment variables**
-5. Add the following **5 environment variables** (from Step 3.7):
+### Step 3.1: Navigate to Agent Core
 
-```bash
-BUCKET_NAME=<value_from_deployment>
-KEYWORDS_TABLE_NAME=<value_from_deployment>
-RESULTS_TABLE_NAME=<value_from_deployment>
-ARTICLES_TABLE_NAME=<value_from_deployment>
-COMMERCIAL_ASSESSMENT_TABLE_NAME=<value_from_deployment>
+1. Go to **AWS Bedrock Console** → **Agent Core** → **Agent runtime**
+2. Click **Host agent**
+
+### Step 3.2: Basic Configuration
+
+- **Name:** `Patent-Novelty-Agent`
+- **Description:** `Multi-agent orchestrator for patent novelty assessment`
+
+### Step 3.3: Container Image
+
+Paste the **Docker Image URI** from Phase 2 CDK outputs:
+
+```
+<account-id>.dkr.ecr.<region>.amazonaws.com/cdk-hnb659fds-container-assets-<account-id>-<region>:<hash>
 ```
 
-### Step 4.2: Update IAM Role (CRITICAL)
+### Step 3.4: Permissions (CRITICAL)
 
-1. Still in the Edit screen, scroll to **Permissions**
-2. Change the IAM role to the custom role created by CDK:
-   - Select **Use an existing service role**
-   - From the dropdown, choose: `PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX`
-   - **Do NOT use** the default `AmazonBedrockAgentCoreRuntimeDefaultServiceRole`
+1. Scroll to **Permissions**
+2. Select **Use an existing service role**
+3. From the dropdown, choose: `PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX`
 
-**Why this is required:** The custom role includes AWS Marketplace permissions needed for Claude Sonnet 4.5 and access to your S3 bucket and DynamoDB tables. The default role will cause "AccessDeniedException" errors.
+**IMPORTANT:** Do NOT use the default `AmazonBedrockAgentCoreRuntimeDefaultServiceRole`. The custom role includes:
 
-### Step 4.3: Update Container Image
+- AWS Marketplace permissions for Claude Sonnet 4.5
+- S3 access to your processing bucket
+- DynamoDB access to all 4 tables
+- CloudWatch logging permissions
 
-1. Still in the Edit screen, scroll to **Container image**
-2. Replace with the **Docker Image URI** from the CDK outputs:
-   ```
-   <account-id>.dkr.ecr.<region>.amazonaws.com/cdk-hnb659fds-container-assets-<account-id>-<region>:<hash>
-   ```
-3. Click **Save changes**
+### Step 3.5: Environment Variables (All 14 at Once)
 
-### Step 4.4: Host the Agent
+Scroll to **Advanced Configurations** → **Environment variables** and add all 14 variables:
+
+```bash
+# Gateway Credentials (8 variables from Phase 1)
+PATENTVIEW_CLIENT_ID=<value_from_phase_1>
+PATENTVIEW_CLIENT_SECRET=<value_from_phase_1>
+PATENTVIEW_TOKEN_URL=<value_from_phase_1>
+PATENTVIEW_GATEWAY_URL=<value_from_phase_1>
+
+SEMANTIC_SCHOLAR_CLIENT_ID=<value_from_phase_1>
+SEMANTIC_SCHOLAR_CLIENT_SECRET=<value_from_phase_1>
+SEMANTIC_SCHOLAR_TOKEN_URL=<value_from_phase_1>
+SEMANTIC_SCHOLAR_GATEWAY_URL=<value_from_phase_1>
+
+# AWS Configuration (1 variable)
+AWS_REGION=<your_region>
+
+# Infrastructure Resources (5 variables from Phase 2)
+BUCKET_NAME=<value_from_phase_2>
+KEYWORDS_TABLE_NAME=<value_from_phase_2>
+RESULTS_TABLE_NAME=<value_from_phase_2>
+ARTICLES_TABLE_NAME=<value_from_phase_2>
+COMMERCIAL_ASSESSMENT_TABLE_NAME=<value_from_phase_2>
+```
+
+### Step 3.6: Host the Agent
 
 1. Click **Host agent**
 2. Wait for the agent to become **Healthy** (this may take 2-3 minutes)
-3. Once healthy, the agent is ready to use
+3. Once healthy, **copy the Agent Runtime ARN**
+   - Format: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME-ID`
+4. **Save this ARN** - you'll need it in Phase 4
+
+---
+
+## Phase 4: Update Lambda Functions
+
+The Lambda functions need the Agent Runtime ARN to invoke the agent. Update them now.
+
+### Step 4.1: Update agent_trigger Lambda
+
+```bash
+# Set your values
+AGENT_ARN="arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX"
+AWS_REGION="your-region"
+AGENT_TRIGGER_FUNCTION="<AgentTriggerFunctionName-from-phase-2>"
+
+# Update the Lambda
+aws lambda update-function-configuration \
+  --function-name $AGENT_TRIGGER_FUNCTION \
+  --environment Variables={AGENT_RUNTIME_ARN=$AGENT_ARN} \
+  --region $AWS_REGION
+```
+
+### Step 4.2: Update agent_invoke_api Lambda
+
+```bash
+# Set your values
+AGENT_ARN="arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX"
+AWS_REGION="your-region"
+FRONTEND_URL="https://main.<amplify-app-id>.amplifyapp.com"
+AGENT_INVOKE_FUNCTION="<AgentInvokeApiFunctionName-from-phase-2>"
+
+# Update the Lambda
+aws lambda update-function-configuration \
+  --function-name $AGENT_INVOKE_FUNCTION \
+  --environment Variables={AGENT_RUNTIME_ARN=$AGENT_ARN,ALLOWED_ORIGIN=$FRONTEND_URL} \
+  --region $AWS_REGION
+```
+
+### Step 4.3: Verify Updates
+
+1. Go to **AWS Lambda Console**
+2. Check both Lambda functions
+3. Verify the `AGENT_RUNTIME_ARN` environment variable is set correctly
 
 ---
 
