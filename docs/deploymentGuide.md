@@ -177,12 +177,6 @@ chmod +x ./deploy.sh
 
 ### Step 2.5: Wait for Deployment
 
-````
-
-Paste the **Agent Runtime ARN** you saved in Step 2.3.
-
-### Step 3.6: Wait for Deployment
-
 The deployment will:
 
 1. Create BDA (Bedrock Data Automation) project
@@ -194,9 +188,9 @@ The deployment will:
 
 **This will take approximately 15-20 minutes.**
 
-### Step 3.7: Extract Environment Variables
+### Step 2.6: Extract Environment Variables
 
-When deployment completes, you'll see CDK outputs. **Copy and save these 5 values:**
+When deployment completes, you'll see CDK outputs. **Copy and save these values:**
 
 ```bash
 BUCKET_NAME=patent-novelty-pdf-processing-<account-id>
@@ -204,7 +198,7 @@ KEYWORDS_TABLE_NAME=patent-keywords-<account-id>
 RESULTS_TABLE_NAME=patent-search-results-<account-id>
 ARTICLES_TABLE_NAME=scholarly-articles-results-<account-id>
 COMMERCIAL_ASSESSMENT_TABLE_NAME=early-commercial-assessment-<account-id>
-````
+```
 
 Also note:
 
@@ -410,14 +404,42 @@ aws s3 rb s3://patent-novelty-pdf-processing-<account-id> --force --region <old-
 
 1. Missing environment variables
 2. Incorrect Docker image URI
-3. IAM permissions not propagated
+3. Wrong IAM role selected (using default instead of custom)
+4. IAM permissions not propagated
 
 **Solution:**
 
 1. Verify all 14 environment variables are set correctly
 2. Ensure Docker image URI matches the CDK output
-3. Wait 2-3 minutes for IAM permissions to propagate
-4. Check CloudWatch Logs for detailed error messages
+3. **Verify you selected the custom IAM role** (`PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXX`) not the default
+4. Wait 2-3 minutes for IAM permissions to propagate
+5. Check CloudWatch Logs for detailed error messages
+
+### Issue: AWS Marketplace Permission Error
+
+**Error:** `User is not authorized to perform: aws-marketplace:ViewSubscriptions`
+
+**Root Cause:** Agent Runtime is using the wrong IAM role (default instead of custom).
+
+**Solution:**
+
+1. The Agent Runtime must be created with the custom IAM role from the start
+2. If you already created it with the default role, you must **delete and recreate** the Agent Runtime
+3. When recreating, ensure you select: `PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX` in the Permissions section
+4. The custom role includes `AmazonBedrockFullAccess` which has the required marketplace permissions
+
+### Issue: Lambda Functions Not Invoking Agent
+
+**Error:** Lambda functions fail when trying to invoke the agent
+
+**Root Cause:** Lambda environment variables not updated with Agent Runtime ARN (Phase 4 not completed).
+
+**Solution:**
+
+1. Verify you completed Phase 4 (Update Lambda Functions)
+2. Check Lambda console to confirm `AGENT_RUNTIME_ARN` environment variable is set
+3. The value should be your actual Agent Runtime ARN, not `PLACEHOLDER-UPDATE-AFTER-AGENT-CREATION`
+4. If still using placeholder, run the update commands from Phase 4
 
 ### Issue: Deployment Script Fails
 
