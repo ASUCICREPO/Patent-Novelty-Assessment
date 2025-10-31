@@ -158,7 +158,7 @@ Before proceeding, ensure:
 
 ```bash
 git clone https://github.com/ASUCICREPO/Patent-Novelty-Assessment.git
-cd patent-novelty-assessment
+cd Patent-Novelty-Assessment
 ```
 
 ### Step 2.3: Make Deploy Script Executable
