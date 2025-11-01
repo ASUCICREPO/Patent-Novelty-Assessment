@@ -32,9 +32,9 @@ The Patent Search Agent executes a comprehensive search strategy:
 - Parses keywords (detects single words vs. multi-word phrases)
 - Searches PatentView database for each keyword (top 10 newest patents per keyword)
 - Deduplicates results by patent ID
-- Pre-filters to top 50 patents by citation count
+- Pre-filters to top 30 patents by citation count
 - Uses LLM to evaluate each patent's relevance (semantic analysis of abstracts)
-- Stores top 6-8 most relevant patents in `patent-search-results` DynamoDB table
+- Stores top 8 most relevant patents in `patent-search-results` DynamoDB table
 
 ### 6. Academic Literature Search (Semantic Scholar)
 The Scholarly Article Agent conducts an intelligent search:
@@ -42,8 +42,8 @@ The Scholarly Article Agent conducts an intelligent search:
 - Uses LLM to generate 4-5 strategic search queries
 - Executes searches with adaptive query refinement
 - Applies LLM-powered semantic relevance evaluation to each paper's abstract
-- Keeps only papers with LLM score ≥ 7 and decision = "KEEP"
-- Stores top 5-8 semantically relevant papers in `scholarly-articles-results` DynamoDB table
+- Evaluates papers using combined score (80% LLM relevance + 20% citation impact)
+- Stores top 8 semantically relevant papers in `scholarly-articles-results` DynamoDB table
 
 ### 7. Early Commercial Assessment
 The Commercial Assessment Agent analyzes commercialization potential:
