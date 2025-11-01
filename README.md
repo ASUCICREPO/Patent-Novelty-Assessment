@@ -4,6 +4,15 @@ An AI-powered patent novelty assessment platform that automates prior art search
 
 ## Demo Video
 
+Watch the complete demonstration of the Patent Novelty Assessment System:
+
+<div align="center">
+  <a href="https://drive.google.com/file/d/1K6qc8Z8cZng4Vu8sx48PfnpJY_cxCYEE/preview">
+    <img src="./docs/media/demo-thumbnail.png" alt="Patent Novelty Assessment Demo" width="650">
+  </a>
+  <p><em>Click the image above to watch the demo (opens in Google Drive)</em></p>
+</div>
+
 ## Index
 
 | Description           | Link                                                  |
@@ -51,7 +60,9 @@ For detailed deployment instructions, including prerequisites and step-by-step g
 
 ## Usage
 
-For detailed post-deployment setup and usage instructions, including configuration steps and how to use the application, see [docs/userGuide.md](docs/usage.md).
+For detailed backend testing and usage instructions, including configuration steps and how to test the application from AWS Console, see [docs/usage.md](docs/usage.md).
+
+For frontend user guide and application features, see [docs/userGuide.md](docs/userGuide.md).
 
 ## Infrastructure
 
