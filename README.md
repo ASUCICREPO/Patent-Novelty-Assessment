@@ -8,7 +8,7 @@ Watch the complete demonstration of the Patent Novelty Assessment System:
 
 <div align="center">
   <a href="https://drive.google.com/file/d/1K6qc8Z8cZng4Vu8sx48PfnpJY_cxCYEE/preview">
-    <img src="./docs/media/demo-thumbnail.png" alt="Patent Novelty Assessment Demo" width="600">
+    <img src="./docs/media/demo-thumbnail.png" alt="Patent Novelty Assessment Demo" width="650">
   </a>
   <p><em>Click the image above to watch the demo (opens in Google Drive)</em></p>
 </div>
