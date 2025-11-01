@@ -60,7 +60,9 @@ For detailed deployment instructions, including prerequisites and step-by-step g
 
 ## Usage
 
-For detailed post-deployment setup and usage instructions, including configuration steps and how to use the application, see [docs/userGuide.md](docs/usage.md).
+For detailed backend testing and usage instructions, including configuration steps and how to test the application from AWS Console, see [docs/usage.md](docs/usage.md).
+
+For frontend user guide and application features, see [docs/userGuide.md](docs/userGuide.md).
 
 ## Infrastructure
 
