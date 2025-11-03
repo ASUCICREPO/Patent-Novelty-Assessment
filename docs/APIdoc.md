@@ -238,6 +238,6 @@ Gateway configuration is managed in the AWS Console under Bedrock → Model Cont
 
 ## Additional Resources
 
-- **PatentView API Documentation**: https://patentsview.org/apis/api-endpoints
-- **Semantic Scholar API Documentation**: https://api.semanticscholar.org/api-docs/
-- **AWS Bedrock MCP Documentation**: https://docs.aws.amazon.com/bedrock/latest/userguide/model-context-protocol.html
+- **[PatentView API Documentation](https://search.patentsview.org/docs/docs/Search%20API/SearchAPIReference/?_gl=1*1vpmvct*_ga*MTEwOTIwMTMwLjE3NTg1NzA1NjM.*_ga_K4PTTLH074*czE3NjIxOTE3NDkkbzEzJGcwJHQxNzYyMTkxNzQ5JGo2MCRsMCRoMA..)** - Search API Reference
+- **[Semantic Scholar API Documentation](https://api.semanticscholar.org/api-docs/)** - Academic Paper Search API
+- **[AWS Bedrock MCP Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/model-context-protocol.html)** - Model Context Protocol Guide

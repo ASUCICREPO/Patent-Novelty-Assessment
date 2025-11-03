@@ -458,7 +458,7 @@ aws s3 rb s3://patent-novelty-pdf-processing-<account-id> --force --region <old-
 
 1. **PatentView API Key:**
 
-   - Go to https://patentsview.org/apis/api-endpoints
+   - Go to https://search.patentsview.org/docs/docs/Search%20API/SearchAPIReference/?_gl=1*1vpmvct*_ga*MTEwOTIwMTMwLjE3NTg1NzA1NjM.*_ga_K4PTTLH074*czE3NjIxOTE3NDkkbzEzJGcwJHQxNzYyMTkxNzQ5JGo2MCRsMCRoMA..
    - Request an API key
    - Update the `patent-view` identity in Agent Core with your key
 
