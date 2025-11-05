@@ -214,13 +214,11 @@ fi
 # Check if main branch exists
 EXISTING_BRANCH=$(AWS_PAGER="" aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
-    #--branch-name main \
     --branch-name improvements-1 \
     --query 'branch.branchName' \
     --output text \
     --region "$AWS_REGION" 2>/dev/null || echo "None")
 
-#if [ "$EXISTING_BRANCH" = "main" ]; then
 if [ "$EXISTING_BRANCH" = "improvements-1" ]; then
     print_warning "main branch already exists"
 else
@@ -229,7 +227,6 @@ else
 
     AWS_PAGER="" aws amplify create-branch \
         --app-id "$AMPLIFY_APP_ID" \
-        #--branch-name main \
         --branch-name improvements-1 \
         --description "Main production branch" \
         --stage PRODUCTION \
@@ -278,7 +275,6 @@ SOURCE='{
 }'
 
 ARTIFACTS='{"type":"NO_ARTIFACTS"}'
-#SOURCE_VERSION="main"
 SOURCE_VERSION="improvements-1"
 
 print_status "Creating unified CodeBuild project '$CODEBUILD_PROJECT_NAME'..."
