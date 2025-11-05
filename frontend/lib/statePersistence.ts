@@ -11,6 +11,8 @@ export interface SearchState {
   retryCount: number;
   error: string | null;
   results: unknown[];
+  stoppedEarly?: boolean;
+  finalCount?: number;
 }
 
 export interface ReportGenerationState {

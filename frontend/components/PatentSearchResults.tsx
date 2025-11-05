@@ -102,7 +102,7 @@ export function PatentSearchResults({
       setError("Checking for search results...");
       
       console.log("Polling for search results...");
-      const results = await patentSearchService.pollForSearchResults(fileName);
+      const { results, stoppedEarly, finalCount } = await patentSearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
         // Sort by relevance score (highest first)
@@ -124,6 +124,56 @@ export function PatentSearchResults({
         });
         
         console.log(`Found ${results.length} search results`);
+      } else if (stoppedEarly && finalCount === 0) {
+        // No results found after 20 tries - show resume button
+        setError("search_timeout_no_results");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "search_timeout_no_results"
+        });
+      } else if (stoppedEarly && finalCount > 0 && finalCount < 8) {
+        // Less than 8 results found - show them anyway
+        if (results.length > 0) {
+          const sortedResults = [...results].sort((a, b) => {
+            const scoreA = a.relevance_score || 0;
+            const scoreB = b.relevance_score || 0;
+            return scoreB - scoreA;
+          });
+          setSearchResults(sortedResults);
+          setError(null);
+          statePersistence.setState(searchStateKey, {
+            results: sortedResults,
+            isSearching: false,
+            error: null,
+            lastPollTime: Date.now()
+          });
+        } else {
+          // Fetch results again to get what we have
+          const fetchedResults = await patentSearchService.fetchSearchResults(fileName);
+          if (fetchedResults.length > 0) {
+            const sortedResults = [...fetchedResults].sort((a, b) => {
+              const scoreA = a.relevance_score || 0;
+              const scoreB = b.relevance_score || 0;
+              return scoreB - scoreA;
+            });
+            setSearchResults(sortedResults);
+            setError(null);
+            statePersistence.setState(searchStateKey, {
+              results: sortedResults,
+              isSearching: false,
+              error: null,
+              lastPollTime: Date.now()
+            });
+          } else {
+            setError("search_timeout_no_results");
+            statePersistence.setState(searchStateKey, {
+              isSearching: false,
+              error: "search_timeout_no_results",
+              stoppedEarly: true,
+              finalCount: 0
+            });
+          }
+        }
       } else {
         setError("No patents found matching your keywords. Try refining your search terms.");
         statePersistence.setState(searchStateKey, {
@@ -190,7 +240,7 @@ export function PatentSearchResults({
       });
       
       // Start polling for results
-      const results = await patentSearchService.pollForSearchResults(fileName);
+      const { results, stoppedEarly, finalCount } = await patentSearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
         // Sort by relevance score (highest first)
@@ -210,6 +260,57 @@ export function PatentSearchResults({
           error: null,
           lastPollTime: Date.now()
         });
+      } else if (stoppedEarly && finalCount === 0) {
+        // No results found after 20 tries - show resume button
+        setError("search_timeout_no_results");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "search_timeout_no_results"
+        });
+      } else if (stoppedEarly && finalCount > 0 && finalCount < 8) {
+        // Less than 8 results found - show them anyway
+        // Note: results array should already contain the partial results
+        if (results.length > 0) {
+          const sortedResults = [...results].sort((a, b) => {
+            const scoreA = a.relevance_score || 0;
+            const scoreB = b.relevance_score || 0;
+            return scoreB - scoreA;
+          });
+          setSearchResults(sortedResults);
+          setError(null);
+          statePersistence.setState(searchStateKey, {
+            results: sortedResults,
+            isSearching: false,
+            error: null,
+            lastPollTime: Date.now()
+          });
+        } else {
+          // Fetch results again to get what we have
+          const fetchedResults = await patentSearchService.fetchSearchResults(fileName);
+          if (fetchedResults.length > 0) {
+            const sortedResults = [...fetchedResults].sort((a, b) => {
+              const scoreA = a.relevance_score || 0;
+              const scoreB = b.relevance_score || 0;
+              return scoreB - scoreA;
+            });
+            setSearchResults(sortedResults);
+            setError(null);
+            statePersistence.setState(searchStateKey, {
+              results: sortedResults,
+              isSearching: false,
+              error: null,
+              lastPollTime: Date.now()
+            });
+          } else {
+            setError("search_timeout_no_results");
+            statePersistence.setState(searchStateKey, {
+              isSearching: false,
+              error: "search_timeout_no_results",
+              stoppedEarly: true,
+              finalCount: 0
+            });
+          }
+        }
       } else {
         setError("No patents found matching your keywords. Try refining your search terms.");
         statePersistence.setState(searchStateKey, {
@@ -330,7 +431,139 @@ export function PatentSearchResults({
     );
   }
 
+  const handleResumeSearch = async () => {
+    // Resume polling for another 10 minutes
+    try {
+      setLoading(true);
+      setSearching(true);
+      setError("Resuming search...");
+      
+      statePersistence.setState(searchStateKey, {
+        hasTriggered: true,
+        isSearching: true,
+        searchStartTime: Date.now(),
+        lastPollTime: Date.now(),
+        error: "Resuming search...",
+        results: []
+      });
+      
+      const { results, stoppedEarly, finalCount } = await patentSearchService.pollForSearchResults(fileName);
+      
+      if (results.length > 0) {
+        const sortedResults = [...results].sort((a, b) => {
+          const scoreA = a.relevance_score || 0;
+          const scoreB = b.relevance_score || 0;
+          return scoreB - scoreA;
+        });
+        
+        setSearchResults(sortedResults);
+        setError(null);
+        statePersistence.setState(searchStateKey, {
+          results: sortedResults,
+          isSearching: false,
+          error: null,
+          lastPollTime: Date.now()
+        });
+      } else if (stoppedEarly && finalCount === 0) {
+        setError("search_timeout_no_results");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "search_timeout_no_results"
+        });
+      } else if (stoppedEarly && finalCount > 0 && finalCount < 8) {
+        if (results.length > 0) {
+          const sortedResults = [...results].sort((a, b) => {
+            const scoreA = a.relevance_score || 0;
+            const scoreB = b.relevance_score || 0;
+            return scoreB - scoreA;
+          });
+          setSearchResults(sortedResults);
+          setError(null);
+          statePersistence.setState(searchStateKey, {
+            results: sortedResults,
+            isSearching: false,
+            error: null,
+            lastPollTime: Date.now()
+          });
+        } else {
+          const fetchedResults = await patentSearchService.fetchSearchResults(fileName);
+          if (fetchedResults.length > 0) {
+            const sortedResults = [...fetchedResults].sort((a, b) => {
+              const scoreA = a.relevance_score || 0;
+              const scoreB = b.relevance_score || 0;
+              return scoreB - scoreA;
+            });
+            setSearchResults(sortedResults);
+            setError(null);
+            statePersistence.setState(searchStateKey, {
+              results: sortedResults,
+              isSearching: false,
+              error: null,
+              lastPollTime: Date.now()
+            });
+          } else {
+            setError("search_timeout_no_results");
+            statePersistence.setState(searchStateKey, {
+              isSearching: false,
+              error: "search_timeout_no_results",
+              stoppedEarly: true,
+              finalCount: 0
+            });
+          }
+        }
+      } else {
+        setError("No patents found matching your keywords. Try refining your search terms.");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "No patents found matching your keywords. Try refining your search terms."
+        });
+      }
+    } catch (err) {
+      console.error("Error resuming search:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Failed to resume search: ${errorMessage}`);
+      statePersistence.setState(searchStateKey, {
+        isSearching: false,
+        error: `Failed to resume search: ${errorMessage}`
+      });
+    } finally {
+      setLoading(false);
+      setSearching(false);
+    }
+  };
+
   if (error) {
+    // Special handling for timeout with no results
+    if (error === "search_timeout_no_results") {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[400px] w-full">
+          <div className="text-center max-w-md">
+            <div className="mb-6">
+              <div className="bg-[#fff7f9] flex items-center justify-center p-4 rounded-full w-16 h-16 mx-auto mb-4">
+                <svg className="w-8 h-8 text-[#7a0019]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-lg font-semibold text-slate-950 mb-2">Search Still in Progress</p>
+              <p className="text-sm text-slate-600">
+                We've been searching for 10 minutes but haven't found any results yet. The search may still be processing in the background.
+              </p>
+            </div>
+            <p className="text-slate-800 mb-6 text-sm">
+              You can continue waiting for results, or check back later. Click "Resume Search" to continue polling for another 10 minutes.
+            </p>
+            <Button
+              onClick={handleResumeSearch}
+              className="bg-[#7a0019] hover:bg-[#5d0013] text-white"
+            >
+              Resume Search
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    
+    // Regular error handling
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] w-full">
         <div className="text-center max-w-md">
@@ -470,8 +703,8 @@ export function PatentSearchResults({
                     <div className="flex flex-col gap-1 w-full">
                       <p className="text-xs text-slate-500 font-light">Abstract</p>
                       <div className="h-48 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
-                        <p className="font-normal text-base text-slate-800 whitespace-pre-wrap">
-                          {patent.patent_abstract || `${patent.patent_title} - Patent #${patent.patent_number}`}
+                        <p className={`font-normal text-base whitespace-pre-wrap ${patent.patent_abstract ? 'text-slate-800' : 'text-slate-500 italic'}`}>
+                          {patent.patent_abstract || "Abstract not available for this patent."}
                         </p>
                       </div>
                     </div>
@@ -481,8 +714,8 @@ export function PatentSearchResults({
                   <div className="flex flex-col gap-1 w-full">
                     <p className="text-xs text-slate-500 font-light">LLM Examiner Notes</p>
                     <div className="bg-[#fff7f9] flex gap-2 items-start p-3 rounded-lg w-full h-48 overflow-y-auto">
-                      <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
-                        {patent.llm_examiner_notes || "No examiner notes provided for this patent."}
+                      <p className={`flex-1 font-normal text-base whitespace-pre-wrap ${patent.llm_examiner_notes ? 'text-slate-800' : 'text-slate-500 italic'}`}>
+                        {patent.llm_examiner_notes || "LLM examiner notes not available for this patent."}
                       </p>
                     </div>
                   </div>

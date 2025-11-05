@@ -76,65 +76,83 @@ export class PatentSearchService {
   /**
    * Check if filename count has reached the expected number (8) before polling
    */
-  async checkFilenameCount(pdfFilename: string, expectedCount: number = 8): Promise<boolean> {
+  async checkFilenameCount(pdfFilename: string, expectedCount: number = 8): Promise<{ reached: boolean; count: number }> {
     try {
       const response = await fetch(`${getDynamoDBApiUrl()}?tableType=patent-results&pdfFilename=${encodeURIComponent(pdfFilename)}`);
       
       if (!response.ok) {
         console.error("Error checking filename count:", response.statusText);
-        return false;
+        return { reached: false, count: 0 };
       }
 
       const result = await response.json();
       const count = result.count || 0;
       
       console.log(`Filename count for ${pdfFilename}: ${count}/${expectedCount}`);
-      return count >= expectedCount;
+      return { reached: count >= expectedCount, count };
     } catch (error) {
       console.error("Error checking filename count:", error);
-      return false;
+      return { reached: false, count: 0 };
     }
   }
 
   /**
    * Poll for search results until they're available
-   * Continues polling until filename count reaches expected number, then fetches results
+   * Stops after maxAttempts (default 20, which is 10 minutes with 30s delay)
+   * Returns results along with status information
    */
   async pollForSearchResults(
     pdfFilename: string,
     delayMs: number = 30000, // 30 seconds between polls
-    expectedFilenameCount: number = 8
-  ): Promise<PatentSearchResult[]> {
-    // Poll until filename count reaches expected number
-    console.log(`Waiting for filename count to reach ${expectedFilenameCount}...`);
-    while (true) {
+    expectedFilenameCount: number = 8,
+    maxAttempts: number = 20 // 20 attempts = 10 minutes
+  ): Promise<{ results: PatentSearchResult[]; stoppedEarly: boolean; finalCount: number }> {
+    // Poll until filename count reaches expected number or max attempts reached
+    console.log(`Waiting for filename count to reach ${expectedFilenameCount} (max ${maxAttempts} attempts)...`);
+    let attempts = 0;
+    let currentCount = 0;
+    
+    while (attempts < maxAttempts) {
       try {
-        const countReached = await this.checkFilenameCount(pdfFilename, expectedFilenameCount);
+        const { reached, count } = await this.checkFilenameCount(pdfFilename, expectedFilenameCount);
+        currentCount = count;
+        attempts++;
         
-        if (countReached) {
-          console.log(`Filename count reached ${expectedFilenameCount}, fetching results...`);
+        if (reached) {
+          console.log(`Filename count reached ${expectedFilenameCount} after ${attempts} attempts, fetching results...`);
           break;
         }
         
-        console.log(`Count not yet reached, waiting ${delayMs/1000} seconds...`);
+        console.log(`Count not yet reached (${count}/${expectedFilenameCount}), attempt ${attempts}/${maxAttempts}, waiting ${delayMs/1000} seconds...`);
         
-        // Wait before next count check
-        await this.sleep(delayMs);
+        // Wait before next count check (only if not at max attempts)
+        if (attempts < maxAttempts) {
+          await this.sleep(delayMs);
+        }
       } catch (error) {
         console.error("Error during count check:", error);
-        await this.sleep(delayMs);
+        attempts++;
+        if (attempts < maxAttempts) {
+          await this.sleep(delayMs);
+        }
       }
     }
     
-    // Fetch actual results once count is reached
+    const stoppedEarly = attempts >= maxAttempts && currentCount < expectedFilenameCount;
+    
+    if (stoppedEarly) {
+      console.log(`Polling stopped after ${maxAttempts} attempts. Current count: ${currentCount}/${expectedFilenameCount}`);
+    }
+    
+    // Fetch actual results
     console.log("Fetching search results...");
     try {
       const results = await this.fetchSearchResults(pdfFilename);
       console.log(`Found ${results.length} search results`);
-      return results;
+      return { results, stoppedEarly, finalCount: currentCount };
     } catch (error) {
       console.error("Error fetching search results:", error);
-      return [];
+      return { results: [], stoppedEarly, finalCount: currentCount };
     }
   }
 
