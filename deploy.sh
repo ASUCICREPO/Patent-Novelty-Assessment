@@ -230,7 +230,7 @@ else
         --branch-name improvements \
         --description "Main production branch" \
         --stage PRODUCTION \
-        --enable-auto-build false \
+        --no-enable-auto-build \
         --region "$AWS_REGION" || print_error "Failed to create Amplify branch."
     print_success "main branch created"
 fi
