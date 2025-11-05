@@ -546,11 +546,11 @@ export function PatentSearchResults({
               </div>
               <p className="text-lg font-semibold text-slate-950 mb-2">Search Still in Progress</p>
               <p className="text-sm text-slate-600">
-                We've been searching for 10 minutes but haven't found any results yet. The search may still be processing in the background.
+                We&apos;ve been searching for 10 minutes but haven&apos;t found any results yet. The search may still be processing in the background.
               </p>
             </div>
             <p className="text-slate-800 mb-6 text-sm">
-              You can continue waiting for results, or check back later. Click "Resume Search" to continue polling for another 10 minutes.
+              You can continue waiting for results. Click &quot;Resume Search&quot; to continue waiting.
             </p>
             <Button
               onClick={handleResumeSearch}
