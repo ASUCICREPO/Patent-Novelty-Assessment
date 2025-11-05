@@ -66,5 +66,5 @@ phases:
         fi
       - echo "Starting deployment..."
       #- aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name main --job-id $JOB_ID --region $AWS_DEFAULT_REGION
-      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name improvements-1 --job-id $JOB_ID --region $AWS_DEFAULT_REGION
+      - aws amplify start-deployment --app-id $AMPLIFY_APP_ID --branch-name improvements --job-id $JOB_ID --region $AWS_DEFAULT_REGION
       - echo "Complete deployment finished successfully!"

@@ -214,12 +214,12 @@ fi
 # Check if main branch exists
 EXISTING_BRANCH=$(AWS_PAGER="" aws amplify get-branch \
     --app-id "$AMPLIFY_APP_ID" \
-    --branch-name improvements-1 \
+    --branch-name improvements \
     --query 'branch.branchName' \
     --output text \
     --region "$AWS_REGION" 2>/dev/null || echo "None")
 
-if [ "$EXISTING_BRANCH" = "improvements-1" ]; then
+if [ "$EXISTING_BRANCH" = "improvements" ]; then
     print_warning "main branch already exists"
 else
     # Create main branch
@@ -227,7 +227,7 @@ else
 
     AWS_PAGER="" aws amplify create-branch \
         --app-id "$AMPLIFY_APP_ID" \
-        --branch-name improvements-1 \
+        --branch-name improvements \
         --description "Main production branch" \
         --stage PRODUCTION \
         --enable-auto-build false \
