@@ -103,7 +103,7 @@ export function LiteratureSearchResults({
       setError("Checking for search results...");
       
       console.log("Polling for literature search results...");
-      const results = await scholarlySearchService.pollForSearchResults(fileName);
+      const { results, stoppedEarly, finalCount } = await scholarlySearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
         // Sort by relevance score (highest first)
@@ -125,6 +125,56 @@ export function LiteratureSearchResults({
         });
         
         console.log(`Found ${results.length} literature search results`);
+      } else if (stoppedEarly && finalCount === 0) {
+        // No results found after 20 tries - show resume button
+        setError("search_timeout_no_results");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "search_timeout_no_results"
+        });
+      } else if (stoppedEarly && finalCount > 0 && finalCount < 8) {
+        // Less than 8 results found - show them anyway
+        if (results.length > 0) {
+          const sortedResults = [...results].sort((a, b) => {
+            const scoreA = a.relevance_score || 0;
+            const scoreB = b.relevance_score || 0;
+            return scoreB - scoreA;
+          });
+          setSearchResults(sortedResults);
+          setError(null);
+          statePersistence.setState(searchStateKey, {
+            results: sortedResults,
+            isSearching: false,
+            error: null,
+            lastPollTime: Date.now()
+          });
+        } else {
+          // Fetch results again to get what we have
+          const fetchedResults = await scholarlySearchService.fetchSearchResults(fileName);
+          if (fetchedResults.length > 0) {
+            const sortedResults = [...fetchedResults].sort((a, b) => {
+              const scoreA = a.relevance_score || 0;
+              const scoreB = b.relevance_score || 0;
+              return scoreB - scoreA;
+            });
+            setSearchResults(sortedResults);
+            setError(null);
+            statePersistence.setState(searchStateKey, {
+              results: sortedResults,
+              isSearching: false,
+              error: null,
+              lastPollTime: Date.now()
+            });
+          } else {
+            setError("search_timeout_no_results");
+            statePersistence.setState(searchStateKey, {
+              isSearching: false,
+              error: "search_timeout_no_results",
+              stoppedEarly: true,
+              finalCount: 0
+            });
+          }
+        }
       } else {
         setError("No scholarly articles found matching your keywords. Try refining your search terms.");
         statePersistence.setState(searchStateKey, {
@@ -191,7 +241,7 @@ export function LiteratureSearchResults({
       });
       
       // Start polling for results
-      const results = await scholarlySearchService.pollForSearchResults(fileName);
+      const { results, stoppedEarly, finalCount } = await scholarlySearchService.pollForSearchResults(fileName);
       
       if (results.length > 0) {
         // Sort by relevance score (highest first)
@@ -211,6 +261,57 @@ export function LiteratureSearchResults({
           error: null,
           lastPollTime: Date.now()
         });
+      } else if (stoppedEarly && finalCount === 0) {
+        // No results found after 20 tries - show resume button
+        setError("search_timeout_no_results");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "search_timeout_no_results"
+        });
+      } else if (stoppedEarly && finalCount > 0 && finalCount < 8) {
+        // Less than 8 results found - show them anyway
+        // Note: results array should already contain the partial results
+        if (results.length > 0) {
+          const sortedResults = [...results].sort((a, b) => {
+            const scoreA = a.relevance_score || 0;
+            const scoreB = b.relevance_score || 0;
+            return scoreB - scoreA;
+          });
+          setSearchResults(sortedResults);
+          setError(null);
+          statePersistence.setState(searchStateKey, {
+            results: sortedResults,
+            isSearching: false,
+            error: null,
+            lastPollTime: Date.now()
+          });
+        } else {
+          // Fetch results again to get what we have
+          const fetchedResults = await scholarlySearchService.fetchSearchResults(fileName);
+          if (fetchedResults.length > 0) {
+            const sortedResults = [...fetchedResults].sort((a, b) => {
+              const scoreA = a.relevance_score || 0;
+              const scoreB = b.relevance_score || 0;
+              return scoreB - scoreA;
+            });
+            setSearchResults(sortedResults);
+            setError(null);
+            statePersistence.setState(searchStateKey, {
+              results: sortedResults,
+              isSearching: false,
+              error: null,
+              lastPollTime: Date.now()
+            });
+          } else {
+            setError("search_timeout_no_results");
+            statePersistence.setState(searchStateKey, {
+              isSearching: false,
+              error: "search_timeout_no_results",
+              stoppedEarly: true,
+              finalCount: 0
+            });
+          }
+        }
       } else {
         setError("No scholarly articles found matching your keywords. Try refining your search terms.");
         statePersistence.setState(searchStateKey, {
@@ -339,7 +440,139 @@ export function LiteratureSearchResults({
     );
   }
 
+  const handleResumeSearch = async () => {
+    // Resume polling for another 10 minutes
+    try {
+      setLoading(true);
+      setSearching(true);
+      setError("Resuming search...");
+      
+      statePersistence.setState(searchStateKey, {
+        hasTriggered: true,
+        isSearching: true,
+        searchStartTime: Date.now(),
+        lastPollTime: Date.now(),
+        error: "Resuming search...",
+        results: []
+      });
+      
+      const { results, stoppedEarly, finalCount } = await scholarlySearchService.pollForSearchResults(fileName);
+      
+      if (results.length > 0) {
+        const sortedResults = [...results].sort((a, b) => {
+          const scoreA = a.relevance_score || 0;
+          const scoreB = b.relevance_score || 0;
+          return scoreB - scoreA;
+        });
+        
+        setSearchResults(sortedResults);
+        setError(null);
+        statePersistence.setState(searchStateKey, {
+          results: sortedResults,
+          isSearching: false,
+          error: null,
+          lastPollTime: Date.now()
+        });
+      } else if (stoppedEarly && finalCount === 0) {
+        setError("search_timeout_no_results");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "search_timeout_no_results"
+        });
+      } else if (stoppedEarly && finalCount > 0 && finalCount < 8) {
+        if (results.length > 0) {
+          const sortedResults = [...results].sort((a, b) => {
+            const scoreA = a.relevance_score || 0;
+            const scoreB = b.relevance_score || 0;
+            return scoreB - scoreA;
+          });
+          setSearchResults(sortedResults);
+          setError(null);
+          statePersistence.setState(searchStateKey, {
+            results: sortedResults,
+            isSearching: false,
+            error: null,
+            lastPollTime: Date.now()
+          });
+        } else {
+          const fetchedResults = await scholarlySearchService.fetchSearchResults(fileName);
+          if (fetchedResults.length > 0) {
+            const sortedResults = [...fetchedResults].sort((a, b) => {
+              const scoreA = a.relevance_score || 0;
+              const scoreB = b.relevance_score || 0;
+              return scoreB - scoreA;
+            });
+            setSearchResults(sortedResults);
+            setError(null);
+            statePersistence.setState(searchStateKey, {
+              results: sortedResults,
+              isSearching: false,
+              error: null,
+              lastPollTime: Date.now()
+            });
+          } else {
+            setError("search_timeout_no_results");
+            statePersistence.setState(searchStateKey, {
+              isSearching: false,
+              error: "search_timeout_no_results",
+              stoppedEarly: true,
+              finalCount: 0
+            });
+          }
+        }
+      } else {
+        setError("No scholarly articles found matching your keywords. Try refining your search terms.");
+        statePersistence.setState(searchStateKey, {
+          isSearching: false,
+          error: "No scholarly articles found matching your keywords. Try refining your search terms."
+        });
+      }
+    } catch (err) {
+      console.error("Error resuming search:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Failed to resume search: ${errorMessage}`);
+      statePersistence.setState(searchStateKey, {
+        isSearching: false,
+        error: `Failed to resume search: ${errorMessage}`
+      });
+    } finally {
+      setLoading(false);
+      setSearching(false);
+    }
+  };
+
   if (error) {
+    // Special handling for timeout with no results
+    if (error === "search_timeout_no_results") {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[400px] w-full">
+          <div className="text-center max-w-md">
+            <div className="mb-6">
+              <div className="bg-[#fff7f9] flex items-center justify-center p-4 rounded-full w-16 h-16 mx-auto mb-4">
+                <svg className="w-8 h-8 text-[#7a0019]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-lg font-semibold text-slate-950 mb-2">Search Still in Progress</p>
+              <p className="text-sm text-slate-600">
+                We&apos;ve been searching for 10 minutes but haven&apos;t found any results yet. The search may still be processing in the background.
+              </p>
+            </div>
+            <p className="text-slate-800 mb-6 text-sm">
+              You can continue waiting for results. Click &quot;Resume Search&quot; to continue waiting.
+            </p>
+            <Button
+              onClick={handleResumeSearch}
+              className="bg-[#7a0019] hover:bg-[#5d0013] text-white"
+            >
+              Resume Search
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    
+    // Regular error handling
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] w-full">
         <div className="text-center max-w-md">
@@ -467,8 +700,8 @@ export function LiteratureSearchResults({
                     <div className="flex flex-col gap-1 w-full">
                       <p className="text-xs text-slate-500 font-light">Abstract</p>
                       <div className="h-48 overflow-y-auto w-full border-2 border-[#7a0019] rounded-lg p-3">
-                        <p className="font-normal text-base text-slate-800 whitespace-pre-wrap">
-                          {article.abstract}
+                        <p className={`font-normal text-base whitespace-pre-wrap ${article.abstract ? 'text-slate-800' : 'text-slate-500 italic'}`}>
+                          {article.abstract || "Abstract not available for this article."}
                         </p>
                       </div>
                     </div>
@@ -478,8 +711,8 @@ export function LiteratureSearchResults({
                   <div className="flex flex-col gap-1 w-full">
                     <p className="text-xs text-slate-500 font-light">LLM Examiner Notes</p>
                     <div className="bg-[#fff7f9] flex gap-2 items-start p-3 rounded-lg w-full h-48 overflow-y-auto">
-                      <p className="flex-1 font-normal text-base text-slate-800 whitespace-pre-wrap">
-                        {article.novelty_impact_assessment || "No novelty assessment provided for this article."}
+                      <p className={`flex-1 font-normal text-base whitespace-pre-wrap ${article.novelty_impact_assessment ? 'text-slate-800' : 'text-slate-500 italic'}`}>
+                        {article.novelty_impact_assessment || "Novelty impact assessment not available for this article."}
                       </p>
                     </div>
                   </div>
