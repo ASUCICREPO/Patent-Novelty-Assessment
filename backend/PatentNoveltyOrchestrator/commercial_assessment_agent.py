@@ -158,15 +158,15 @@ commercial_assessment_agent = Agent(
     3. Generate comprehensive assessment covering all 10 required areas
     4. Store results using store_commercial_assessment tool
 
-    ANALYSIS FRAMEWORK - Answer these 10 questions (STAY WITHIN WORD LIMITS):
+    ANALYSIS FRAMEWORK - Answer these 10 questions (MANDATORY WORD LIMITS - STRICTLY ENFORCE):
 
-    1. PROBLEM SOLVED & SOLUTION OFFERED (200-300 words TOTAL)
+    1. PROBLEM SOLVED & SOLUTION OFFERED (200-300 words TOTAL - MANDATORY)
     - Problem: What specific market problem or unmet need does this invention address? (100-150 words)
     - Solution: How does this invention solve that problem? What makes it unique? (100-150 words)
     - Focus on business value, not just technical features
-    - LIMIT: Keep combined response under 300 words
+    - MANDATORY LIMIT: Keep combined response under 300 words - COUNT YOUR WORDS
 
-    2. NON-CONFIDENTIAL MARKETING ABSTRACT (150-250 words - STRICT LIMIT)
+    2. NON-CONFIDENTIAL MARKETING ABSTRACT (150-250 words - MANDATORY STRICT LIMIT)
     - Write a compelling abstract suitable for public marketing materials
     - CRITICAL: Exclude confidential information:
         * Specific dimensions, measurements, or formulas
@@ -175,64 +175,64 @@ commercial_assessment_agent = Agent(
         * Manufacturing processes or trade secrets
     - Include: General technology category, problem solved, benefits, potential applications
     - Think: "What can we say publicly without giving away our competitive advantage?"
-    - LIMIT: 150-250 words maximum
+    - MANDATORY LIMIT: 150-250 words maximum - COUNT YOUR WORDS
 
-    3. TECHNOLOGY DETAILS (300-500 words - STRICT LIMIT)
+    3. TECHNOLOGY DETAILS (300-400 words - MANDATORY STRICT LIMIT - REDUCED FROM 500)
     - Explain the technology in clear, accessible language
     - Target audience: Business executives and potential licensees (not engineers)
     - Cover: Core technology, how it works (high-level), key features, advantages
     - Use analogies and simple explanations where possible
-    - LIMIT: 300-500 words maximum
+    - MANDATORY LIMIT: 300-400 words maximum - COUNT YOUR WORDS - DO NOT EXCEED 400
 
-    4. POTENTIAL APPLICATIONS (3-5 applications, 50-75 words each)
+    4. POTENTIAL APPLICATIONS (3-5 applications, 40-60 words each - REDUCED)
     - Identify specific markets, industries, or use cases
-    - For each application, explain why this technology is a good fit (50-75 words per application)
+    - For each application, explain why this technology is a good fit (40-60 words per application)
     - Prioritize by market size and readiness
-    - LIMIT: Total 250-375 words for all applications
+    - MANDATORY LIMIT: Total 200-300 words for all applications - COUNT YOUR WORDS
 
-    5. MARKET OVERVIEW (300-400 words MAXIMUM - CRITICAL LIMIT)
+    5. MARKET OVERVIEW (250-350 words MAXIMUM - MANDATORY CRITICAL LIMIT - REDUCED)
     - Market size and growth trends (use general industry knowledge)
     - Key customer segments and their needs
     - Market drivers and trends
     - Regulatory landscape (if applicable)
     - Government policies or incentives (if relevant)
     - Keep it high-level and strategic
-    - LIMIT: 300-400 words maximum - DO NOT EXCEED
+    - MANDATORY LIMIT: 250-350 words maximum - COUNT YOUR WORDS - DO NOT EXCEED 350
 
-    6. COMPETITION (3-5 competitors, 30-50 words each)
+    6. COMPETITION (3-5 competitors, 25-40 words each - REDUCED)
     - Identify companies with similar products or technologies
-    - For each: Company name, product/technology, how it compares (30-50 words per competitor)
+    - For each: Company name, product/technology, how it compares (25-40 words per competitor)
     - Include both direct competitors and alternative solutions
     - Be realistic - use your knowledge of major players in the industry
-    - LIMIT: Total 150-250 words for all competitors
+    - MANDATORY LIMIT: Total 125-200 words for all competitors - COUNT YOUR WORDS
 
-    7. POTENTIAL LICENSEES (3-5 companies, 30-50 words each)
+    7. POTENTIAL LICENSEES (3-5 companies, 25-40 words each - REDUCED)
     - Identify companies that would benefit from licensing this technology
-    - For each: Company name, why they're a good fit, strategic rationale (30-50 words per company)
+    - For each: Company name, why they're a good fit, strategic rationale (25-40 words per company)
     - Consider: Companies in the target market, those with complementary products, strategic acquirers
-    - LIMIT: Total 150-250 words for all licensees
+    - MANDATORY LIMIT: Total 125-200 words for all licensees - COUNT YOUR WORDS
 
-    8. KEY COMMERCIALIZATION CHALLENGES (3-5 challenges, 30-50 words each)
+    8. KEY COMMERCIALIZATION CHALLENGES (3-5 challenges, 25-40 words each - REDUCED)
     - Technical challenges (scalability, manufacturing, etc.)
     - Market challenges (adoption barriers, competition, etc.)
     - Regulatory challenges (approvals, compliance, etc.)
     - Financial challenges (development costs, pricing, etc.)
     - Be honest and realistic
-    - LIMIT: 30-50 words per challenge, total 150-250 words
+    - MANDATORY LIMIT: 25-40 words per challenge, total 125-200 words - COUNT YOUR WORDS
 
-    9. KEY ASSUMPTIONS (3-5 assumptions, 20-30 words each)
+    9. KEY ASSUMPTIONS (3-5 assumptions, 15-25 words each - REDUCED)
     - What assumptions are we making about the technology?
     - What assumptions about the market?
     - What assumptions about customer needs or behavior?
     - What assumptions about competitive landscape?
     - These should be testable hypotheses
-    - LIMIT: 20-30 words per assumption, total 100-150 words
+    - MANDATORY LIMIT: 15-25 words per assumption, total 75-125 words - COUNT YOUR WORDS
 
     10. KEY COMPANIES (3-5 companies, one line each)
         - Companies relevant to this invention (suppliers, partners, competitors, customers)
         - For each: Company name, relationship type, relevance, website URL
         - Use format: "Company Name (relationship) - Brief relevance - https://company.com"
-        - LIMIT: One concise line per company, total ~100 words
+        - MANDATORY LIMIT: One concise line per company, total ~100 words - COUNT YOUR WORDS
 
     OUTPUT FORMAT:
     Generate a JSON object with this exact structure:
@@ -257,13 +257,16 @@ commercial_assessment_agent = Agent(
     - Be realistic about challenges and competition
     - Ensure marketing abstract is truly non-confidential
 
-    CRITICAL: RESPECT ALL WORD LIMITS
-    - Each section has a maximum word count - DO NOT EXCEED IT
-    - Concise, focused responses are better than lengthy ones
-    - If you exceed limits, the PDF report generation will fail
-    - Total output should be approximately 2,500-3,500 words across all sections
+    CRITICAL: MANDATORY ENFORCEMENT OF WORD LIMITS
+    - Each section has a MAXIMUM word count - EXCEEDING IT WILL CAUSE PDF GENERATION TO FAIL
+    - You MUST count your words and stay within limits - this is not optional
+    - Concise, focused responses are REQUIRED, not just preferred
+    - If you exceed limits, the PDF report will crash with overflow errors
+    - Total output MUST be approximately 1,800-2,800 words across all sections (REDUCED from 3,500)
     - Prioritize quality and relevance over quantity
-    - Provide strategic insights, not just descriptions
+    - Provide strategic insights, not lengthy descriptions
+    - WHEN IN DOUBT, WRITE LESS - shorter is safer for PDF generation
+    - Each field will be truncated at 2000 characters if too long, so stay well under limits
 
     After completing your analysis, ALWAYS use the store_commercial_assessment tool to save all results."""
 )

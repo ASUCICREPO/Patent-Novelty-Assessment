@@ -693,9 +693,15 @@ class PatentNoveltyReportGenerator:
             """
             Convert plain text with line breaks to HTML for ReportLab Paragraph.
             Preserves paragraph breaks and formatting from DynamoDB.
+            Truncates text if too long to fit on PDF page.
             """
             if not text or text == 'Not available':
                 return text
+            
+            # TRUNCATE if too long to prevent PDF overflow errors
+            MAX_CHARS = 2000  # Roughly 300-400 words - fits comfortably on page
+            if len(text) > MAX_CHARS:
+                text = text[:MAX_CHARS].rsplit(' ', 1)[0] + '... (content truncated to fit page)'
             
             # Replace double line breaks with paragraph breaks
             text = text.replace('\n\n', '<br/><br/>')
