@@ -4,6 +4,15 @@
 
 This document provides a comprehensive cost analysis for processing invention disclosures using the Patent Novelty Assessment System. The system leverages AWS AI services to automate patent prior art searches and commercialization assessments.
 
+> **Important Note**: This cost estimate is based on AWS pricing as of **November 2025** and is intended as a high-level reference. Actual costs may vary based on:
+> - Specific business requirements and usage patterns
+> - AWS region selection
+> - Document size and complexity variations
+> - Changes in AWS service pricing
+> - Volume discounts or enterprise agreements
+> 
+> We recommend using the [AWS Pricing Calculator](https://calculator.aws/) for precise estimates tailored to your specific use case.
+
 ---
 
 ## Processing Assumptions
@@ -205,3 +214,36 @@ For detailed technical documentation, see:
 - [User Guide](./userGuide.md)
 
 For cost optimization strategies or custom pricing scenarios, please contact the development team.
+
+
+---
+
+## Disclaimer
+
+**Cost Estimation Methodology:**
+- Estimates calculated using AWS Pricing Calculator and official AWS service pricing pages
+- Based on pricing data as of **November 2025** for the **us-east-1** region
+- Assumes standard AWS pricing without enterprise discounts or reserved capacity
+
+**Important Considerations:**
+- **This is a high-level estimate** intended for planning purposes only
+- Actual costs will vary based on:
+  - Real-world usage patterns and document characteristics
+  - Specific business requirements and customizations
+  - AWS region and availability zone selection
+  - Seasonal variations in processing volume
+  - Changes to AWS service pricing over time
+- **Always validate costs** using the [AWS Pricing Calculator](https://calculator.aws/) before deployment
+- Consider conducting a pilot program to measure actual costs for your specific use case
+
+**Recommendations:**
+- Set up AWS Cost Explorer and billing alerts to monitor actual spending
+- Review AWS Free Tier eligibility for your account
+- Consult with AWS Solutions Architects for enterprise pricing options
+- Consider AWS Savings Plans or Reserved Instances for predictable workloads
+
+For the most accurate cost projections, we recommend running a proof-of-concept with a representative sample of your invention disclosures.
+
+---
+
+*Last Updated: November 2025*
