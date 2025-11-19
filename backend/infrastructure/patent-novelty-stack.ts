@@ -36,7 +36,7 @@ export class PatentNoveltyStack extends cdk.Stack {
 
     // S3 Bucket for PDF processing
     const processingBucket = new s3.Bucket(this, "PdfProcessingBucket", {
-      bucketName: `patent-novelty-pdf-processing-${accountId}`,
+      bucketName: `patent-novelty-pdf-processing-${accountId}-${region}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       versioned: false,
