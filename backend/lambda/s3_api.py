@@ -8,7 +8,15 @@ import re
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
-s3_presigner = boto3.client('s3', config=boto3.session.Config(signature_version='s3v4'))
+# Path-style addressing is more reliable for CORS with temporary credentials
+s3_presigner = boto3.client(
+    's3',
+    region_name=os.environ.get('AWS_REGION', 'us-west-2'),
+    config=boto3.session.Config(
+        signature_version='s3v4',
+        s3={'addressing_style': 'path'}
+    )
+)
 
 # Get allowed origin from environment variable
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
