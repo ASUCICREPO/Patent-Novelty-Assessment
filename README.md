@@ -20,6 +20,7 @@ Watch the complete demonstration of the Patent Novelty Assessment System:
 | Overview              | [Overview](#overview)                                 |
 | Architecture          | [Architecture](#architecture-diagram)                 |
 | Detailed Architecture | [Detailed Architecture](docs/architectureDeepDive.md) |
+| Prerequisites         | [Prerequisites](docs/prerequisites.md)                |
 | User Flow             | [User Flow](docs/userGuide.md)                        |
 | Deployment            | [Deployment](docs/deploymentGuide.md)                 |
 | Usage                 | [Usage](#usage)                                       |
