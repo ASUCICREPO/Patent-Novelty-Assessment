@@ -4,11 +4,21 @@ This guide provides step-by-step instructions to deploy the Patent Novelty Asses
 
 **Estimated Time:** 30-45 minutes
 
-**Prerequisites:**
+---
 
-- AWS Account with appropriate permissions
-- Access to AWS Console
-- Basic familiarity with AWS services
+## ⚠️ Important: Complete Prerequisites First
+
+**Before starting deployment, you MUST complete all prerequisites:**
+
+👉 **[Read the Prerequisites Guide](./prerequisites.md)** 👈
+
+The prerequisites guide covers:
+- AWS account requirements and Bedrock service access
+- **PatentView API Key** - Required for patent searches
+- **Semantic Scholar API Key** - Required for literature searches
+- Development tools installation
+
+**API keys can take 1-3 business days to be approved**, so request them before starting deployment.
 
 ---
 
