@@ -221,7 +221,7 @@ Now that the infrastructure is deployed, create the Agent Runtime with the corre
 
 ### Step 3.2: Basic Configuration
 
-- **Name:** `Patent-Novelty-Agent`
+- **Name:** `Patent_Novelty_Agent`
 - **Description:** `Multi-agent orchestrator for patent novelty assessment`
 
 ### Step 3.3: Container Image
