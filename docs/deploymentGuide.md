@@ -284,44 +284,46 @@ COMMERCIAL_ASSESSMENT_TABLE_NAME=<value_from_phase_2>
 
 ## Phase 4: Update Lambda Functions
 
-The Lambda functions need the Agent Runtime ARN to invoke the agent. Update them now.
+The Lambda functions need the Agent Runtime ARN to invoke the agent. Update them manually via the AWS Console.
 
-### Step 4.1: Update agent_trigger Lambda
+### Step 4.1: Update AgentTriggerFunction
 
-```bash
-# Set your values
-AGENT_ARN="arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX"
-AWS_REGION="your-region"
-AGENT_TRIGGER_FUNCTION="<AgentTriggerFunctionName-from-phase-2>"
+1. Go to **AWS Lambda Console**: https://console.aws.amazon.com/lambda/
+2. In the search bar, search for the function name from Phase 2 outputs: `<AgentTriggerFunctionName>`
+3. Click on the function to open it
+4. In the function overview page, scroll down to the **Configuration** tab
+5. Click on **Environment variables** in the left sidebar
+6. Click the **Edit** button (pencil icon)
+7. Click **Add environment variable**
+8. Add the following variable:
+   - **Key**: `AGENT_RUNTIME_ARN`
+   - **Value**: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX` (your Agent Runtime ARN from Phase 3)
+9. Click **Save**
 
-# Update the Lambda
-aws lambda update-function-configuration \
-  --function-name $AGENT_TRIGGER_FUNCTION \
-  --environment Variables={AGENT_RUNTIME_ARN=$AGENT_ARN} \
-  --region $AWS_REGION
-```
+### Step 4.2: Update AgentInvokeApiFunction
 
-### Step 4.2: Update agent_invoke_api Lambda
-
-```bash
-# Set your values
-AGENT_ARN="arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX"
-AWS_REGION="your-region"
-FRONTEND_URL="https://main.<amplify-app-id>.amplifyapp.com"
-AGENT_INVOKE_FUNCTION="<AgentInvokeApiFunctionName-from-phase-2>"
-
-# Update the Lambda
-aws lambda update-function-configuration \
-  --function-name $AGENT_INVOKE_FUNCTION \
-  --environment Variables={AGENT_RUNTIME_ARN=$AGENT_ARN,ALLOWED_ORIGIN=$FRONTEND_URL} \
-  --region $AWS_REGION
-```
+1. Go to **AWS Lambda Console**: https://console.aws.amazon.com/lambda/
+2. In the search bar, search for the function name from Phase 2 outputs: `<AgentInvokeApiFunctionName>`
+3. Click on the function to open it
+4. In the function overview page, scroll down to the **Configuration** tab
+5. Click on **Environment variables** in the left sidebar
+6. Click the **Edit** button (pencil icon)
+7. You should see an existing variable `ALLOWED_ORIGIN` - keep it as is
+8. Click **Add environment variable**
+9. Add the following variable:
+   - **Key**: `AGENT_RUNTIME_ARN`
+   - **Value**: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX` (your Agent Runtime ARN from Phase 3)
+10. Click **Save**
 
 ### Step 4.3: Verify Updates
 
-1. Go to **AWS Lambda Console**
-2. Check both Lambda functions
-3. Verify the `AGENT_RUNTIME_ARN` environment variable is set correctly
+1. Go back to **AWS Lambda Console**
+2. Open **AgentTriggerFunction**
+3. Go to **Configuration** → **Environment variables**
+4. Verify `AGENT_RUNTIME_ARN` is set correctly
+5. Open **AgentInvokeApiFunction**
+6. Go to **Configuration** → **Environment variables**
+7. Verify both `AGENT_RUNTIME_ARN` and `ALLOWED_ORIGIN` are set correctly
 
 ---
 
