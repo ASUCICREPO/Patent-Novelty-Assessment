@@ -82,7 +82,7 @@ The deployment consists of 4 main phases:
    - Select `patent-view` API key
 8. **Additional Configuration:**
    - **Header:** 
-   -Parameter Name - `X-Api-Key`
+   -Parameter Name: `X-Api-Key`
 9. Click **Create gateway**
 
 ### Step 1.4: Copy PatentView Gateway Credentials
@@ -186,7 +186,7 @@ chmod +x ./deploy.sh
 ./deploy.sh
 ```
 
-**Note:** You can view the entire depoyment logs by navigating to CodeBuild proejct that is being created. Click on "Tail logs" to have a clear view of logs.
+**Note:** You can view the entire deployment logs by navigating to CodeBuild project that is being created. Click on "Tail logs" to have a clear view of logs.
 
 **Note:** The script will NO LONGER prompt for Agent Runtime ARN. The infrastructure will be deployed first, then you'll create the Agent Runtime in Phase 3.
 
