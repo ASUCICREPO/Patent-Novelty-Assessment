@@ -32,6 +32,7 @@ The deployment consists of 4 main phases:
 3. Click **Add API Key**
 4. Configure:
    - **Name:** `patent-view`
+   - Add the API key you requested from Patent View
    - Click **Add**
 5. **Save the API Key** - you'll need it later
 
@@ -41,6 +42,7 @@ The deployment consists of 4 main phases:
 2. Click **Add API Key**
 3. Configure:
    - **Name:** `semantic-scholar`
+   - Add the api key you requested from Semantic Scholar
    - Click **Add**
 4. **Save the API Key** - you'll need it later
 
@@ -69,7 +71,8 @@ The deployment consists of 4 main phases:
    - Select **API key option**
    - Select `patent-view` API key
 8. **Additional Configuration:**
-   - **Header:** `X-Api-Key`
+   - **Header:** 
+   -Parameter Name - `X-Api-Key`
 9. Click **Create gateway**
 
 ### Step 1.4: Copy PatentView Gateway Credentials
@@ -83,7 +86,7 @@ The deployment consists of 4 main phases:
    PATENTVIEW_GATEWAY_URL=<value>
    ```
 3. To get Client ID and Secret:
-   - Click on the Cognito link in the invocation code
+   - Click on the Cognito link in the invocation code (This will be located in a blue box right below after expanding Invocation code)
    - Navigate to **Amazon Cognito** → **User pools** → Your pool → **App integration** → **App clients**
    - Copy the **Client ID** and **Client secret**
 
@@ -125,7 +128,7 @@ The deployment consists of 4 main phases:
    SEMANTIC_SCHOLAR_GATEWAY_URL=<value>
    ```
 3. To get Client ID and Secret:
-   - Click on the Cognito link in the invocation code
+   - Click on the Cognito link in the invocation code (This will be located in a blue box right below after expanding Invocation code)
    - Navigate to **Amazon Cognito** → **User pools** → Your pool → **App integration** → **App clients**
    - Copy the **Client ID** and **Client secret**
 
@@ -173,6 +176,8 @@ chmod +x ./deploy.sh
 ./deploy.sh
 ```
 
+**Note:** You can view the entire depoyment logs by navigating to CodeBuild proejct that is being created. Click on "Tail logs" to have a clear view of logs.
+
 **Note:** The script will NO LONGER prompt for Agent Runtime ARN. The infrastructure will be deployed first, then you'll create the Agent Runtime in Phase 3.
 
 ### Step 2.5: Wait for Deployment
@@ -200,7 +205,7 @@ ARTICLES_TABLE_NAME=scholarly-articles-results-<account-id>
 COMMERCIAL_ASSESSMENT_TABLE_NAME=early-commercial-assessment-<account-id>
 ```
 
-Also note:
+Also note (IMPORTANT):
 
 - **Docker Image URI** (for Agent Runtime)
 - **IAM Role Name** (PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX)
