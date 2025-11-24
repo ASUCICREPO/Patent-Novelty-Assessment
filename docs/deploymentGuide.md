@@ -4,11 +4,21 @@ This guide provides step-by-step instructions to deploy the Patent Novelty Asses
 
 **Estimated Time:** 30-45 minutes
 
-**Prerequisites:**
+---
 
-- AWS Account with appropriate permissions
-- Access to AWS Console
-- Basic familiarity with AWS services
+## ⚠️ Important: Complete Prerequisites First
+
+**Before starting deployment, you MUST complete all prerequisites:**
+
+👉 **[Read the Prerequisites Guide](./prerequisites.md)** 👈
+
+The prerequisites guide covers:
+- AWS account requirements and Bedrock service access
+- **PatentView API Key** - Required for patent searches
+- **Semantic Scholar API Key** - Required for literature searches
+- Development tools installation
+
+**API keys can take 1-3 business days to be approved**, so request them before starting deployment.
 
 ---
 
@@ -32,6 +42,7 @@ The deployment consists of 4 main phases:
 3. Click **Add API Key**
 4. Configure:
    - **Name:** `patent-view`
+   - Add the API key you requested from Patent View
    - Click **Add**
 5. **Save the API Key** - you'll need it later
 
@@ -41,6 +52,7 @@ The deployment consists of 4 main phases:
 2. Click **Add API Key**
 3. Configure:
    - **Name:** `semantic-scholar`
+   - Add the api key you requested from Semantic Scholar
    - Click **Add**
 4. **Save the API Key** - you'll need it later
 
@@ -69,7 +81,8 @@ The deployment consists of 4 main phases:
    - Select **API key option**
    - Select `patent-view` API key
 8. **Additional Configuration:**
-   - **Header:** `X-Api-Key`
+   - **Header:** 
+   -Parameter Name - `X-Api-Key`
 9. Click **Create gateway**
 
 ### Step 1.4: Copy PatentView Gateway Credentials
@@ -83,7 +96,7 @@ The deployment consists of 4 main phases:
    PATENTVIEW_GATEWAY_URL=<value>
    ```
 3. To get Client ID and Secret:
-   - Click on the Cognito link in the invocation code
+   - Click on the Cognito link in the invocation code (This will be located in a blue box right below after expanding Invocation code)
    - Navigate to **Amazon Cognito** → **User pools** → Your pool → **App integration** → **App clients**
    - Copy the **Client ID** and **Client secret**
 
@@ -125,7 +138,7 @@ The deployment consists of 4 main phases:
    SEMANTIC_SCHOLAR_GATEWAY_URL=<value>
    ```
 3. To get Client ID and Secret:
-   - Click on the Cognito link in the invocation code
+   - Click on the Cognito link in the invocation code (This will be located in a blue box right below after expanding Invocation code)
    - Navigate to **Amazon Cognito** → **User pools** → Your pool → **App integration** → **App clients**
    - Copy the **Client ID** and **Client secret**
 
@@ -173,6 +186,8 @@ chmod +x ./deploy.sh
 ./deploy.sh
 ```
 
+**Note:** You can view the entire depoyment logs by navigating to CodeBuild proejct that is being created. Click on "Tail logs" to have a clear view of logs.
+
 **Note:** The script will NO LONGER prompt for Agent Runtime ARN. The infrastructure will be deployed first, then you'll create the Agent Runtime in Phase 3.
 
 ### Step 2.5: Wait for Deployment
@@ -200,7 +215,7 @@ ARTICLES_TABLE_NAME=scholarly-articles-results-<account-id>
 COMMERCIAL_ASSESSMENT_TABLE_NAME=early-commercial-assessment-<account-id>
 ```
 
-Also note:
+Also note (IMPORTANT):
 
 - **Docker Image URI** (for Agent Runtime)
 - **IAM Role Name** (PatentNoveltyStack-PatentNoveltyOrchestratorRole-XXXXX)
@@ -221,7 +236,7 @@ Now that the infrastructure is deployed, create the Agent Runtime with the corre
 
 ### Step 3.2: Basic Configuration
 
-- **Name:** `Patent-Novelty-Agent`
+- **Name:** `Patent_Novelty_Agent`
 - **Description:** `Multi-agent orchestrator for patent novelty assessment`
 
 ### Step 3.3: Container Image
@@ -284,44 +299,46 @@ COMMERCIAL_ASSESSMENT_TABLE_NAME=<value_from_phase_2>
 
 ## Phase 4: Update Lambda Functions
 
-The Lambda functions need the Agent Runtime ARN to invoke the agent. Update them now.
+The Lambda functions need the Agent Runtime ARN to invoke the agent. Update them manually via the AWS Console.
 
-### Step 4.1: Update agent_trigger Lambda
+### Step 4.1: Update AgentTriggerFunction
 
-```bash
-# Set your values
-AGENT_ARN="arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX"
-AWS_REGION="your-region"
-AGENT_TRIGGER_FUNCTION="<AgentTriggerFunctionName-from-phase-2>"
+1. Go to **AWS Lambda Console**: https://console.aws.amazon.com/lambda/
+2. In the search bar, search for the function name from Phase 2 outputs: `<AgentTriggerFunctionName>`
+3. Click on the function to open it
+4. In the function overview page, scroll down to the **Configuration** tab
+5. Click on **Environment variables** in the left sidebar
+6. Click the **Edit** button (pencil icon)
+7. Click **Add environment variable**
+8. Add the following variable:
+   - **Key**: `AGENT_RUNTIME_ARN`
+   - **Value**: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX` (your Agent Runtime ARN from Phase 3)
+9. Click **Save**
 
-# Update the Lambda
-aws lambda update-function-configuration \
-  --function-name $AGENT_TRIGGER_FUNCTION \
-  --environment Variables={AGENT_RUNTIME_ARN=$AGENT_ARN} \
-  --region $AWS_REGION
-```
+### Step 4.2: Update AgentInvokeApiFunction
 
-### Step 4.2: Update agent_invoke_api Lambda
-
-```bash
-# Set your values
-AGENT_ARN="arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX"
-AWS_REGION="your-region"
-FRONTEND_URL="https://main.<amplify-app-id>.amplifyapp.com"
-AGENT_INVOKE_FUNCTION="<AgentInvokeApiFunctionName-from-phase-2>"
-
-# Update the Lambda
-aws lambda update-function-configuration \
-  --function-name $AGENT_INVOKE_FUNCTION \
-  --environment Variables={AGENT_RUNTIME_ARN=$AGENT_ARN,ALLOWED_ORIGIN=$FRONTEND_URL} \
-  --region $AWS_REGION
-```
+1. Go to **AWS Lambda Console**: https://console.aws.amazon.com/lambda/
+2. In the search bar, search for the function name from Phase 2 outputs: `<AgentInvokeApiFunctionName>`
+3. Click on the function to open it
+4. In the function overview page, scroll down to the **Configuration** tab
+5. Click on **Environment variables** in the left sidebar
+6. Click the **Edit** button (pencil icon)
+7. You should see an existing variable `ALLOWED_ORIGIN` - keep it as is
+8. Click **Add environment variable**
+9. Add the following variable:
+   - **Key**: `AGENT_RUNTIME_ARN`
+   - **Value**: `arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/XXXXX` (your Agent Runtime ARN from Phase 3)
+10. Click **Save**
 
 ### Step 4.3: Verify Updates
 
-1. Go to **AWS Lambda Console**
-2. Check both Lambda functions
-3. Verify the `AGENT_RUNTIME_ARN` environment variable is set correctly
+1. Go back to **AWS Lambda Console**
+2. Open **AgentTriggerFunction**
+3. Go to **Configuration** → **Environment variables**
+4. Verify `AGENT_RUNTIME_ARN` is set correctly
+5. Open **AgentInvokeApiFunction**
+6. Go to **Configuration** → **Environment variables**
+7. Verify both `AGENT_RUNTIME_ARN` and `ALLOWED_ORIGIN` are set correctly
 
 ---
 
